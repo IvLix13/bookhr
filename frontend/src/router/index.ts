@@ -1,0 +1,42 @@
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes: [
+    { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
+    {
+      path: '/',
+      component: () => import('@/layouts/AppShell.vue'),
+      meta: { requiresAuth: true },
+      children: [
+        { path: '', name: 'calendar', component: () => import('@/views/CalendarView.vue') },
+        { path: 'employees', name: 'employees', component: () => import('@/views/EmployeesView.vue') },
+        { path: 'import', name: 'import', component: () => import('@/views/ImportView.vue') },
+        { path: 'events/create', name: 'event-create', component: () => import('@/views/EventCreateView.vue') },
+        { path: 'contracts', name: 'contracts', component: () => import('@/views/ContractsView.vue') },
+        { path: 'grades', name: 'grades', component: () => import('@/views/GradesView.vue') },
+        { path: 'awards', name: 'awards', component: () => import('@/views/AwardsView.vue') },
+        { path: 'passports', name: 'passports', component: () => import('@/views/PassportsView.vue') },
+        { path: 'events', name: 'events', component: () => import('@/views/EventsView.vue') },
+        { path: 'grade-catalog', name: 'grade-catalog', component: () => import('@/views/GradeCatalogView.vue') },
+        { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+      ],
+    },
+  ],
+})
+
+router.beforeEach(async (to) => {
+  const auth = useAuthStore()
+  if (!auth.user && to.meta.requiresAuth) {
+    await auth.fetchMe()
+  }
+  if (to.meta.requiresAuth && !auth.user) {
+    return { name: 'login', query: { redirect: to.fullPath } }
+  }
+  if (to.name === 'login' && auth.user) {
+    return { name: 'calendar' }
+  }
+})
+
+export default router

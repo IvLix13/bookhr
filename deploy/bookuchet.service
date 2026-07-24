@@ -1,0 +1,18 @@
+[Unit]
+Description=Bookuchet Gunicorn Service
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+User=bookuchet
+Group=bookuchet
+WorkingDirectory=/opt/bookuchet/backend
+EnvironmentFile=/opt/bookuchet/.env.prod
+Environment=FLASK_APP=wsgi:app
+Environment=APP_ENV=production
+ExecStart=/opt/bookuchet/backend/.venv/bin/gunicorn --bind 127.0.0.1:8000 --workers 3 wsgi:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Bookuchet notifications sender
+
+[Service]
+Type=oneshot
+User=bookuchet
+Group=bookuchet
+WorkingDirectory=/opt/bookuchet/backend
+EnvironmentFile=/opt/bookuchet/.env.prod
+Environment=FLASK_APP=wsgi:app
+ExecStart=/opt/bookuchet/backend/.venv/bin/flask send-notifications
