@@ -26,20 +26,20 @@ fi
 mkdir -p backend/uploads backend/static
 
 echo "Starting Bookuchet dev environment..."
-echo "Flask: http://127.0.0.1:5000"
-echo "Vite:  http://127.0.0.1:5173"
+echo "Flask (local): http://127.0.0.1:3005"
+echo "Vite (network): http://0.0.0.0:5173"
 
 (
   cd backend
   export FLASK_APP=wsgi:app
   export FLASK_DEBUG=1
-  ../backend/.venv/bin/flask run --host 127.0.0.1 --port 5000
+  ../backend/.venv/bin/flask run --host 127.0.0.1 --port 3005
 ) &
 BACKEND_PID=$!
 
 (
   cd frontend
-  npm run dev -- --host 127.0.0.1 --port 5173
+  npm run dev -- --host 0.0.0.0 --port 5173
 ) &
 FRONTEND_PID=$!
 

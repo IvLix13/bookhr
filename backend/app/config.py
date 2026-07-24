@@ -11,7 +11,7 @@ class BaseConfig:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-change-me")
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL",
-        "postgresql+psycopg://bookuchet_dev_user:change-me@localhost:5432/bookuchet_dev",
+        "postgresql+psycopg://bookuchet_dev_user:ivlix@localhost:5432/bookuchet_dev",
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     TIMEZONE = os.getenv("TIMEZONE", "Europe/Moscow")

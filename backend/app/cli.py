@@ -7,6 +7,7 @@ from flask import Flask
 
 from app.extensions import db
 from app.models import Company, GradeCatalog, Role, RoleName, User
+from app.services.demo_data import seed_demo_data
 from app.services.events import refresh_overdue_events
 from app.services.notifications import process_pending_notifications
 from app.services.rule_engine import run_rule_engine
@@ -54,6 +55,13 @@ def register_commands(app: Flask) -> None:
 
         db.session.commit()
         click.echo("Seed completed")
+
+    @app.cli.command("seed-demo")
+    @click.option("--force", is_flag=True, help="Reload demo data even if employees already exist")
+    def seed_demo(force: bool):
+        """Seed demo employees, contracts, grades, passports and auto-events."""
+        result = seed_demo_data(force=force)
+        click.echo(f"Demo seed completed: {result}")
 
     @app.cli.command("run-rules")
     @click.option("--company-id", type=int, default=None)

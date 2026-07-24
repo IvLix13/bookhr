@@ -15,8 +15,12 @@ from app.extensions import db
 load_dotenv()
 
 config = context.config
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+config_path = config.config_file_name
+if config_path is not None:
+    if not os.path.isabs(config_path):
+        config_path = os.path.join(os.path.dirname(__file__), "..", config_path)
+    if os.path.exists(config_path):
+        fileConfig(config_path)
 
 app = create_app(os.getenv("APP_ENV", "development"))
 target_metadata = db.metadata
