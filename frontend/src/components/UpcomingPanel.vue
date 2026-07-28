@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { EventItem } from '@/types'
+import { formatShortDate } from '@/utils/dates'
 
 defineProps<{
   events: EventItem[]
@@ -22,7 +23,7 @@ defineProps<{
         </div>
         <div class="meta">
           <span class="badge">{{ event.event_type }}</span>
-          <time>{{ event.event_date }}</time>
+          <time>{{ formatShortDate(event.event_date) }}</time>
         </div>
       </li>
     </TransitionGroup>

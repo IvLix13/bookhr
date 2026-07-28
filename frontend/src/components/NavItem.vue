@@ -30,6 +30,13 @@ defineProps<{
   transition: background var(--transition), color var(--transition), transform var(--transition);
 }
 
+.nav-item :deep(.icon) {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: block;
+}
+
 .nav-item:hover,
 .nav-item.active {
   background: var(--accent-soft);

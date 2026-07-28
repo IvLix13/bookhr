@@ -118,7 +118,7 @@ a {
   align-items: center;
   padding: 0.2rem 0.55rem;
   border-radius: 999px;
-  font-size: 0.78rem;
+  font-size: 0.65rem;
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -136,4 +136,19 @@ a {
 .badge.success {
   background: #e8f7ef;
   color: var(--success);
+}
+
+.data-table-search,
+.column-filter {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.table th.sortable {
+  white-space: nowrap;
+}
+
+.data-table-state {
+  color: var(--muted);
+  padding: 0.5rem 0;
 }

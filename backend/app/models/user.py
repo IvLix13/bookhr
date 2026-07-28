@@ -17,6 +17,11 @@ class RoleName(str, Enum):
     VIEWER = "viewer"
 
 
+class AuthSource(str, Enum):
+    LOCAL = "local"
+    LDAP = "ldap"
+
+
 class Role(db.Model, TimestampMixin):
     __tablename__ = "roles"
 
@@ -31,10 +36,11 @@ class User(UserMixin, db.Model, TimestampMixin):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
-    password_hash = db.Column(db.String(256), nullable=False)
+    password_hash = db.Column(db.String(256), nullable=True)
     full_name = db.Column(db.String(256), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey("roles.id"), nullable=False)
+    auth_source = db.Column(db.String(16), default=AuthSource.LOCAL.value, nullable=False)
     failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
     locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
 
@@ -44,6 +50,8 @@ class User(UserMixin, db.Model, TimestampMixin):
         self.password_hash = generate_password_hash(password)
 
     def check_password(self, password: str) -> bool:
+        if not self.password_hash:
+            return False
         return check_password_hash(self.password_hash, password)
 
     @property

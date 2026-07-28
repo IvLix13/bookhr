@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from pathlib import Path
 
-from flask import current_app, request
+from flask import current_app, request, send_file
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
@@ -79,6 +79,4 @@ def register_routes(bp):
         upload_dir.mkdir(parents=True, exist_ok=True)
         path = upload_dir / f"template_{company_id}.xlsx"
         export_template_with_uuids(company_id, path)
-        from flask import send_file
-
         return send_file(path, as_attachment=True, download_name="employees_template.xlsx")

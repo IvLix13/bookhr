@@ -16,7 +16,7 @@ from app.models.import_job import ImportJob, ImportRow, ImportStatus
 from app.models.notification import DeliveryStatus, NotificationDelivery, NotificationRule
 from app.models.passport import Passport, PassportStatus
 from app.models.tenure import TenureAward
-from app.models.user import Role, RoleName, User
+from app.models.user import AuthSource, Role, RoleName, User
 
 __all__ = [
     "AuditLog",
@@ -42,6 +42,7 @@ __all__ = [
     "Person",
     "PersonNameHistory",
     "PositionHistory",
+    "AuthSource",
     "Role",
     "RoleName",
     "TenureAward",

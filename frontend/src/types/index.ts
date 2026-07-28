@@ -98,6 +98,47 @@ export interface TenureRow {
   awards: Record<string, { milestone_years: number; milestone_date: string | null; is_received: boolean }>
 }
 
+export interface DashboardStats {
+  period: { from: string; to: string }
+  employees: { active: number; hired_in_period: number; dismissed_in_period: number }
+  events: {
+    planned: number
+    overdue: number
+    completed: number
+    cancelled: number
+    completion_rate: number
+    by_type: Record<string, number>
+    monthly: Array<{
+      month: string
+      total: number
+      planned: number
+      overdue: number
+      completed: number
+      cancelled: number
+    }>
+  }
+  contracts: { active: number; expired: number; expiring_120d: number }
+  grades: {
+    distribution: Record<string, number>
+    without_grade: number
+    eligible_now: number
+    eligible_30d: number
+    assigned_in_period: number
+  }
+  tenure: {
+    pending: Record<string, number>
+    received: Record<string, number>
+    received_in_period: number
+  }
+  passports: {
+    ok: number
+    requires_preparation: number
+    expired: number
+    missing: number
+    expiring_90d: number
+  }
+}
+
 export interface NotificationRule {
   id: number
   company_id: number | null
@@ -111,18 +152,20 @@ export interface NotificationRule {
   send_time_moscow: string
 }
 
+export interface ImportRow {
+  id: number
+  row_number: number
+  action: string | null
+  person_uuid: string | null
+  errors: string[] | null
+  warnings: string[] | null
+}
+
 export interface ImportJob {
   id: number
   filename: string
   status: string
   summary: Record<string, number> | null
   created_at: string | null
-  rows: Array<{
-    id: number
-    row_number: number
-    action: string | null
-    person_uuid: string | null
-    errors: string[] | null
-    warnings: string[] | null
-  }>
+  rows: ImportRow[]
 }

@@ -1,14 +1,79 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import DataTable from '@/components/DataTable.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
-import type { Employee, Paginated } from '@/types'
+import type { ColumnDef } from '@/composables/useDataTable'
+import type { Employee } from '@/types'
+import { formatShortDate } from '@/utils/dates'
+import { getPassportStatusMeta } from '@/utils/statuses'
 
 const employees = ref<Employee[]>([])
 const loading = ref(true)
 
+const columns: ColumnDef<Employee>[] = [
+  {
+    key: 'index',
+    label: '№',
+    sortable: false,
+    filterable: false,
+    getValue: (row) => employees.value.indexOf(row) + 1,
+  },
+  { key: 'full_name', label: 'ФИО' },
+  { key: 'title', label: 'Должность' },
+  {
+    key: 'position_grade',
+    label: 'Грейд по должности',
+    getValue: (row) => row.position_grade?.name ?? '—',
+  },
+  {
+    key: 'actual_grade',
+    label: 'Фактический грейд',
+    getValue: (row) => row.actual_grade?.name ?? '—',
+  },
+  {
+    key: 'has_university',
+    label: 'ВУЗ',
+    getValue: (row) => (row.has_university ? 'Да' : 'Нет'),
+  },
+  {
+    key: 'contract_end',
+    label: 'Окончание договора',
+    getValue: (row) => row.contract_end,
+    format: (value) => formatShortDate(value as string | null),
+    sortValue: (row) => row.contract_end,
+  },
+  {
+    key: 'grade_date',
+    label: 'Дата грейда',
+    getValue: (row) => row.grade_date,
+    format: (value) => formatShortDate(value as string | null),
+    sortValue: (row) => row.grade_date,
+  },
+  {
+    key: 'hire_date',
+    label: 'Начало работы',
+    getValue: (row) => row.hire_date,
+    format: (value) => formatShortDate(value as string | null),
+    sortValue: (row) => row.hire_date,
+  },
+  {
+    key: 'tenure_years',
+    label: 'Стаж',
+    getValue: (row) => row.tenure_years,
+    format: (value) => `${value} лет`,
+  },
+  {
+    key: 'passport',
+    label: 'Паспорт',
+    getValue: (row) => row.passport_until,
+    format: (value) => formatShortDate(value as string | null),
+    sortValue: (row) => row.passport_until,
+  },
+]
+
 onMounted(async () => {
-  const data = (await api.employees('?per_page=200')) as Paginated<Employee>
-  employees.value = data.items
+  employees.value = (await api.fetchAllEmployees()) as Employee[]
   loading.value = false
 })
 </script>
@@ -18,52 +83,28 @@ onMounted(async () => {
     <header>
       <h2>Общая таблица сотрудников</h2>
     </header>
-    <div v-if="loading">Загрузка...</div>
-    <div v-else class="table-wrap">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>№</th>
-            <th>ФИО</th>
-            <th>Должность</th>
-            <th>Грейд по должности</th>
-            <th>Фактический грейд</th>
-            <th>ВУЗ</th>
-            <th>Окончание договора</th>
-            <th>Дата грейда</th>
-            <th>Начало работы</th>
-            <th>Стаж</th>
-            <th>Паспорт</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(employee, index) in employees" :key="employee.id">
-            <td>{{ index + 1 }}</td>
-            <td>{{ employee.full_name }}</td>
-            <td>{{ employee.title }}</td>
-            <td>{{ employee.position_grade?.name ?? '—' }}</td>
-            <td>{{ employee.actual_grade?.name ?? '—' }}</td>
-            <td>{{ employee.has_university ? 'Да' : 'Нет' }}</td>
-            <td>{{ employee.contract_end ?? '—' }}</td>
-            <td>{{ employee.grade_date ?? '—' }}</td>
-            <td>{{ employee.hire_date }}</td>
-            <td>{{ employee.tenure_years }} лет</td>
-            <td>
-              <span class="badge" :class="employee.passport_status">{{ employee.passport_until ?? '—' }}</span>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      :columns="columns"
+      :rows="employees"
+      row-key="id"
+      :loading="loading"
+      search-placeholder="Поиск по сотрудникам..."
+    >
+      <template #cell-index="{ row }">
+        {{ employees.indexOf(row) + 1 }}
+      </template>
+      <template #cell-passport="{ row }">
+        <StatusBadge
+          :label="formatShortDate(row.passport_until)"
+          :variant="getPassportStatusMeta(row.passport_status).variant"
+        />
+      </template>
+    </DataTable>
   </section>
 </template>
 
 <style scoped>
 .page {
   padding: 1rem;
-}
-
-.table-wrap {
-  overflow: auto;
 }
 </style>

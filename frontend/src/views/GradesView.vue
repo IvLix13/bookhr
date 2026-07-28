@@ -1,43 +1,69 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import DataTable from '@/components/DataTable.vue'
 import { api } from '@/api/client'
+import type { ColumnDef } from '@/composables/useDataTable'
 import type { GradeRow } from '@/types'
+import { formatShortDate } from '@/utils/dates'
 
 const rows = ref<GradeRow[]>([])
+const loading = ref(true)
+
+const columns: ColumnDef<GradeRow>[] = [
+  { key: 'full_name', label: 'ФИО' },
+  {
+    key: 'grade',
+    label: 'Текущий грейд',
+    getValue: (row) => row.grade?.name ?? '—',
+  },
+  {
+    key: 'grade_date',
+    label: 'Дата выдачи',
+    getValue: (row) => row.grade_date,
+    format: (value) => formatShortDate(value as string | null),
+    sortValue: (row) => row.grade_date,
+  },
+  {
+    key: 'next_grade',
+    label: 'Следующий грейд',
+    getValue: (row) => row.next_grade?.name ?? '—',
+  },
+  {
+    key: 'eligible_date',
+    label: 'Дата доступности',
+    getValue: (row) => row.eligible_date,
+    format: (value) => formatShortDate(value as string | null),
+    sortValue: (row) => row.eligible_date,
+  },
+  {
+    key: 'days_left',
+    label: 'Осталось дней',
+    getValue: (row) => row.days_left,
+    format: (value) => (value == null ? '—' : String(value)),
+  },
+]
 
 onMounted(async () => {
   rows.value = (await api.grades()) as GradeRow[]
+  loading.value = false
 })
 </script>
 
 <template>
   <section class="card page">
     <header><h2>Грейды</h2></header>
-    <table class="table">
-      <thead>
-        <tr>
-          <th>ФИО</th>
-          <th>Текущий грейд</th>
-          <th>Дата выдачи</th>
-          <th>Следующий грейд</th>
-          <th>Дата доступности</th>
-          <th>Осталось дней</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="row in rows" :key="row.employment_id">
-          <td>{{ row.full_name }}</td>
-          <td>{{ row.grade?.name ?? '—' }}</td>
-          <td>{{ row.grade_date ?? '—' }}</td>
-          <td>{{ row.next_grade?.name ?? '—' }}</td>
-          <td>{{ row.eligible_date ?? '—' }}</td>
-          <td>{{ row.days_left ?? '—' }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <DataTable
+      :columns="columns"
+      :rows="rows"
+      :row-key="(row) => row.employment_id"
+      :loading="loading"
+      search-placeholder="Поиск по грейдам..."
+    />
   </section>
 </template>
 
 <style scoped>
-.page { padding: 1rem; }
+.page {
+  padding: 1rem;
+}
 </style>

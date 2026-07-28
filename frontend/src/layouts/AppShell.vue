@@ -11,7 +11,7 @@ const auth = useAuthStore()
     <main>
       <header class="topbar">
         <div>
-          <h1>Bookuchet</h1>
+          <h1>Книга оперативного учета</h1>
           <p>Оперативный учёт кадровых событий</p>
         </div>
         <div class="user-block">

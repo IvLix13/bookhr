@@ -16,8 +16,8 @@ fi
 
 if [[ ! -d "backend/.venv" ]]; then
   python3 -m venv backend/.venv
-  backend/.venv/bin/pip install -r backend/requirements-dev.txt
 fi
+backend/.venv/bin/pip install -q -r backend/requirements-dev.txt
 
 if [[ ! -d "frontend/node_modules" ]]; then
   (cd frontend && npm ci)

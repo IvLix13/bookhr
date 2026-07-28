@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import DataTable from '@/components/DataTable.vue'
 import { api } from '@/api/client'
+import type { ColumnDef } from '@/composables/useDataTable'
 import type { NotificationRule } from '@/types'
 
 const rules = ref<NotificationRule[]>([])
+const loading = ref(true)
 const form = ref({
   room_token: '',
   room_name: '',
@@ -15,8 +18,24 @@ const form = ref({
 const testMessage = ref('Bookuchet test notification')
 const result = ref('')
 
+const columns: ColumnDef<NotificationRule>[] = [
+  {
+    key: 'room',
+    label: 'Комната',
+    getValue: (row) => row.room_name ?? row.room_token,
+  },
+  {
+    key: 'event_type',
+    label: 'Тип',
+    getValue: (row) => row.event_type ?? 'all',
+  },
+  { key: 'repeat_interval_days', label: 'Повтор' },
+  { key: 'send_time_moscow', label: 'Время' },
+]
+
 onMounted(async () => {
   rules.value = (await api.notificationRules()) as NotificationRule[]
+  loading.value = false
 })
 
 async function createRule() {
@@ -52,24 +71,13 @@ async function testSend() {
       <pre v-if="result">{{ result }}</pre>
     </div>
 
-    <table class="table">
-      <thead>
-        <tr>
-          <th>Комната</th>
-          <th>Тип</th>
-          <th>Повтор</th>
-          <th>Время</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="rule in rules" :key="rule.id">
-          <td>{{ rule.room_name ?? rule.room_token }}</td>
-          <td>{{ rule.event_type ?? 'all' }}</td>
-          <td>{{ rule.repeat_interval_days }}</td>
-          <td>{{ rule.send_time_moscow }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <DataTable
+      :columns="columns"
+      :rows="rules"
+      row-key="id"
+      :loading="loading"
+      search-placeholder="Поиск по правилам..."
+    />
   </section>
 </template>
 

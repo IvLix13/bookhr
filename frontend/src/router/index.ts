@@ -11,6 +11,7 @@ const router = createRouter({
       meta: { requiresAuth: true },
       children: [
         { path: '', name: 'calendar', component: () => import('@/views/CalendarView.vue') },
+        { path: 'statistics', name: 'statistics', component: () => import('@/views/StatisticsView.vue') },
         { path: 'employees', name: 'employees', component: () => import('@/views/EmployeesView.vue') },
         { path: 'import', name: 'import', component: () => import('@/views/ImportView.vue') },
         { path: 'events/create', name: 'event-create', component: () => import('@/views/EventCreateView.vue') },

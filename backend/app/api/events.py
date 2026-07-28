@@ -26,6 +26,8 @@ def register_routes(bp):
         page = request.args.get("page", 1, type=int)
         per_page = request.args.get("per_page", 50, type=int)
 
+        refresh_overdue_events(company_id)
+
         query = Event.query.filter_by(company_id=company_id)
         if date_from:
             query = query.filter(Event.event_date >= date.fromisoformat(date_from))

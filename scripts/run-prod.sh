@@ -15,8 +15,8 @@ export APP_ENV=production
 
 if [[ ! -d "backend/.venv" ]]; then
   python3 -m venv backend/.venv
-  backend/.venv/bin/pip install -r backend/requirements.txt
 fi
+backend/.venv/bin/pip install -q -r backend/requirements.txt
 
 if [[ ! -f "backend/static/index.html" ]]; then
   bash scripts/build.sh production

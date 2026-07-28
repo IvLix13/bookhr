@@ -17,6 +17,27 @@
 
 Токен бота хранится только в EnvironmentFile, не в БД.
 
+## LDAP (опционально)
+
+В `.env.prod` можно включить вход через LDAP:
+
+```
+LDAP_ENABLED=true
+LDAP_URI=ldaps://ad.example.com:636
+LDAP_BIND_DN=CN=svc-bookuchet,OU=Service,DC=example,DC=com
+LDAP_BIND_PASSWORD=...
+LDAP_USER_BASE_DN=OU=Users,DC=example,DC=com
+LDAP_USER_FILTER=(sAMAccountName={username})
+LDAP_USE_TLS=true
+LDAP_TLS_CA_FILE=/path/to/ca.pem
+LDAP_ATTR_USERNAME=sAMAccountName
+LDAP_ATTR_FULL_NAME=displayName
+LDAP_DEFAULT_ROLE=viewer
+LDAP_LOCAL_ADMIN_USERNAME=admin
+```
+
+При `LDAP_ENABLED=true` обычные пользователи проходят LDAP-проверку и создаются в БД при первом входе с ролью `LDAP_DEFAULT_ROLE`. Локальный пароль сохраняется только для пользователя `LDAP_LOCAL_ADMIN_USERNAME` (аварийный администратор).
+
 ## Резервное копирование
 
 `deploy/backup.sh` — ежедневный pg_dump с ротацией 14 дней.
