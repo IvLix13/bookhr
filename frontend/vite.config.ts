@@ -1,3 +1,10 @@
+import crypto from 'crypto';
+
+if(!crypto.hash){
+crypto.hash = (algorithm,data) => crypto.createHash(algorithm).update(data).digest('hex');
+}
+
+
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'

@@ -1,17 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
+import EmployeeForm from '@/components/EmployeeForm.vue'
 import PageState from '@/components/PageState.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
 import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { Employee, Paginated, TableQueryState } from '@/types'
+import { useAuthStore } from '@/stores/auth'
 import { formatShortDate } from '@/utils/dates'
 import { getPassportStatusMeta } from '@/utils/statuses'
 
 const route = useRoute()
+const auth = useAuthStore()
 
 const table = useServerTable<Employee>({
   tableId: 'employees',
@@ -27,6 +30,10 @@ if (initialSearch.value) {
   table.setSearch(initialSearch.value)
 }
 
+const editing = ref<Employee | null>(null)
+const modalOpen = ref(false)
+const actionError = ref('')
+
 const columns: ColumnDef<Employee>[] = [
   {
     key: 'index',
@@ -37,30 +44,26 @@ const columns: ColumnDef<Employee>[] = [
   { key: 'full_name', label: 'ФИО' },
   { key: 'title', label: 'Должность' },
   {
-    key: 'position_grade',
-    label: 'Грейд по должности',
-    getValue: (row) => row.position_grade?.name ?? '—',
-  },
-  {
-    key: 'actual_grade',
-    label: 'Фактический грейд',
-    getValue: (row) => row.actual_grade?.name ?? '—',
-  },
-  {
     key: 'has_university',
     label: 'ВУЗ',
     getValue: (row) => (row.has_university ? 'Да' : 'Нет'),
   },
   {
     key: 'contract_end',
-    label: 'Окончание договора',
+    label: 'Окончание Договора',
     getValue: (row) => row.contract_end,
     format: (value) => formatShortDate(value as string | null),
   },
   {
     key: 'grade_date',
-    label: 'Дата грейда',
+    label: 'Дата выдачи текущего грейды',
     getValue: (row) => row.grade_date,
+    format: (value) => formatShortDate(value as string | null),
+  },
+  {
+    key: 'eligible_date',
+    label: 'Дата доступности следующего грейды',
+    getValue: (row) => row.eligible_date,
     format: (value) => formatShortDate(value as string | null),
   },
   {
@@ -81,18 +84,85 @@ const columns: ColumnDef<Employee>[] = [
     getValue: (row) => row.passport_until,
     format: (value) => formatShortDate(value as string | null),
   },
+  {
+    key: 'actions',
+    label: '',
+    sortable: false,
+    filterable: false,
+  },
 ]
 
 function onQueryUpdate(patch: Partial<TableQueryState>) {
   table.setQuery(patch)
 }
+
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && modalOpen.value) {
+    closeModal()
+  }
+}
+
+window.addEventListener('keydown', onKeydown)
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
+
+function openCreate() {
+  editing.value = null
+  actionError.value = ''
+  modalOpen.value = true
+}
+
+function startEdit(row: Employee) {
+  editing.value = row
+  actionError.value = ''
+  modalOpen.value = true
+}
+
+function closeModal() {
+  modalOpen.value = false
+  editing.value = null
+}
+
+async function handleSaved() {
+  closeModal()
+  actionError.value = ''
+  await table.reload()
+}
+
+async function removeEmployee(row: Employee) {
+  const name = row.full_name ?? `ID ${row.id}`
+  if (!window.confirm(`Удалить сотрудника «${name}»? Связанные автособытия также будут удалены.`)) {
+    return
+  }
+  actionError.value = ''
+  try {
+    await api.deleteEmployee(row.id)
+    if (editing.value?.id === row.id) {
+      closeModal()
+    }
+    await table.reload()
+  } catch (err) {
+    actionError.value = err instanceof Error ? err.message : 'Не удалось удалить сотрудника'
+  }
+}
 </script>
 
 <template>
   <section class="card page">
-    <header>
+    <header class="page-header">
       <h2>Общая таблица сотрудников</h2>
+      <button
+        v-if="auth.canEdit()"
+        class="btn"
+        type="button"
+        @click="openCreate"
+      >
+        Добавить сотрудника
+      </button>
     </header>
+
+    <p v-if="actionError" class="error">{{ actionError }}</p>
 
     <PageState
       :error="table.error.value"
@@ -128,13 +198,108 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
             :variant="getPassportStatusMeta(row.passport_status).variant"
           />
         </template>
+        <template #cell-actions="{ row }">
+          <div v-if="auth.canEdit()" class="row-actions">
+            <button class="btn secondary" type="button" @click="startEdit(row)">
+              Изменить
+            </button>
+            <button class="btn ghost" type="button" @click="removeEmployee(row)">
+              Удалить
+            </button>
+          </div>
+        </template>
       </DataTable>
     </PageState>
+
+    <Teleport to="body">
+      <div
+        v-if="modalOpen && auth.canEdit()"
+        class="overlay"
+        @click.self="closeModal"
+      >
+        <section
+          class="card modal"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="editing ? 'Редактирование сотрудника' : 'Новый сотрудник'"
+        >
+          <header class="modal-header">
+            <h3>{{ editing ? 'Редактирование сотрудника' : 'Новый сотрудник' }}</h3>
+            <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">
+              ×
+            </button>
+          </header>
+          <EmployeeForm
+            :initial="editing"
+            @saved="handleSaved"
+            @cancel="closeModal"
+          />
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
 <style scoped>
 .page {
   padding: 1rem;
+}
+
+.page-header {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
+.page-header .btn {
+  justify-self: start;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.error {
+  margin: 0 0 0.75rem;
+  color: var(--danger);
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 1000;
+}
+
+.modal {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+:deep(.form h3) {
+  display: none;
 }
 </style>

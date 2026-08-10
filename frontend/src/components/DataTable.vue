@@ -23,6 +23,8 @@ const props = withDefaults(
     columnFilters?: Record<string, string>
     perPageOptions?: number[]
     highlightRowKey?: string | number | null
+    rowClass?: (row: T) => string | Record<string, boolean> | undefined
+    rowAttrs?: (row: T) => Record<string, string | number | undefined>
   }>(),
   {
     mode: 'client',
@@ -306,7 +308,11 @@ watch(
           <tr
             v-for="(row, index) in displayRows"
             :key="resolveRowKey(row, index)"
-            :class="{ 'data-table-row-highlight': isHighlighted(row, index) }"
+            :class="[
+              rowClass?.(row),
+              { 'data-table-row-highlight': isHighlighted(row, index) },
+            ]"
+            v-bind="rowAttrs?.(row)"
           >
             <td v-for="column in columns" :key="column.key">
               <slot

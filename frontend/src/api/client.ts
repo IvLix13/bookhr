@@ -55,6 +55,19 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   return payload.data as T
 }
 
+async function fetchAllPaginated<T>(
+  fetchPage: (params: TableQueryParams) => Promise<Paginated<T>>,
+  perPage = 200,
+): Promise<T[]> {
+  const first = await fetchPage({ page: 1, per_page: perPage })
+  const all = [...first.items]
+  for (let page = 2; page <= first.pages; page += 1) {
+    const data = await fetchPage({ page, per_page: perPage })
+    all.push(...data.items)
+  }
+  return all
+}
+
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
@@ -74,6 +87,8 @@ export const api = {
   me: () => request('/api/me'),
   employees: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/employees${buildQuery(params)}`),
+  fetchAllEmployees: () =>
+    fetchAllPaginated((params) => api.employees(params) as Promise<Paginated<unknown>>),
   createEmployee: (body: Record<string, unknown>) =>
     request('/api/employees', { method: 'POST', body: JSON.stringify(body) }),
   updateEmployee: (id: number, body: Record<string, unknown>) =>
@@ -98,6 +113,8 @@ export const api = {
     request(`/api/rewards/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   events: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/events${buildQuery(params)}`),
+  fetchAllEvents: () =>
+    fetchAllPaginated((params) => api.events(params) as Promise<Paginated<unknown>>),
   upcomingEvents: (limit = 10) => request(`/api/events/upcoming?limit=${limit}`),
   createEvent: (body: Record<string, unknown>) =>
     request('/api/events', { method: 'POST', body: JSON.stringify(body) }),

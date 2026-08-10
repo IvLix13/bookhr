@@ -68,7 +68,7 @@ async function submit() {
       Тип
       <select v-model="form.event_type">
         <option value="contract">Договор</option>
-        <option value="grade">Грейд</option>
+        <option value="grade">грейдов</option>
         <option value="award">Поощрение</option>
         <option value="report">Рапорт</option>
         <option value="passport">Паспорт</option>

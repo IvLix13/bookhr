@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
 import PageState from '@/components/PageState.vue'
@@ -89,6 +89,35 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
   table.setQuery(patch)
 }
 
+watch(highlightId, () => {
+  scrollToHighlight()
+})
+
+watch(
+  () => [highlightId.value, table.loading.value] as const,
+  ([highlight, loading]) => {
+    if (highlight != null && !loading) {
+      scrollToHighlight()
+    }
+  },
+)
+
+function scrollToHighlight() {
+  if (!highlightId.value) return
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`[data-event-id="${highlightId.value}"]`)
+    row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
+function rowClass(row: EventItem) {
+  return highlightId.value === row.id ? 'highlighted' : undefined
+}
+
+function rowAttrs(row: EventItem) {
+  return { 'data-event-id': row.id }
+}
+
 async function complete(id: number) {
   if (!auth.canEdit()) return
   try {
@@ -123,6 +152,8 @@ async function complete(id: number) {
         :search="table.query.value.q"
         :column-filters="table.query.value.columnFilters"
         :highlight-row-key="highlightId"
+        :row-class="rowClass"
+        :row-attrs="rowAttrs"
         search-placeholder="Поиск по мероприятиям..."
         @update:query="onQueryUpdate"
       >
@@ -136,6 +167,7 @@ async function complete(id: number) {
           <button
             v-if="auth.canEdit() && row.status !== 'completed'"
             class="btn secondary"
+            type="button"
             @click="complete(row.id)"
           >
             Выполнить
@@ -149,5 +181,10 @@ async function complete(id: number) {
 <style scoped>
 .page {
   padding: 1rem;
+}
+
+:deep(.highlighted) {
+  outline: 2px solid var(--accent, #2f6fed);
+  outline-offset: -2px;
 }
 </style>

@@ -38,6 +38,8 @@ from app.models import (
     RoleName,
 )
 from app.services.employees import get_active_passport
+from app.services.events import refresh_overdue_events
+from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards
 
 
@@ -107,6 +109,11 @@ def register_routes(bp):
             notes=payload.get("notes"),
         )
         db.session.add(contract)
+        db.session.flush()
+        employment = db.session.get(Employment, payload["employment_id"])
+        if employment:
+            recalculate_employment_events(employment)
+            refresh_overdue_events(employment.company_id)
         db.session.commit()
         return api_response(contract_to_dict(contract), status=201)
 
@@ -191,6 +198,9 @@ def register_routes(bp):
             basis=payload.get("basis"),
         )
         db.session.add(history)
+        db.session.flush()
+        recalculate_employment_events(employment)
+        refresh_overdue_events(employment.company_id)
         db.session.commit()
         return api_response(grade_row_to_dict(employment))
 
@@ -250,9 +260,17 @@ def register_routes(bp):
             series_number=payload.get("series_number"),
         )
         db.session.add(passport)
-        db.session.commit()
+        db.session.flush()
 
-        employment = Employment.query.filter_by(person_id=person.id).first()
+        employment = (
+            Employment.query.filter_by(person_id=person.id)
+            .order_by(Employment.hire_date.desc())
+            .first()
+        )
+        if employment:
+            recalculate_employment_events(employment)
+            refresh_overdue_events(employment.company_id)
+        db.session.commit()
         return api_response(passport_row_to_dict(person, employment), status=201)
 
     @bp.get("/tenure")

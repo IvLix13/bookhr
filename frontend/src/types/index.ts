@@ -27,6 +27,7 @@ export interface Employee {
   position_grade: Grade | null
   actual_grade: Grade | null
   grade_date: string | null
+  eligible_date: string | null
   has_university: boolean
   hire_date: string
   status: string
@@ -70,6 +71,25 @@ export interface ContractRow {
   end_date: string
   days_left: number
   is_active: boolean
+  renewal_report_event: {
+    id: number
+    event_date: string
+    status: string
+  } | null
+}
+
+export type RewardStatus = 'not_delivered' | 'in_hr' | 'delivered'
+
+export interface RewardRow {
+  id: number
+  employment_id: number
+  full_name: string | null
+  reward_type: string
+  status: RewardStatus
+  updated_at: string | null
+  directive_text: string | null
+  delivered_date: string | null
+  notes: string | null
 }
 
 export interface GradeRow {

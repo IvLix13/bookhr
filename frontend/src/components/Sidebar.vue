@@ -4,6 +4,7 @@ import {
   IconAward,
   IconCalendar,
   IconContract,
+  IconEmployees,
   IconEvent,
   IconGrade,
   IconImport,
@@ -128,7 +129,7 @@ const auth = useAuthStore()
         :expanded="expanded"
         :active="route.name === 'events'"
       >
-        <IconEvent />
+        <IconEmployees />
       </NavItem>
       <NavItem
         v-if="auth.isAdmin()"

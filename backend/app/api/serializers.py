@@ -12,6 +12,7 @@ from app.models import (
     NotificationRule,
     Passport,
     Person,
+    Reward,
     TenureAward,
     User,
 )
@@ -22,7 +23,9 @@ from app.services.employees import (
     get_current_name,
     get_current_position,
 )
+from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status, passport_days_left
+from app.services.rule_engine import find_contract_renewal_event
 from app.services.tenure import tenure_years
 from app.utils.dates import today_moscow
 
@@ -53,6 +56,7 @@ def employment_to_dict(employment: Employment) -> dict:
     contract = get_active_contract(employment)
     passport = get_active_passport(person)
     today = today_moscow()
+    eligibility = compute_grade_eligibility(employment, today)
 
     return {
         "id": employment.id,
@@ -64,6 +68,9 @@ def employment_to_dict(employment: Employment) -> dict:
         else None,
         "actual_grade": grade_to_dict(grade.grade) if grade else None,
         "grade_date": grade.assigned_date.isoformat() if grade else None,
+        "eligible_date": eligibility["eligible_date"].isoformat()
+        if eligibility["eligible_date"]
+        else None,
         "has_university": person.has_university,
         "hire_date": employment.hire_date.isoformat(),
         "status": employment.status,
@@ -81,6 +88,7 @@ def employment_to_dict(employment: Employment) -> dict:
 def contract_to_dict(contract: Contract) -> dict:
     today = today_moscow()
     employment = contract.employment
+    renewal_event = find_contract_renewal_event(contract.id)
     return {
         "id": contract.id,
         "employment_id": contract.employment_id,
@@ -89,38 +97,32 @@ def contract_to_dict(contract: Contract) -> dict:
         "end_date": contract.end_date.isoformat(),
         "days_left": (contract.end_date - today).days,
         "is_active": contract.is_active,
+        "renewal_report_event": {
+            "id": renewal_event.id,
+            "event_date": renewal_event.event_date.isoformat(),
+            "status": renewal_event.status,
+        }
+        if renewal_event
+        else None,
     }
 
 
 def grade_row_to_dict(employment: Employment) -> dict:
     grade = get_current_grade(employment)
-    today = today_moscow()
-    next_grade = None
-    eligible_date = None
-    days_left = None
-
-    if grade:
-        from dateutil.relativedelta import relativedelta
-
-        from app.models import GradeCatalog
-
-        next_grade_obj = GradeCatalog.query.filter(
-            GradeCatalog.rank == grade.grade.rank + 1,
-            GradeCatalog.is_active.is_(True),
-        ).first()
-        eligible_date = grade.assigned_date + relativedelta(months=grade.grade.min_months)
-        days_left = (eligible_date - today).days
-        if next_grade_obj:
-            next_grade = grade_to_dict(next_grade_obj)
+    eligibility = compute_grade_eligibility(employment)
 
     return {
         "employment_id": employment.id,
         "full_name": get_current_name(employment.person),
         "grade": grade_to_dict(grade.grade) if grade else None,
         "grade_date": grade.assigned_date.isoformat() if grade else None,
-        "next_grade": next_grade,
-        "eligible_date": eligible_date.isoformat() if eligible_date else None,
-        "days_left": days_left,
+        "next_grade": grade_to_dict(eligibility["next_grade"])
+        if eligibility["next_grade"]
+        else None,
+        "eligible_date": eligibility["eligible_date"].isoformat()
+        if eligibility["eligible_date"]
+        else None,
+        "days_left": eligibility["days_left"],
     }
 
 
@@ -157,6 +159,20 @@ def tenure_row_to_dict(employment: Employment) -> dict:
     }
 
 
+def reward_to_dict(reward: Reward) -> dict:
+    return {
+        "id": reward.id,
+        "employment_id": reward.employment_id,
+        "full_name": get_current_name(reward.employment.person),
+        "reward_type": reward.reward_type,
+        "status": reward.status,
+        "directive_text": reward.directive_text,
+        "delivered_date": reward.delivered_date.isoformat() if reward.delivered_date else None,
+        "notes": reward.notes,
+        "updated_at": reward.updated_at.isoformat() if reward.updated_at else None,
+    }
+
+
 def event_to_dict(event: Event) -> dict:
     return {
         "id": event.id,
@@ -167,6 +183,8 @@ def event_to_dict(event: Event) -> dict:
         "status": event.status,
         "source": event.source,
         "employment_id": event.employment_id,
+        "reference_type": event.reference_type,
+        "reference_id": event.reference_id,
         "employee_name": get_current_name(event.employment.person)
         if event.employment
         else None,
@@ -210,17 +228,4 @@ def notification_rule_to_dict(rule: NotificationRule) -> dict:
         "repeat_interval_days": rule.repeat_interval_days,
         "overdue_interval_days": rule.overdue_interval_days,
         "send_time_moscow": rule.send_time_moscow,
-    }
-
-
-def reward_to_dict(award: TenureAward) -> dict:
-    employment = award.employment
-    return {
-        "id": award.id,
-        "employment_id": award.employment_id,
-        "full_name": get_current_name(employment.person),
-        "milestone_years": award.milestone_years,
-        "milestone_date": award.milestone_date.isoformat(),
-        "is_received": award.is_received,
-        "received_date": award.received_date.isoformat() if award.received_date else None,
     }

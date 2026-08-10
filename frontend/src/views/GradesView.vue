@@ -19,7 +19,7 @@ const columns: ColumnDef<GradeRow>[] = [
   { key: 'full_name', label: 'ФИО' },
   {
     key: 'grade',
-    label: 'Текущий грейд',
+    label: 'Текущий грейдов',
     getValue: (row) => row.grade?.name ?? '—',
   },
   {
@@ -30,7 +30,7 @@ const columns: ColumnDef<GradeRow>[] = [
   },
   {
     key: 'next_grade',
-    label: 'Следующий грейд',
+    label: 'Следующий грейдов',
     getValue: (row) => row.next_grade?.name ?? '—',
   },
   {

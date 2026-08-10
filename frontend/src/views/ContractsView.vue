@@ -1,18 +1,23 @@
 <script setup lang="ts">
+import { RouterLink } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
 import PageState from '@/components/PageState.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
 import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { ContractRow, Paginated, TableQueryState } from '@/types'
-import { formatShortDate } from '@/utils/dates'
+import { formatLocalDate, formatShortDate } from '@/utils/dates'
 import { MODULE_LABELS } from '@/utils/labels'
+import { getContractReportDisplayMeta } from '@/utils/statuses'
 
 const table = useServerTable<ContractRow>({
   tableId: 'contracts',
   fetcher: (params) => api.contracts(params) as Promise<Paginated<ContractRow>>,
   defaultSort: { key: 'end_date', direction: 'asc' },
 })
+
+const todayIso = formatLocalDate(new Date())
 
 const columns: ColumnDef<ContractRow>[] = [
   { key: 'full_name', label: 'ФИО' },
@@ -26,6 +31,29 @@ const columns: ColumnDef<ContractRow>[] = [
     key: 'days_left',
     label: 'Осталось дней',
     getValue: (row) => row.days_left,
+  },
+  {
+    key: 'report_date',
+    label: 'Дата рапорта',
+    getValue: (row) => row.renewal_report_event?.event_date ?? null,
+    format: (value) => formatShortDate(value as string | null),
+  },
+  {
+    key: 'report_status',
+    label: 'Статус рапорта',
+    getValue: (row) => row.renewal_report_event?.status ?? null,
+    format: (value, row) =>
+      getContractReportDisplayMeta(
+        row.renewal_report_event?.event_date ?? null,
+        value as string | null,
+        todayIso,
+      ).label,
+  },
+  {
+    key: 'report_link',
+    label: '',
+    sortable: false,
+    filterable: false,
   },
 ]
 
@@ -60,6 +88,35 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
       >
         <template #cell-days_left="{ row }">
           <span class="badge" :class="row.days_left <= 120 ? 'warning' : ''">{{ row.days_left }}</span>
+        </template>
+        <template #cell-report_status="{ row }">
+          <StatusBadge
+            v-if="row.renewal_report_event"
+            :label="
+              getContractReportDisplayMeta(
+                row.renewal_report_event.event_date,
+                row.renewal_report_event.status,
+                todayIso,
+              ).label
+            "
+            :variant="
+              getContractReportDisplayMeta(
+                row.renewal_report_event.event_date,
+                row.renewal_report_event.status,
+                todayIso,
+              ).variant
+            "
+          />
+          <span v-else>—</span>
+        </template>
+        <template #cell-report_link="{ row }">
+          <RouterLink
+            v-if="row.renewal_report_event"
+            :to="{ name: 'events', query: { highlight: String(row.renewal_report_event.id) } }"
+            class="btn secondary"
+          >
+            Мероприятие
+          </RouterLink>
         </template>
       </DataTable>
     </PageState>

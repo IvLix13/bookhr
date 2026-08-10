@@ -25,6 +25,8 @@ from app.services.employees import (
     get_current_name,
     get_current_position,
 )
+from app.services.events import refresh_overdue_events
+from app.services.rule_engine import run_rule_engine
 from app.services.tenure import ensure_tenure_awards
 from app.utils.dates import normalize_full_name
 
@@ -35,15 +37,16 @@ COLUMN_MAP = {
     "full_name": "full_name",
     "должность": "title",
     "title": "title",
-    "грейд по должности": "position_grade",
+    "грейдов по должности": "position_grade",
     "position_grade": "position_grade",
-    "фактический грейд": "actual_grade",
+    "фактический грейдов": "actual_grade",
     "actual_grade": "actual_grade",
     "вуз": "has_university",
     "has_university": "has_university",
     "окончание договора": "contract_end",
     "contract_end": "contract_end",
     "дата получения текущего грейда": "grade_date",
+    "дата получения текущего грейды": "grade_date",
     "grade_date": "grade_date",
     "начало работы": "hire_date",
     "hire_date": "hire_date",
@@ -51,6 +54,8 @@ COLUMN_MAP = {
     "passport_until": "passport_until",
     "№ п/п": "row_num",
     "row_num": "row_num",
+    "грейд по должности": "position_grade",
+    "фактический грейд": "actual_grade",
 }
 
 
@@ -88,10 +93,11 @@ def _resolve_grade_id(name: str | None) -> int | None:
         return None
     from app.models import GradeCatalog
 
-    grade = GradeCatalog.query.filter(
-        db.func.lower(GradeCatalog.name) == name.strip().lower()
-    ).first()
-    return grade.id if grade else None
+    needle = str(name).strip().lower()
+    for grade in GradeCatalog.query.all():
+        if grade.name.strip().lower() == needle:
+            return grade.id
+    return None
 
 
 def parse_workbook(path: Path) -> list[dict[str, Any]]:
@@ -286,6 +292,9 @@ def confirm_import(job: ImportJob, row_actions: dict[int, str | None] | None = N
         ensure_tenure_awards(employment.id, employment.hire_date)
 
     job.status = ImportStatus.CONFIRMED.value
+    db.session.flush()
+    run_rule_engine(job.company_id)
+    refresh_overdue_events(job.company_id)
     db.session.commit()
 
 
@@ -298,11 +307,11 @@ def export_template_with_uuids(company_id: int, path: Path) -> None:
         "UUID",
         "ФИО",
         "Должность",
-        "Грейд по должности",
-        "Фактический грейд",
+        "грейдов по должности",
+        "Фактический грейдов",
         "ВУЗ",
-        "Окончание договора",
-        "Дата получения текущего грейда",
+        "Окончание Договора",
+        "Дата получения текущего грейды",
         "Начало работы",
         "Срок окончания паспорта",
     ]
