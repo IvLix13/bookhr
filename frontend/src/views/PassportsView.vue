@@ -1,15 +1,19 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
 import DataTable from '@/components/DataTable.vue'
+import PageState from '@/components/PageState.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
+import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
-import type { PassportRow } from '@/types'
+import type { Paginated, PassportRow, TableQueryState } from '@/types'
 import { formatShortDate } from '@/utils/dates'
 import { getPassportStatusMeta } from '@/utils/statuses'
 
-const rows = ref<PassportRow[]>([])
-const loading = ref(true)
+const table = useServerTable<PassportRow>({
+  tableId: 'passports',
+  fetcher: (params) => api.passports(params) as Promise<Paginated<PassportRow>>,
+  defaultSort: { key: 'valid_until', direction: 'asc' },
+})
 
 const columns: ColumnDef<PassportRow>[] = [
   { key: 'full_name', label: 'ФИО' },
@@ -18,7 +22,6 @@ const columns: ColumnDef<PassportRow>[] = [
     label: 'Действителен до',
     getValue: (row) => row.valid_until,
     format: (value) => formatShortDate(value as string | null),
-    sortValue: (row) => row.valid_until,
   },
   {
     key: 'days_left',
@@ -31,33 +34,46 @@ const columns: ColumnDef<PassportRow>[] = [
     label: 'Статус',
     getValue: (row) => row.status,
     format: (value) => getPassportStatusMeta(value as string | null).label,
-    sortValue: (row) => row.status,
   },
 ]
 
-onMounted(async () => {
-  rows.value = (await api.passports()) as PassportRow[]
-  loading.value = false
-})
+function onQueryUpdate(patch: Partial<TableQueryState>) {
+  table.setQuery(patch)
+}
 </script>
 
 <template>
   <section class="card page">
     <header><h2>Паспорта</h2></header>
-    <DataTable
-      :columns="columns"
-      :rows="rows"
-      row-key="person_uuid"
-      :loading="loading"
-      search-placeholder="Поиск по паспортам..."
+    <PageState
+      :error="table.error.value"
+      @retry="table.reload()"
     >
-      <template #cell-status="{ row }">
-        <StatusBadge
-          :label="getPassportStatusMeta(row.status).label"
-          :variant="getPassportStatusMeta(row.status).variant"
-        />
-      </template>
-    </DataTable>
+      <DataTable
+        mode="server"
+        table-id="passports"
+        :columns="columns"
+        :rows="table.rows.value"
+        row-key="person_uuid"
+        :loading="table.loading.value"
+        :total="table.total.value"
+        :page="table.query.value.page"
+        :per-page="table.query.value.per_page"
+        :sort-key="table.query.value.sort"
+        :sort-dir="table.query.value.direction"
+        :search="table.query.value.q"
+        :column-filters="table.query.value.columnFilters"
+        search-placeholder="Поиск по паспортам..."
+        @update:query="onQueryUpdate"
+      >
+        <template #cell-status="{ row }">
+          <StatusBadge
+            :label="getPassportStatusMeta(row.status).label"
+            :variant="getPassportStatusMeta(row.status).variant"
+          />
+        </template>
+      </DataTable>
+    </PageState>
   </section>
 </template>
 

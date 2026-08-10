@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { EventItem } from '@/types'
 import { formatShortDate } from '@/utils/dates'
+import { labelEventType } from '@/utils/labels'
 
 defineProps<{
   events: EventItem[]
@@ -16,15 +17,17 @@ defineProps<{
     <div v-if="loading" class="empty">Загрузка...</div>
     <div v-else-if="!events.length" class="empty">Нет ближайших событий</div>
     <TransitionGroup v-else name="slide-up" tag="ul" class="list">
-      <li v-for="event in events" :key="event.id" class="item">
-        <div>
-          <strong>{{ event.title }}</strong>
-          <p>{{ event.employee_name ?? 'Без сотрудника' }}</p>
-        </div>
-        <div class="meta">
-          <span class="badge">{{ event.event_type }}</span>
-          <time>{{ formatShortDate(event.event_date) }}</time>
-        </div>
+      <li v-for="event in events" :key="event.id">
+        <RouterLink :to="`/events?highlight=${event.id}`" class="item">
+          <div>
+            <strong>{{ event.title }}</strong>
+            <p>{{ event.employee_name ?? 'Без сотрудника' }}</p>
+          </div>
+          <div class="meta">
+            <span class="badge">{{ labelEventType(event.event_type) }}</span>
+            <time>{{ formatShortDate(event.event_date) }}</time>
+          </div>
+        </RouterLink>
       </li>
     </TransitionGroup>
   </section>
@@ -53,6 +56,13 @@ header h3 {
   gap: 1rem;
   padding: 0.75rem 0;
   border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+  transition: background var(--transition);
+}
+
+.item:hover {
+  background: var(--accent-soft);
 }
 
 .item:last-child {

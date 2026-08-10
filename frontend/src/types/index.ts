@@ -98,6 +98,16 @@ export interface TenureRow {
   awards: Record<string, { milestone_years: number; milestone_date: string | null; is_received: boolean }>
 }
 
+export interface RewardRow {
+  id: number
+  employment_id: number
+  full_name: string | null
+  milestone_years: number
+  milestone_date: string
+  is_received: boolean
+  received_date: string | null
+}
+
 export interface DashboardStats {
   period: { from: string; to: string }
   employees: { active: number; hired_in_period: number; dismissed_in_period: number }

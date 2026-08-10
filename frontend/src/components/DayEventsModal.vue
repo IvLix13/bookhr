@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import EventForm from '@/components/EventForm.vue'
 import { api } from '@/api/client'
+import { normalizeError } from '@/api/errors'
+import { useFocusTrap } from '@/composables/useFocusTrap'
 import type { EventItem, Paginated } from '@/types'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { formatDisplayDate } from '@/utils/dates'
+import { labelEventType } from '@/utils/labels'
 import { getEventStatusMeta } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
 
@@ -19,6 +22,7 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
+const modalRef = ref<HTMLElement | null>(null)
 const events = ref<EventItem[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -26,18 +30,22 @@ const showForm = ref(false)
 const completingId = ref<number | null>(null)
 const comments = ref<Record<number, string>>({})
 
+const { activate, deactivate } = useFocusTrap(modalRef, () => props.open)
+
 const title = computed(() => formatDisplayDate(props.date))
 
 async function loadDayEvents() {
   loading.value = true
   error.value = ''
   try {
-    const data = (await api.events(
-      `?from=${props.date}&to=${props.date}&per_page=200`,
-    )) as Paginated<EventItem>
+    const data = (await api.events({
+      from: props.date,
+      to: props.date,
+      per_page: 200,
+    })) as Paginated<EventItem>
     events.value = data.items
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Не удалось загрузить мероприятия'
+    error.value = normalizeError(err)
     events.value = []
   } finally {
     loading.value = false
@@ -55,6 +63,14 @@ watch(
   { immediate: true },
 )
 
+watch(
+  () => props.open,
+  (open) => {
+    if (open) activate()
+    else deactivate()
+  },
+)
+
 function closeModal() {
   emit('close')
 }
@@ -65,8 +81,22 @@ function onKeydown(event: KeyboardEvent) {
   }
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown))
-onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+watch(
+  () => props.open,
+  (open) => {
+    if (open) {
+      window.addEventListener('keydown', onKeydown)
+    } else {
+      window.removeEventListener('keydown', onKeydown)
+    }
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+  deactivate()
+})
 
 async function completeEvent(id: number) {
   if (!auth.canEdit()) return
@@ -77,7 +107,7 @@ async function completeEvent(id: number) {
     emit('changed')
     await loadDayEvents()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Не удалось завершить мероприятие'
+    error.value = normalizeError(err)
   } finally {
     completingId.value = null
   }
@@ -88,13 +118,13 @@ async function onCreated() {
   emit('changed')
   await loadDayEvents()
 }
-
 </script>
 
 <template>
   <Teleport to="body">
     <div v-if="open" class="overlay" @click.self="closeModal">
       <section
+        ref="modalRef"
         class="modal card"
         role="dialog"
         aria-modal="true"
@@ -119,7 +149,7 @@ async function onCreated() {
               <p v-if="event.description" class="description">{{ event.description }}</p>
             </div>
             <div class="item-meta">
-              <span class="badge">{{ event.event_type }}</span>
+              <span class="badge">{{ labelEventType(event.event_type) }}</span>
               <StatusBadge
                 :label="getEventStatusMeta(event.status).label"
                 :variant="getEventStatusMeta(event.status).variant"

@@ -4,27 +4,38 @@ import { RouterLink } from 'vue-router'
 import PageState from '@/components/PageState.vue'
 import { api } from '@/api/client'
 import { useAsyncResource } from '@/composables/useAsyncResource'
-import type { AttentionItem, AttentionSummary } from '@/types'
+import {
+  attentionCategoryRoute,
+  attentionItemKey,
+  resolveAttentionRoute,
+  type BackendAttentionItem,
+} from '@/utils/attention'
 
-const resource = useAsyncResource<AttentionSummary>()
+interface AttentionPayload {
+  total: number
+  counts: Record<string, number>
+  items: BackendAttentionItem[]
+}
+
+const resource = useAsyncResource<AttentionPayload>()
 
 const summary = computed(() => resource.data.value)
 const counts = computed(() => summary.value?.counts ?? {})
 const items = computed(() => summary.value?.items ?? [])
 
 const categoryLabels: Record<string, string> = {
-  events: 'События',
+  events: 'Мероприятия',
   contracts: 'Договоры',
   passports: 'Паспорта',
   grades: 'Грейды',
-  tenure: 'Стаж',
+  tenure: 'Награды за стаж',
 }
 
 function categoryLabel(key: string): string {
   return categoryLabels[key] ?? key
 }
 
-function severityClass(severity: AttentionItem['severity']): string {
+function severityClass(severity: BackendAttentionItem['severity']): string {
   switch (severity) {
     case 'danger':
       return 'danger'
@@ -40,7 +51,7 @@ function severityClass(severity: AttentionItem['severity']): string {
 }
 
 async function loadAttention() {
-  await resource.execute(() => api.attention())
+  await resource.execute(() => api.attention({ limit: 12 }) as Promise<AttentionPayload>)
 }
 
 onMounted(() => {
@@ -74,17 +85,21 @@ onMounted(() => {
       @retry="loadAttention()"
     >
       <div v-if="Object.keys(counts).length" class="attention-counts">
-        <div v-for="(count, key) in counts" :key="key" class="count-chip">
+        <RouterLink
+          v-for="(count, key) in counts"
+          :key="key"
+          :to="attentionCategoryRoute(String(key))"
+          class="count-chip"
+        >
           <span class="count-label">{{ categoryLabel(String(key)) }}</span>
           <strong>{{ count }}</strong>
-        </div>
+        </RouterLink>
       </div>
 
       <ul class="attention-list">
-        <li v-for="item in items" :key="item.id" class="attention-item">
-          <component
-            :is="item.route ? RouterLink : 'div'"
-            :to="item.route ?? undefined"
+        <li v-for="item in items" :key="attentionItemKey(item)" class="attention-item">
+          <RouterLink
+            :to="resolveAttentionRoute(item)"
             class="attention-link"
             :class="severityClass(item.severity)"
           >
@@ -93,10 +108,12 @@ onMounted(() => {
               <p v-if="item.subtitle">{{ item.subtitle }}</p>
             </div>
             <div class="attention-meta">
-              <span class="badge" :class="severityClass(item.severity)">{{ categoryLabel(item.category) }}</span>
-              <span v-if="item.count != null" class="count">{{ item.count }}</span>
+              <span class="badge" :class="severityClass(item.severity)">
+                {{ categoryLabel(item.category) }}
+              </span>
+              <time v-if="item.due_date">{{ item.due_date }}</time>
             </div>
-          </component>
+          </RouterLink>
         </li>
       </ul>
     </PageState>
@@ -141,6 +158,11 @@ onMounted(() => {
   border-radius: 999px;
   padding: 0.25rem 0.65rem;
   font-size: 0.85rem;
+  transition: background var(--transition);
+}
+
+.count-chip:hover {
+  background: var(--accent-soft);
 }
 
 .count-label {
@@ -183,6 +205,11 @@ onMounted(() => {
   white-space: nowrap;
 }
 
+.attention-meta time {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
 .attention-link.warning {
   border-color: #f3dfad;
 }
@@ -194,10 +221,5 @@ onMounted(() => {
 .badge.info {
   background: var(--accent-soft);
   color: var(--accent);
-}
-
-.count {
-  font-size: 0.85rem;
-  color: var(--muted);
 }
 </style>

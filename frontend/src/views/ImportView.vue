@@ -1,19 +1,36 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import DataTable from '@/components/DataTable.vue'
+import ImportDropzone from '@/components/ImportDropzone.vue'
+import ImportSummary from '@/components/ImportSummary.vue'
 import { api } from '@/api/client'
+import { normalizeError } from '@/api/errors'
+import { useToast } from '@/composables/useToast'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { ImportJob, ImportRow } from '@/types'
+import { labelImportAction, labelImportStatus } from '@/utils/labels'
+
+const toast = useToast()
 
 const file = ref<File | null>(null)
 const job = ref<ImportJob | null>(null)
-const message = ref('')
 const error = ref('')
 const downloading = ref(false)
+const uploading = ref(false)
+const confirming = ref(false)
+
+const hasRowErrors = computed(() =>
+  job.value?.rows.some((row) => row.errors?.length) ?? false,
+)
 
 const importColumns: ColumnDef<ImportRow>[] = [
   { key: 'row_number', label: 'Строка' },
-  { key: 'action', label: 'Действие', getValue: (row) => row.action ?? '—' },
+  {
+    key: 'action',
+    label: 'Действие',
+    getValue: (row) => row.action,
+    format: (value) => labelImportAction(value as string | null),
+  },
   { key: 'person_uuid', label: 'UUID', getValue: (row) => row.person_uuid ?? '—' },
   {
     key: 'details',
@@ -27,25 +44,49 @@ async function downloadTemplate() {
   error.value = ''
   try {
     await api.downloadImportTemplate()
-    message.value = 'Шаблон скачан'
+    toast.success('Шаблон скачан')
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Не удалось скачать шаблон'
+    error.value = normalizeError(err)
+    toast.error(error.value)
   } finally {
     downloading.value = false
   }
 }
 
+function onFileSelect(selected: File) {
+  file.value = selected
+  job.value = null
+  error.value = ''
+}
+
 async function upload() {
   if (!file.value) return
-  message.value = ''
+  uploading.value = true
   error.value = ''
-  job.value = (await api.uploadImport(file.value)) as ImportJob
+  try {
+    job.value = (await api.uploadImport(file.value)) as ImportJob
+    toast.success('Файл проверен')
+  } catch (err) {
+    error.value = normalizeError(err)
+    toast.error(error.value)
+  } finally {
+    uploading.value = false
+  }
 }
 
 async function confirm() {
-  if (!job.value) return
-  job.value = (await api.confirmImport(job.value.id, {})) as ImportJob
-  message.value = 'Импорт подтверждён'
+  if (!job.value || hasRowErrors.value) return
+  confirming.value = true
+  error.value = ''
+  try {
+    job.value = (await api.confirmImport(job.value.id, {})) as ImportJob
+    toast.success('Импорт подтверждён')
+  } catch (err) {
+    error.value = normalizeError(err)
+    toast.error(error.value)
+  } finally {
+    confirming.value = false
+  }
 }
 </script>
 
@@ -56,18 +97,36 @@ async function confirm() {
       <button class="btn secondary" type="button" :disabled="downloading" @click="downloadTemplate">
         {{ downloading ? 'Скачивание...' : 'Скачать шаблон Excel' }}
       </button>
-      <input type="file" accept=".xlsx" @change="(e) => file = (e.target as HTMLInputElement).files?.[0] ?? null" />
-      <button class="btn" :disabled="!file" @click="upload">Проверить файл</button>
-      <button class="btn secondary" :disabled="!job || job.status !== 'validated'" @click="confirm">
-        Подтвердить импорт
+    </div>
+
+    <ImportDropzone
+      :disabled="uploading || confirming"
+      @select="onFileSelect"
+    />
+
+    <div v-if="file" class="file-info">
+      <span>Выбран файл: {{ file.name }}</span>
+      <button class="btn" type="button" :disabled="uploading" @click="upload">
+        {{ uploading ? 'Проверка...' : 'Проверить файл' }}
       </button>
     </div>
-    <p v-if="message">{{ message }}</p>
+
     <p v-if="error" class="error">{{ error }}</p>
+
     <div v-if="job" class="summary">
-      <p>Файл: {{ job.filename }}</p>
-      <p>Статус: {{ job.status }}</p>
-      <pre>{{ job.summary }}</pre>
+      <ImportSummary :job="job" />
+      <p v-if="hasRowErrors" class="error">
+        Исправьте ошибки в файле перед подтверждением импорта.
+      </p>
+      <button
+        class="btn secondary"
+        type="button"
+        :disabled="!job || job.status !== 'validated' || hasRowErrors || confirming"
+        @click="confirm"
+      >
+        {{ confirming ? 'Подтверждение...' : 'Подтвердить импорт' }}
+      </button>
+      <p class="status-note">Статус: {{ labelImportStatus(job.status) }}</p>
       <DataTable
         :columns="importColumns"
         :rows="job.rows"
@@ -90,6 +149,23 @@ async function confirm() {
   flex-wrap: wrap;
   gap: 0.75rem;
   align-items: center;
+}
+
+.file-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.summary {
+  display: grid;
+  gap: 1rem;
+}
+
+.status-note {
+  margin: 0;
+  color: var(--muted);
 }
 
 .error {

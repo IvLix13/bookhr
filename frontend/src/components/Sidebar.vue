@@ -4,7 +4,6 @@ import {
   IconAward,
   IconCalendar,
   IconContract,
-  IconEmployees,
   IconEvent,
   IconGrade,
   IconImport,
@@ -13,90 +12,153 @@ import {
   IconStats,
   IconTable,
 } from '@/components/icons'
+import IconCake from '@/components/icons/IconCake.vue'
+import { MODULE_LABELS } from '@/utils/labels'
 import { useAuthStore } from '@/stores/auth'
 import { useRoute } from 'vue-router'
 
-import { ref } from 'vue';
+defineProps<{
+  expanded: boolean
+}>()
 
-const isSidebarOpen = ref(false);
-
-const toggleSidebar = () => {
-  isSidebarOpen.value = !isSidebarOpen.value;
-};
+defineEmits<{
+  'update:expanded': [value: boolean]
+  toggle: []
+}>()
 
 const route = useRoute()
 const auth = useAuthStore()
 </script>
 
 <template>
-  <aside class="sidebar card" :class="{'sidebar-open':isSidebarOpen}">
+  <aside
+    class="sidebar card"
+    :class="{ expanded }"
+    aria-label="Основная навигация"
+  >
     <div class="brand-div">
-      <div class="brand">B</div>
-      <label class="label" v-if="isSidebarOpen">Василий Васильев</label>
+      <div class="brand">К</div>
+      <span v-if="expanded" class="brand-label">Календарь событий</span>
     </div>
-    
-    <nav>
-      <NavItem name="calendar" label="" :active="route.name === 'calendar'">
+
+    <nav id="sidebar-nav" class="sidebar-nav">
+      <NavItem
+        name="calendar"
+        :label="MODULE_LABELS.calendar"
+        :expanded="expanded"
+        :active="route.name === 'calendar'"
+      >
         <IconCalendar />
-        <label class="label" v-if="isSidebarOpen">Календарь</label>
       </NavItem>
-      <NavItem name="statistics" label="" :active="route.name === 'statistics'">
+      <NavItem
+        name="statistics"
+        :label="MODULE_LABELS.statistics"
+        :expanded="expanded"
+        :active="route.name === 'statistics'"
+      >
         <IconStats />
-        <label class="label" v-if="isSidebarOpen">Статистика</label>
       </NavItem>
-      <NavItem name="employees" label="" :active="route.name === 'employees'">
+      <NavItem
+        name="employees"
+        :label="MODULE_LABELS.employees"
+        :expanded="expanded"
+        :active="route.name === 'employees'"
+      >
         <IconTable />
-        <label class="label" v-if="isSidebarOpen">Сотрудники</label>
       </NavItem>
-      <NavItem name="import" label="" :active="route.name === 'import'">
+      <NavItem
+        name="import"
+        :label="MODULE_LABELS.import"
+        :expanded="expanded"
+        :active="route.name === 'import'"
+      >
         <IconImport />
-        <label class="label" v-if="isSidebarOpen">Импорт</label>
       </NavItem>
-      <NavItem name="event-create" label="" :active="route.name === 'event-create'">
+      <NavItem
+        name="event-create"
+        :label="MODULE_LABELS.eventCreate"
+        :expanded="expanded"
+        :active="route.name === 'event-create'"
+      >
         <IconEvent />
-        <label class="label" v-if="isSidebarOpen">Событие</label>
       </NavItem>
-      <NavItem name="contracts" label="" :active="route.name === 'contracts'">
+      <NavItem
+        name="contracts"
+        :label="MODULE_LABELS.contracts"
+        :expanded="expanded"
+        :active="route.name === 'contracts'"
+      >
         <IconContract />
-        <label class="label" v-if="isSidebarOpen">Контракты</label>
       </NavItem>
-      <NavItem name="grades" label="" :active="route.name === 'grades'">
+      <NavItem
+        name="grades"
+        :label="MODULE_LABELS.grades"
+        :expanded="expanded"
+        :active="route.name === 'grades' || route.name === 'grade-catalog'"
+      >
         <IconGrade />
-        <label class="label" v-if="isSidebarOpen">Грейды</label>
       </NavItem>
-      <NavItem name="awards" label="" :active="route.name === 'awards'">
+      <NavItem
+        name="rewards"
+        :label="MODULE_LABELS.rewards"
+        :expanded="expanded"
+        :active="route.name === 'rewards'"
+      >
         <IconAward />
-        <label class="label" v-if="isSidebarOpen">Поощрения</label>
       </NavItem>
-      <NavItem name="passports" label="" :active="route.name === 'passports'">
+      <NavItem
+        name="awards"
+        :label="MODULE_LABELS.awards"
+        :expanded="expanded"
+        :active="route.name === 'awards'"
+      >
+        <IconCake />
+      </NavItem>
+      <NavItem
+        name="passports"
+        :label="MODULE_LABELS.passports"
+        :expanded="expanded"
+        :active="route.name === 'passports'"
+      >
         <IconPassport />
-        <label class="label" v-if="isSidebarOpen">Паспорта</label>
       </NavItem>
-      <NavItem name="events" label="" :active="route.name === 'events'">
-        <IconEmployees />
-        <label class="label" v-if="isSidebarOpen">Мероприятия</label>
+      <NavItem
+        name="events"
+        :label="MODULE_LABELS.events"
+        :expanded="expanded"
+        :active="route.name === 'events'"
+      >
+        <IconEvent />
       </NavItem>
-      <NavItem name="grade-catalog" label="" :active="route.name === 'grade-catalog'">
-        <IconGrade />
-        <label class="label" v-if="isSidebarOpen">Справочник</label>
-      </NavItem>
-      <NavItem v-if="auth.isAdmin()" name="settings" label="" :active="route.name === 'settings'">
+      <NavItem
+        v-if="auth.isAdmin()"
+        name="settings"
+        :label="MODULE_LABELS.settings"
+        :expanded="expanded"
+        :active="route.name === 'settings'"
+      >
         <IconSettings />
-        <label class="label" v-if="isSidebarOpen">Настройки</label>
       </NavItem>
     </nav>
+
     <div class="btn-box">
-      <button @click="toggleSidebar" class="toggle-btn">
-        {{ isSidebarOpen ? '←' : '→' }}
+      <button
+        type="button"
+        class="toggle-btn"
+        :aria-expanded="expanded"
+        aria-controls="sidebar-nav"
+        :aria-label="expanded ? 'Свернуть меню' : 'Развернуть меню'"
+        @click="$emit('toggle')"
+      >
+        {{ expanded ? '←' : '→' }}
       </button>
     </div>
   </aside>
 </template>
 
-
 <style scoped>
 .sidebar {
-  width: var(--sidebar-width);
+  width: 100%;
   padding: 1rem 0.5rem;
   display: flex;
   flex-direction: column;
@@ -104,12 +166,14 @@ const auth = useAuthStore()
   position: sticky;
   top: 1rem;
   height: calc(100vh - 2rem);
+  min-height: 0;
 }
 
-.brand-div{
+.brand-div {
   display: flex;
   flex-direction: row;
-  align-content: center;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .brand {
@@ -124,35 +188,23 @@ const auth = useAuthStore()
   font-weight: 700;
 }
 
-nav {
+.brand-label {
+  margin-left: 10px;
+  font-size: 0.9rem;
+}
+
+.sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  overflow-y: hidden;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
-.nav-item{
-  padding-left: 21px;
-  flex-direction: row;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 0;
-}
-
-.nav-item :deep(.icon) {
-  width: 22px;
-  height: 22px;
-}
-
-.sidebar-open {
-  width: 240px;
-}
-
-.label {
-  margin-left: 10px;
-  font-size: 14px;
-  text-align: center;
-  align-content: center;
+.btn-box {
+  flex-shrink: 0;
 }
 
 .toggle-btn {
@@ -168,13 +220,9 @@ nav {
   font-weight: 700;
   cursor: pointer;
 }
-.toggle-btn:hover{
+
+.toggle-btn:hover {
   background: #2f6fed;
   transform: translateY(-1px);
-}
-
-.aside {
-  justify-content: left;
-  overflow: hidden;
 }
 </style>

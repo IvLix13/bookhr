@@ -68,9 +68,9 @@ function dayClasses(date: Date) {
 <template>
   <section class="calendar card">
     <header>
-      <button class="btn ghost" type="button" @click="prevMonth">←</button>
+      <button class="btn ghost" type="button" aria-label="Предыдущий месяц" @click="prevMonth">←</button>
       <h2>{{ monthLabel }}</h2>
-      <button class="btn ghost" type="button" @click="nextMonth">→</button>
+      <button class="btn ghost" type="button" aria-label="Следующий месяц" @click="nextMonth">→</button>
     </header>
 
     <div class="weekdays">

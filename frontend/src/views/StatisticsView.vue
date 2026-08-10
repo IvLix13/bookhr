@@ -8,6 +8,7 @@ import VChart from 'vue-echarts'
 import { api } from '@/api/client'
 import type { DashboardStats } from '@/types'
 import { defaultStatsPeriod } from '@/utils/dates'
+import { labelEventType } from '@/utils/labels'
 
 use([CanvasRenderer, BarChart, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent])
 
@@ -16,20 +17,11 @@ const error = ref('')
 const stats = ref<DashboardStats | null>(null)
 const period = ref(defaultStatsPeriod())
 
-const eventTypeLabels: Record<string, string> = {
-  contract: 'Договор',
-  grade: 'Грейд',
-  award: 'Поощрение',
-  report: 'Рапорт',
-  passport: 'Паспорт',
-  manual: 'Другое',
-}
-
 async function loadStats() {
   loading.value = true
   error.value = ''
   try {
-    stats.value = await api.stats(`?from=${period.value.from}&to=${period.value.to}`)
+    stats.value = await api.stats({ from: period.value.from, to: period.value.to })
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Не удалось загрузить статистику'
     stats.value = null
@@ -84,7 +76,7 @@ const eventsTypeChart = computed(() => {
     grid: { left: 40, right: 16, top: 16, bottom: 24 },
     xAxis: {
       type: 'category',
-      data: entries.map(([key]) => eventTypeLabels[key] ?? key),
+      data: entries.map(([key]) => labelEventType(key)),
     },
     yAxis: { type: 'value', minInterval: 1 },
     series: [{ type: 'bar', data: entries.map(([, value]) => value), itemStyle: { color: '#2f6fed' } }],

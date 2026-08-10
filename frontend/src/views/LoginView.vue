@@ -2,21 +2,27 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { localizeApiMessage } from '@/utils/labels'
 
 const auth = useAuthStore()
 const router = useRouter()
 const route = useRoute()
-const username = ref('admin')
-const password = ref('admin123')
+const username = ref('')
+const password = ref('')
 const error = ref('')
+const submitting = ref(false)
 
 async function submit() {
   error.value = ''
+  submitting.value = true
   try {
     await auth.login(username.value, password.value)
     await router.replace((route.query.redirect as string) || '/')
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Ошибка входа'
+    const message = err instanceof Error ? err.message : undefined
+    error.value = localizeApiMessage(message)
+  } finally {
+    submitting.value = false
   }
 }
 </script>
@@ -28,14 +34,16 @@ async function submit() {
       <p>Вход в систему учёта кадровых событий</p>
       <label>
         Логин
-        <input v-model="username" autocomplete="username" />
+        <input v-model="username" autocomplete="username" required />
       </label>
       <label>
         Пароль
-        <input v-model="password" type="password" autocomplete="current-password" />
+        <input v-model="password" type="password" autocomplete="current-password" required />
       </label>
       <p v-if="error" class="error">{{ error }}</p>
-      <button class="btn" type="submit">Войти</button>
+      <button class="btn" type="submit" :disabled="submitting">
+        {{ submitting ? 'Вход...' : 'Войти' }}
+      </button>
     </form>
   </div>
 </template>

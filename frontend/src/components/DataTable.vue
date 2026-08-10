@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useDataTable, type ColumnDef, type SortDirection } from '@/composables/useDataTable'
 import type { TableQueryState } from '@/types'
 
@@ -22,6 +22,7 @@ const props = withDefaults(
     search?: string
     columnFilters?: Record<string, string>
     perPageOptions?: number[]
+    highlightRowKey?: string | number | null
   }>(),
   {
     mode: 'client',
@@ -220,6 +221,23 @@ const rangeStart = computed(() => {
 const rangeEnd = computed(() =>
   Math.min(displayPage.value * displayPerPage.value, displayTotal.value),
 )
+
+const tableWrapRef = ref<HTMLElement | null>(null)
+
+function isHighlighted(row: T, index: number): boolean {
+  if (props.highlightRowKey == null) return false
+  return resolveRowKey(row, index) === props.highlightRowKey
+}
+
+watch(
+  () => [props.highlightRowKey, displayRows.value.length, props.loading] as const,
+  async ([highlightKey, rowCount, loading]) => {
+    if (highlightKey == null || loading || !rowCount) return
+    await nextTick()
+    const row = tableWrapRef.value?.querySelector('.data-table-row-highlight')
+    row?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  },
+)
 </script>
 
 <template>
@@ -248,7 +266,7 @@ const rangeEnd = computed(() =>
       {{ hasActiveFilters ? 'Ничего не найдено' : emptyText }}
     </div>
 
-    <div v-else class="table-wrap">
+    <div v-else ref="tableWrapRef" class="table-wrap">
       <table class="table data-table-grid">
         <thead class="data-table-head">
           <tr>
@@ -285,7 +303,11 @@ const rangeEnd = computed(() =>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, index) in displayRows" :key="resolveRowKey(row, index)">
+          <tr
+            v-for="(row, index) in displayRows"
+            :key="resolveRowKey(row, index)"
+            :class="{ 'data-table-row-highlight': isHighlighted(row, index) }"
+          >
             <td v-for="column in columns" :key="column.key">
               <slot
                 :name="`cell-${column.key}`"
@@ -463,5 +485,11 @@ const rangeEnd = computed(() =>
   border-radius: 8px;
   padding: 0.35rem 0.55rem;
   background: var(--surface);
+}
+
+.data-table-row-highlight {
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 </style>

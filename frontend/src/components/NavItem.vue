@@ -3,6 +3,7 @@ defineProps<{
   name: string
   label: string
   active?: boolean
+  expanded?: boolean
 }>()
 </script>
 
@@ -10,24 +11,30 @@ defineProps<{
   <RouterLink
     :to="{ name }"
     class="nav-item"
-    :class="{ active }"
-    :title="label"
+    :class="{ active, expanded }"
+    :title="expanded ? undefined : label"
+    :aria-current="active ? 'page' : undefined"
   >
     <slot />
-    <span class="nav-label">{{ label }}</span>
+    <span v-if="expanded" class="nav-label">{{ label }}</span>
   </RouterLink>
 </template>
 
 <style scoped>
 .nav-item {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.35rem;
+  justify-content: center;
   padding: 0.85rem 0.35rem;
   border-radius: 12px;
   color: var(--muted);
   transition: background var(--transition), color var(--transition), transform var(--transition);
+}
+
+.nav-item.expanded {
+  justify-content: flex-start;
+  padding-left: 1.25rem;
+  gap: 0.65rem;
 }
 
 .nav-item :deep(.icon) {
@@ -45,8 +52,8 @@ defineProps<{
 }
 
 .nav-label {
-  font-size: 0.68rem;
-  text-align: center;
-  line-height: 1.1;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 </style>

@@ -32,7 +32,7 @@ watch(
 )
 
 onMounted(async () => {
-  const data = (await api.employees('?per_page=200')) as Paginated<Employee>
+  const data = (await api.employees({ per_page: 200 })) as Paginated<Employee>
   employees.value = data.items
 })
 

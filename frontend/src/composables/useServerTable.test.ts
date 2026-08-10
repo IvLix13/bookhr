@@ -50,7 +50,7 @@ describe('useServerTable', () => {
   })
 
   it('debounces search query before fetching', async () => {
-    const fetcher = vi.fn(async () => paginated([]))
+    const fetcher = vi.fn(async (_params: Record<string, unknown>) => paginated([]))
     const table = useServerTable<Row>({
       tableId: 'employees-search',
       fetcher,
@@ -72,7 +72,7 @@ describe('useServerTable', () => {
   })
 
   it('persists query state to localStorage with schema version', async () => {
-    const fetcher = vi.fn(async () => paginated([]))
+    const fetcher = vi.fn(async (_params: Record<string, unknown>) => paginated([]))
     const table = useServerTable<Row>({
       tableId: 'employees-persist',
       schemaVersion: 2,
@@ -127,7 +127,7 @@ describe('useServerTable', () => {
   })
 
   it('buildQueryString includes current request params', () => {
-    const fetcher = vi.fn(async () => paginated([]))
+    const fetcher = vi.fn(async (_params: Record<string, unknown>) => paginated([]))
     const table = useServerTable<Row>({
       tableId: 'employees-query-string',
       fetcher,
