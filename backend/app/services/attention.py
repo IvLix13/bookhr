@@ -5,7 +5,6 @@ from __future__ import annotations
 from dateutil.relativedelta import relativedelta
 
 from app.models import (
-    Contract,
     EmployeeGradeHistory,
     Employment,
     EmploymentStatus,

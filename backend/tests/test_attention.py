@@ -36,7 +36,7 @@ def test_attention_summary_overdue_events(admin_client, seed_company, monkeypatc
 def test_attention_summary_pending_tenure(admin_client, seed_company, monkeypatch):
     monkeypatch.setattr("app.services.attention.today_moscow", lambda: date(2026, 7, 24))
 
-    person, employment = create_person_with_employment(
+    _, employment = create_person_with_employment(
         company_id=seed_company.id,
         full_name="Петр Петров",
         hire_date=date(2010, 1, 1),
