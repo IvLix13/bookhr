@@ -1,4 +1,4 @@
-import { computed, ref, type Ref } from 'vue'
+import { computed, ref, watch, type Ref } from 'vue'
 import { parseIsoDate } from '@/utils/dates'
 
 export type SortDirection = 'asc' | 'desc'
@@ -35,11 +35,30 @@ function compareValues(left: unknown, right: unknown): number {
   return String(left).localeCompare(String(right), 'ru', { sensitivity: 'base' })
 }
 
-export function useDataTable<T>(rows: Ref<T[]>, columns: ColumnDef<T>[]) {
+export function useDataTable<T>(
+  rows: Ref<T[]>,
+  columns: ColumnDef<T>[],
+  options?: { paginate?: boolean; perPage?: number },
+) {
   const search = ref('')
   const sortKey = ref<string | null>(null)
   const sortDir = ref<SortDirection>('asc')
   const columnFilters = ref<Record<string, string>>({})
+  const page = ref(1)
+  const perPage = ref(options?.perPage ?? 25)
+  const paginate = options?.paginate ?? false
+
+  watch(search, () => {
+    if (paginate) page.value = 1
+  })
+
+  watch(
+    columnFilters,
+    () => {
+      if (paginate) page.value = 1
+    },
+    { deep: true },
+  )
 
   const columnByKey = computed(() => {
     const map = new Map<string, ColumnDef<T>>()
@@ -102,6 +121,28 @@ export function useDataTable<T>(rows: Ref<T[]>, columns: ColumnDef<T>[]) {
     return result
   })
 
+  const totalFiltered = computed(() => filteredRows.value.length)
+
+  const paginatedRows = computed(() => {
+    if (!paginate) return filteredRows.value
+    const start = (page.value - 1) * perPage.value
+    return filteredRows.value.slice(start, start + perPage.value)
+  })
+
+  const totalPages = computed(() => {
+    if (!paginate) return 1
+    return Math.max(1, Math.ceil(totalFiltered.value / perPage.value))
+  })
+
+  function setPage(nextPage: number) {
+    page.value = Math.min(Math.max(1, nextPage), totalPages.value)
+  }
+
+  function setPerPage(nextPerPage: number) {
+    perPage.value = Math.max(1, nextPerPage)
+    page.value = 1
+  }
+
   function toggleSort(key: string) {
     if (sortKey.value === key) {
       sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
@@ -120,6 +161,7 @@ export function useDataTable<T>(rows: Ref<T[]>, columns: ColumnDef<T>[]) {
     columnFilters.value = {}
     sortKey.value = null
     sortDir.value = 'asc'
+    page.value = 1
   }
 
   const hasActiveFilters = computed(() => {
@@ -133,8 +175,16 @@ export function useDataTable<T>(rows: Ref<T[]>, columns: ColumnDef<T>[]) {
     sortDir,
     columnFilters,
     filteredRows,
+    paginatedRows,
+    totalFiltered,
+    totalPages,
+    page,
+    perPage,
+    paginate,
     toggleSort,
     setColumnFilter,
+    setPage,
+    setPerPage,
     resetFilters,
     hasActiveFilters,
     getDisplayValue,

@@ -63,4 +63,17 @@ describe('useDataTable', () => {
     expect(table.sortKey.value).toBeNull()
     expect(table.filteredRows.value).toHaveLength(1)
   })
+
+  it('paginates filtered rows when enabled', () => {
+    const rows = ref<Row[]>([
+      { name: 'Alice', date: '2026-01-01', amount: 10 },
+      { name: 'Bob', date: '2026-02-01', amount: 20 },
+      { name: 'Carol', date: '2026-03-01', amount: 30 },
+    ])
+    const table = useDataTable(rows, columns, { paginate: true, perPage: 2 })
+    expect(table.paginatedRows.value).toHaveLength(2)
+    table.setPage(2)
+    expect(table.paginatedRows.value).toHaveLength(1)
+    expect(table.totalPages.value).toBe(2)
+  })
 })

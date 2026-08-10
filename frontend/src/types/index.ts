@@ -169,3 +169,44 @@ export interface ImportJob {
   created_at: string | null
   rows: ImportRow[]
 }
+
+export interface TableQueryState {
+  page: number
+  per_page: number
+  q: string
+  sort: string | null
+  direction: 'asc' | 'desc'
+  columnFilters: Record<string, string>
+}
+
+export interface SearchResult {
+  id: number | string
+  type: string
+  title: string
+  subtitle?: string | null
+  route?: string | null
+}
+
+export interface SearchResponse {
+  q: string
+  results: SearchResult[]
+  total: number
+}
+
+export type AttentionSeverity = 'info' | 'warning' | 'danger'
+
+export interface AttentionItem {
+  id: string
+  category: string
+  title: string
+  subtitle?: string | null
+  severity: AttentionSeverity
+  route?: string | null
+  count?: number
+}
+
+export interface AttentionSummary {
+  total: number
+  counts: Record<string, number>
+  items: AttentionItem[]
+}
