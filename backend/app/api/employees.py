@@ -7,10 +7,19 @@ from datetime import date
 from flask import request
 from flask_login import login_required
 
-from app.api.helpers import api_response, get_json, paginate_query, require_roles
+from app.api.helpers import (
+    api_response,
+    apply_sort,
+    get_json,
+    paginate_query,
+    parse_pagination_args,
+    parse_search_q,
+    parse_sort_args,
+    require_roles,
+)
 from app.api.serializers import employment_to_dict
 from app.extensions import db
-from app.models import Employment, EmploymentStatus, RoleName
+from app.models import Employment, EmploymentStatus, PersonNameHistory, RoleName
 from app.services.employees import (
     create_person_with_employment,
     dismiss_employment,
@@ -21,19 +30,44 @@ from app.services.employees import (
 from app.services.tenure import ensure_tenure_awards
 
 
+EMPLOYEE_SORT_FIELDS = {
+    "hire_date": Employment.hire_date,
+    "status": Employment.status,
+    "full_name": PersonNameHistory.full_name,
+}
+
+
 def register_routes(bp):
     @bp.get("/employees")
     @login_required
     def list_employees():
         company_id = request.args.get("company_id", type=int, default=1)
         active_only = request.args.get("active_only", "true").lower() == "true"
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page, per_page = parse_pagination_args()
+        q = parse_search_q()
+        sort, direction = parse_sort_args(
+            EMPLOYEE_SORT_FIELDS,
+            default_field="hire_date",
+            default_direction="desc",
+        )
 
         query = Employment.query.filter_by(company_id=company_id)
         if active_only:
             query = query.filter_by(status=EmploymentStatus.ACTIVE.value)
-        query = query.order_by(Employment.hire_date.desc())
+
+        if q or sort == "full_name":
+            from app.models import Person
+
+            query = query.join(Person, Employment.person_id == Person.id).join(
+                PersonNameHistory,
+                (PersonNameHistory.person_id == Person.id)
+                & (PersonNameHistory.valid_to.is_(None)),
+            )
+            if q:
+                query = query.filter(PersonNameHistory.full_name.ilike(f"%{q}%"))
+            query = query.distinct()
+
+        query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
 
         return api_response(paginate_query(query, employment_to_dict, page, per_page))
 

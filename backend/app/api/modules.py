@@ -7,7 +7,17 @@ from datetime import date
 from flask import request
 from flask_login import login_required
 
-from app.api.helpers import api_response, get_json, require_roles
+from app.api.helpers import (
+    api_response,
+    apply_employment_name_search,
+    apply_sort,
+    get_json,
+    paginate_query,
+    parse_pagination_args,
+    parse_search_q,
+    parse_sort_args,
+    require_roles,
+)
 from app.api.serializers import (
     contract_to_dict,
     grade_row_to_dict,
@@ -23,10 +33,36 @@ from app.models import (
     EmploymentStatus,
     GradeCatalog,
     Passport,
+    Person,
+    PersonNameHistory,
     RoleName,
 )
 from app.services.employees import get_active_passport
 from app.services.tenure import ensure_tenure_awards
+
+
+CONTRACT_SORT_FIELDS = {
+    "end_date": Contract.end_date,
+    "start_date": Contract.start_date,
+    "full_name": PersonNameHistory.full_name,
+}
+
+EMPLOYEE_SORT_FIELDS = {
+    "full_name": PersonNameHistory.full_name,
+    "hire_date": Employment.hire_date,
+}
+
+PASSPORT_SORT_FIELDS = {
+    "full_name": PersonNameHistory.full_name,
+    "valid_until": Passport.valid_until,
+}
+
+
+def _employment_name_join(query):
+    return query.join(Person, Employment.person_id == Person.id).join(
+        PersonNameHistory,
+        (PersonNameHistory.person_id == Person.id) & (PersonNameHistory.valid_to.is_(None)),
+    )
 
 
 def register_routes(bp):
@@ -34,17 +70,31 @@ def register_routes(bp):
     @login_required
     def list_contracts():
         company_id = request.args.get("company_id", 1, type=int)
-        employments = Employment.query.filter_by(
-            company_id=company_id,
-            status=EmploymentStatus.ACTIVE.value,
-        ).all()
-        contracts = []
-        for employment in employments:
-            for contract in employment.contracts:
-                if contract.is_active:
-                    contracts.append(contract_to_dict(contract))
-        contracts.sort(key=lambda item: item["days_left"])
-        return api_response(contracts)
+        page, per_page = parse_pagination_args()
+        q = parse_search_q()
+        sort, direction = parse_sort_args(
+            CONTRACT_SORT_FIELDS,
+            default_field="end_date",
+            default_direction="asc",
+        )
+
+        query = (
+            Contract.query.join(Employment)
+            .filter(
+                Employment.company_id == company_id,
+                Employment.status == EmploymentStatus.ACTIVE.value,
+                Contract.is_active.is_(True),
+            )
+        )
+
+        if q or sort == "full_name":
+            query = _employment_name_join(query)
+            if q:
+                query = query.filter(PersonNameHistory.full_name.ilike(f"%{q}%"))
+            query = query.distinct()
+
+        query = apply_sort(query, CONTRACT_SORT_FIELDS, sort, direction)
+        return api_response(paginate_query(query, contract_to_dict, page, per_page))
 
     @bp.post("/contracts")
     @require_roles(RoleName.ADMIN, RoleName.HR)
@@ -64,11 +114,25 @@ def register_routes(bp):
     @login_required
     def list_grades():
         company_id = request.args.get("company_id", 1, type=int)
-        employments = Employment.query.filter_by(
+        page, per_page = parse_pagination_args()
+        q = parse_search_q()
+        sort, direction = parse_sort_args(
+            EMPLOYEE_SORT_FIELDS,
+            default_field="full_name",
+            default_direction="asc",
+        )
+
+        query = Employment.query.filter_by(
             company_id=company_id,
             status=EmploymentStatus.ACTIVE.value,
-        ).all()
-        return api_response([grade_row_to_dict(e) for e in employments])
+        )
+        query = apply_employment_name_search(query, q)
+
+        if sort == "full_name" and not q:
+            query = _employment_name_join(query).distinct()
+
+        query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
+        return api_response(paginate_query(query, grade_row_to_dict, page, per_page))
 
     @bp.get("/grade-catalog")
     @login_required
@@ -134,13 +198,37 @@ def register_routes(bp):
     @login_required
     def list_passports():
         company_id = request.args.get("company_id", 1, type=int)
-        employments = Employment.query.filter_by(
+        page, per_page = parse_pagination_args()
+        q = parse_search_q()
+        sort, direction = parse_sort_args(
+            PASSPORT_SORT_FIELDS,
+            default_field="valid_until",
+            default_direction="asc",
+        )
+
+        query = Employment.query.filter_by(
             company_id=company_id,
             status=EmploymentStatus.ACTIVE.value,
-        ).all()
-        rows = [passport_row_to_dict(e.person, e) for e in employments]
-        rows.sort(key=lambda item: item.get("days_left") or 99999)
-        return api_response(rows)
+        ).outerjoin(
+            Passport,
+            (Passport.person_id == Employment.person_id) & (Passport.is_active.is_(True)),
+        )
+
+        if q or sort == "full_name":
+            query = _employment_name_join(query)
+            if q:
+                query = query.filter(PersonNameHistory.full_name.ilike(f"%{q}%"))
+            query = query.distinct()
+
+        query = apply_sort(query, PASSPORT_SORT_FIELDS, sort, direction)
+        return api_response(
+            paginate_query(
+                query,
+                lambda employment: passport_row_to_dict(employment.person, employment),
+                page,
+                per_page,
+            )
+        )
 
     @bp.post("/passports")
     @require_roles(RoleName.ADMIN, RoleName.HR)
@@ -171,14 +259,33 @@ def register_routes(bp):
     @login_required
     def list_tenure():
         company_id = request.args.get("company_id", 1, type=int)
-        employments = Employment.query.filter_by(
+        page, per_page = parse_pagination_args()
+        q = parse_search_q()
+        sort, direction = parse_sort_args(
+            EMPLOYEE_SORT_FIELDS,
+            default_field="full_name",
+            default_direction="asc",
+        )
+
+        active_employments = Employment.query.filter_by(
             company_id=company_id,
             status=EmploymentStatus.ACTIVE.value,
         ).all()
-        for employment in employments:
+        for employment in active_employments:
             ensure_tenure_awards(employment.id, employment.hire_date)
         db.session.commit()
-        return api_response([tenure_row_to_dict(e) for e in employments])
+
+        query = Employment.query.filter_by(
+            company_id=company_id,
+            status=EmploymentStatus.ACTIVE.value,
+        )
+        query = apply_employment_name_search(query, q)
+
+        if sort == "full_name" and not q:
+            query = _employment_name_join(query).distinct()
+
+        query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
+        return api_response(paginate_query(query, tenure_row_to_dict, page, per_page))
 
     @bp.patch("/tenure/<int:award_id>")
     @require_roles(RoleName.ADMIN, RoleName.HR)

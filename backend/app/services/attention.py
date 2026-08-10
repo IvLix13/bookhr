@@ -1,0 +1,260 @@
+"""Attention items for dashboard and navigation badges."""
+
+from __future__ import annotations
+
+from dateutil.relativedelta import relativedelta
+
+from app.models import (
+    Contract,
+    EmployeeGradeHistory,
+    Employment,
+    EmploymentStatus,
+    Event,
+    EventStatus,
+    TenureAward,
+)
+from app.services.employees import get_active_contract, get_active_passport, get_current_grade, get_current_name
+from app.services.events import refresh_overdue_events
+from app.services.passports import compute_passport_status
+from app.utils.dates import today_moscow
+
+ALL_CATEGORIES = ("events", "contracts", "passports", "grades", "tenure")
+
+
+def _attention_item(
+    *,
+    category: str,
+    item_id: int | str,
+    title: str,
+    subtitle: str | None = None,
+    due_date: str | None = None,
+    severity: str = "warning",
+    route: str | None = None,
+) -> dict:
+    return {
+        "category": category,
+        "id": item_id,
+        "title": title,
+        "subtitle": subtitle,
+        "due_date": due_date,
+        "severity": severity,
+        "route": route,
+    }
+
+
+def _collect_event_items(company_id: int, limit: int) -> list[dict]:
+    refresh_overdue_events(company_id)
+    events = (
+        Event.query.filter_by(company_id=company_id, status=EventStatus.OVERDUE.value)
+        .order_by(Event.event_date.asc())
+        .limit(limit)
+        .all()
+    )
+    items: list[dict] = []
+    for event in events:
+        subtitle = get_current_name(event.employment.person) if event.employment else None
+        items.append(
+            _attention_item(
+                category="events",
+                item_id=event.id,
+                title=event.title,
+                subtitle=subtitle,
+                due_date=event.event_date.isoformat(),
+                severity="danger",
+                route="/events",
+            )
+        )
+    return items
+
+
+def _collect_contract_items(company_id: int, limit: int, today) -> list[dict]:
+    employments = Employment.query.filter_by(
+        company_id=company_id,
+        status=EmploymentStatus.ACTIVE.value,
+    ).all()
+    candidates: list[tuple[int, dict]] = []
+    for employment in employments:
+        contract = get_active_contract(employment)
+        if not contract:
+            continue
+        days_left = (contract.end_date - today).days
+        if days_left > 120:
+            continue
+        severity = "danger" if days_left < 0 else "warning"
+        candidates.append(
+            (
+                days_left,
+                _attention_item(
+                    category="contracts",
+                    item_id=contract.id,
+                    title=get_current_name(employment.person) or "Сотрудник",
+                    subtitle=f"Договор до {contract.end_date.isoformat()}",
+                    due_date=contract.end_date.isoformat(),
+                    severity=severity,
+                    route="/contracts",
+                ),
+            )
+        )
+    candidates.sort(key=lambda item: item[0])
+    return [item for _, item in candidates[:limit]]
+
+
+def _collect_passport_items(company_id: int, limit: int, today) -> list[dict]:
+    employments = Employment.query.filter_by(
+        company_id=company_id,
+        status=EmploymentStatus.ACTIVE.value,
+    ).all()
+    candidates: list[tuple[int, dict]] = []
+    for employment in employments:
+        passport = get_active_passport(employment.person)
+        if not passport:
+            candidates.append(
+                (
+                    99999,
+                    _attention_item(
+                        category="passports",
+                        item_id=employment.person_id,
+                        title=get_current_name(employment.person) or "Сотрудник",
+                        subtitle="Паспорт не указан",
+                        severity="warning",
+                        route="/passports",
+                    ),
+                )
+            )
+            continue
+
+        days_left = (passport.valid_until - today).days
+        status = compute_passport_status(passport.valid_until, today)
+        if status not in ("requires_preparation", "expired"):
+            continue
+        severity = "danger" if status == "expired" else "warning"
+        candidates.append(
+            (
+                days_left,
+                _attention_item(
+                    category="passports",
+                    item_id=employment.person_id,
+                    title=get_current_name(employment.person) or "Сотрудник",
+                    subtitle=f"Паспорт до {passport.valid_until.isoformat()}",
+                    due_date=passport.valid_until.isoformat(),
+                    severity=severity,
+                    route="/passports",
+                ),
+            )
+        )
+    candidates.sort(key=lambda item: item[0])
+    return [item for _, item in candidates[:limit]]
+
+
+def _collect_grade_items(company_id: int, limit: int, today) -> list[dict]:
+    employments = Employment.query.filter_by(
+        company_id=company_id,
+        status=EmploymentStatus.ACTIVE.value,
+    ).all()
+    candidates: list[tuple[int, dict]] = []
+    for employment in employments:
+        grade = get_current_grade(employment)
+        if not grade:
+            continue
+        eligible_date = grade.assigned_date + relativedelta(months=grade.grade.min_months)
+        days_left = (eligible_date - today).days
+        if days_left > 30:
+            continue
+        candidates.append(
+            (
+                days_left,
+                _attention_item(
+                    category="grades",
+                    item_id=employment.id,
+                    title=get_current_name(employment.person) or "Сотрудник",
+                    subtitle=f"Грейд {grade.grade.name}, eligible {eligible_date.isoformat()}",
+                    due_date=eligible_date.isoformat(),
+                    severity="warning" if days_left > 0 else "danger",
+                    route="/grades",
+                ),
+            )
+        )
+    candidates.sort(key=lambda item: item[0])
+    return [item for _, item in candidates[:limit]]
+
+
+def _collect_tenure_items(company_id: int, limit: int) -> list[dict]:
+    employment_ids = [
+        row.id
+        for row in Employment.query.filter_by(
+            company_id=company_id,
+            status=EmploymentStatus.ACTIVE.value,
+        ).all()
+    ]
+    if not employment_ids:
+        return []
+
+    awards = (
+        TenureAward.query.filter(
+            TenureAward.employment_id.in_(employment_ids),
+            TenureAward.is_received.is_(False),
+        )
+        .order_by(TenureAward.milestone_date.asc())
+        .limit(limit)
+        .all()
+    )
+    items: list[dict] = []
+    for award in awards:
+        employment = award.employment
+        items.append(
+            _attention_item(
+                category="tenure",
+                item_id=award.id,
+                title=get_current_name(employment.person) or "Сотрудник",
+                subtitle=f"Поощрение за {award.milestone_years} лет",
+                due_date=award.milestone_date.isoformat(),
+                severity="warning",
+                route="/awards",
+            )
+        )
+    return items
+
+
+def build_attention_summary(
+    company_id: int,
+    limit: int = 10,
+    categories: list[str] | None = None,
+) -> dict:
+    selected = categories or list(ALL_CATEGORIES)
+    selected_set = {category for category in selected if category in ALL_CATEGORIES}
+    if not selected_set:
+        selected_set = set(ALL_CATEGORIES)
+
+    today = today_moscow()
+    per_category_limit = max(limit, 1)
+
+    collectors = {
+        "events": lambda: _collect_event_items(company_id, per_category_limit),
+        "contracts": lambda: _collect_contract_items(company_id, per_category_limit, today),
+        "passports": lambda: _collect_passport_items(company_id, per_category_limit, today),
+        "grades": lambda: _collect_grade_items(company_id, per_category_limit, today),
+        "tenure": lambda: _collect_tenure_items(company_id, per_category_limit),
+    }
+
+    by_category: dict[str, list[dict]] = {}
+    counts: dict[str, int] = {}
+    items: list[dict] = []
+
+    for category in ALL_CATEGORIES:
+        if category not in selected_set:
+            continue
+        category_items = collectors[category]()
+        by_category[category] = category_items
+        counts[category] = len(category_items)
+        items.extend(category_items)
+
+    items.sort(key=lambda item: (item.get("due_date") or "9999-12-31", item["title"]))
+    if limit > 0:
+        items = items[:limit]
+
+    return {
+        "total": sum(counts.values()),
+        "counts": counts,
+        "items": items,
+        "by_category": by_category,
+    }

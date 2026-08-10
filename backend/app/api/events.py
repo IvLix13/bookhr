@@ -7,11 +7,29 @@ from datetime import date
 from flask import request
 from flask_login import login_required
 
-from app.api.helpers import api_response, get_json, paginate_query, require_roles
+from app.api.helpers import (
+    api_response,
+    apply_sort,
+    apply_text_search,
+    get_json,
+    paginate_query,
+    parse_pagination_args,
+    parse_search_q,
+    parse_sort_args,
+    require_roles,
+)
 from app.api.serializers import event_to_dict
 from app.extensions import db
 from app.models import Event, EventStatus, EventType, RoleName
 from app.services.events import create_manual_event, refresh_overdue_events, transition_event_status
+
+
+EVENT_SORT_FIELDS = {
+    "event_date": Event.event_date,
+    "title": Event.title,
+    "status": Event.status,
+    "event_type": Event.event_type,
+}
 
 
 def register_routes(bp):
@@ -23,8 +41,13 @@ def register_routes(bp):
         date_to = request.args.get("to")
         status = request.args.get("status")
         event_type = request.args.get("type")
-        page = request.args.get("page", 1, type=int)
-        per_page = request.args.get("per_page", 50, type=int)
+        page, per_page = parse_pagination_args()
+        q = parse_search_q()
+        sort, direction = parse_sort_args(
+            EVENT_SORT_FIELDS,
+            default_field="event_date",
+            default_direction="asc",
+        )
 
         refresh_overdue_events(company_id)
 
@@ -37,7 +60,9 @@ def register_routes(bp):
             query = query.filter_by(status=status)
         if event_type:
             query = query.filter_by(event_type=event_type)
-        query = query.order_by(Event.event_date.asc())
+
+        query = apply_text_search(query, Event.title, q)
+        query = apply_sort(query, EVENT_SORT_FIELDS, sort, direction)
 
         return api_response(paginate_query(query, event_to_dict, page, per_page))
 

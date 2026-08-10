@@ -211,3 +211,16 @@ def notification_rule_to_dict(rule: NotificationRule) -> dict:
         "overdue_interval_days": rule.overdue_interval_days,
         "send_time_moscow": rule.send_time_moscow,
     }
+
+
+def reward_to_dict(award: TenureAward) -> dict:
+    employment = award.employment
+    return {
+        "id": award.id,
+        "employment_id": award.employment_id,
+        "full_name": get_current_name(employment.person),
+        "milestone_years": award.milestone_years,
+        "milestone_date": award.milestone_date.isoformat(),
+        "is_received": award.is_received,
+        "received_date": award.received_date.isoformat() if award.received_date else None,
+    }
