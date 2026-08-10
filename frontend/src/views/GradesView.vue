@@ -13,7 +13,7 @@ const columns: ColumnDef<GradeRow>[] = [
   { key: 'full_name', label: 'ФИО' },
   {
     key: 'grade',
-    label: 'Текущий грейд',
+    label: 'Текущий грейдов',
     getValue: (row) => row.grade?.name ?? '—',
   },
   {
@@ -25,7 +25,7 @@ const columns: ColumnDef<GradeRow>[] = [
   },
   {
     key: 'next_grade',
-    label: 'Следующий грейд',
+    label: 'Следующий грейдов',
     getValue: (row) => row.next_grade?.name ?? '—',
   },
   {
@@ -51,13 +51,16 @@ onMounted(async () => {
 
 <template>
   <section class="card page">
-    <header><h2>Грейды</h2></header>
+    <header class="page-header">
+      <h2>грейды</h2>
+      <RouterLink :to="{ name: 'grade-catalog' }" class="btn secondary">Справочник</RouterLink>
+    </header>
     <DataTable
       :columns="columns"
       :rows="rows"
       :row-key="(row) => row.employment_id"
       :loading="loading"
-      search-placeholder="Поиск по грейдам..."
+      search-placeholder="Поиск по грейдым..."
     />
   </section>
 </template>
@@ -65,5 +68,12 @@ onMounted(async () => {
 <style scoped>
 .page {
   padding: 1rem;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
 }
 </style>

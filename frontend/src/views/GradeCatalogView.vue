@@ -45,7 +45,7 @@ async function createGrade() {
     form.value = { name: '', rank: form.value.rank + 1, min_months: 12 }
     await loadGrades()
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Не удалось создать грейд'
+    error.value = err instanceof Error ? err.message : 'Не удалось создать грейдов'
   } finally {
     saving.value = false
   }
@@ -54,7 +54,10 @@ async function createGrade() {
 
 <template>
   <section class="card page">
-    <header><h2>Справочник грейдов</h2></header>
+    <header class="page-header">
+      <h2>Справочник грейдов</h2>
+      <RouterLink :to="{ name: 'grades' }" class="btn secondary">К грейдым</RouterLink>
+    </header>
 
     <form v-if="auth.isAdmin()" class="form" @submit.prevent="createGrade">
       <label>
@@ -70,7 +73,7 @@ async function createGrade() {
         <input v-model.number="form.min_months" type="number" min="0" required />
       </label>
       <button class="btn" type="submit" :disabled="saving">
-        {{ saving ? 'Сохранение...' : 'Добавить грейд' }}
+        {{ saving ? 'Сохранение...' : 'Добавить грейдов' }}
       </button>
       <p v-if="error" class="error">{{ error }}</p>
     </form>
@@ -89,6 +92,13 @@ async function createGrade() {
 .page {
   padding: 1rem;
   display: grid;
+  gap: 1rem;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   gap: 1rem;
 }
 

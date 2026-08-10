@@ -2,7 +2,7 @@
 
 from flask import Blueprint
 
-from app.api import auth, employees, events, import_api, modules, notifications, stats
+from app.api import auth, employees, events, import_api, modules, notifications, rewards, stats
 
 
 def register_blueprints(app):
@@ -12,6 +12,7 @@ def register_blueprints(app):
     employees.register_routes(api)
     events.register_routes(api)
     modules.register_routes(api)
+    rewards.register_routes(api)
     import_api.register_routes(api)
     notifications.register_routes(api)
     stats.register_routes(api)

@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { EventItem } from '@/types'
-import { formatShortDate } from '@/utils/dates'
+import { formatNumericDate } from '@/utils/dates'
 import { getEventStatusMeta } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
+const route = useRoute()
 const events = ref<EventItem[]>([])
 const loading = ref(true)
+
+const highlightId = computed(() => {
+  const raw = route.query.highlight
+  return typeof raw === 'string' ? Number(raw) : null
+})
 
 const columns: ColumnDef<EventItem>[] = [
   { key: 'title', label: 'Название' },
@@ -19,7 +26,7 @@ const columns: ColumnDef<EventItem>[] = [
     key: 'event_date',
     label: 'Дата',
     getValue: (row) => row.event_date,
-    format: (value) => formatShortDate(value as string | null),
+    format: (value) => formatNumericDate(value as string | null),
     sortValue: (row) => row.event_date,
   },
   {
@@ -49,10 +56,35 @@ const columns: ColumnDef<EventItem>[] = [
   },
 ]
 
-onMounted(async () => {
+async function loadEvents() {
   events.value = (await api.fetchAllEvents()) as EventItem[]
+}
+
+onMounted(async () => {
+  await loadEvents()
   loading.value = false
+  scrollToHighlight()
 })
+
+watch(highlightId, () => {
+  scrollToHighlight()
+})
+
+function scrollToHighlight() {
+  if (!highlightId.value) return
+  requestAnimationFrame(() => {
+    const row = document.querySelector(`[data-event-id="${highlightId.value}"]`)
+    row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
+function rowClass(row: EventItem) {
+  return highlightId.value === row.id ? 'highlighted' : undefined
+}
+
+function rowAttrs(row: EventItem) {
+  return { 'data-event-id': row.id }
+}
 
 async function complete(id: number) {
   if (!auth.canEdit()) return
@@ -71,6 +103,8 @@ async function complete(id: number) {
       :rows="events"
       row-key="id"
       :loading="loading"
+      :row-class="rowClass"
+      :row-attrs="rowAttrs"
       search-placeholder="Поиск по мероприятиям..."
     >
       <template #cell-status="{ row }">
@@ -95,5 +129,10 @@ async function complete(id: number) {
 <style scoped>
 .page {
   padding: 1rem;
+}
+
+:deep(.highlighted) {
+  outline: 2px solid var(--accent, #2f6fed);
+  outline-offset: -2px;
 }
 </style>

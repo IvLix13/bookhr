@@ -17,6 +17,7 @@ const router = createRouter({
         { path: 'events/create', name: 'event-create', component: () => import('@/views/EventCreateView.vue') },
         { path: 'contracts', name: 'contracts', component: () => import('@/views/ContractsView.vue') },
         { path: 'grades', name: 'grades', component: () => import('@/views/GradesView.vue') },
+        { path: 'rewards', name: 'rewards', component: () => import('@/views/RewardsView.vue') },
         { path: 'awards', name: 'awards', component: () => import('@/views/AwardsView.vue') },
         { path: 'passports', name: 'passports', component: () => import('@/views/PassportsView.vue') },
         { path: 'events', name: 'events', component: () => import('@/views/EventsView.vue') },

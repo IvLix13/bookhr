@@ -33,24 +33,44 @@ cp .env.example .env.prod   # или используйте scripts/setup-databa
 
 ## Офлайн-комплект
 
+Подробная инструкция: [docs/offline-deployment.md](docs/offline-deployment.md)
+
 На машине с интернетом (Ubuntu/Debian x86_64):
 
 ```bash
-./scripts/prepare-offline-bundle.sh 20260724.1
+chmod +x scripts/*.sh scripts/offline/*.sh deploy/*.sh
+./scripts/export-for-offline.sh 20260728.1
 ```
 
 На офлайн-машине:
 
 ```bash
-./scripts/install-offline.sh dist/offline/bookuchet-offline-20260724.1-linux-x64.tar.gz
-./scripts/migrate.sh prod
-./scripts/run-prod.sh
+sudo OFFLINE_MODE=1 INSTALL_DIR=/opt/bookuchet \
+  ./scripts/deploy-offline-prod.sh /tmp/bookuchet-offline-20260728.1-linux-x64.tar.gz
+```
+
+Или по шагам:
+
+```bash
+OFFLINE_MODE=1 ./scripts/install-offline.sh /tmp/bookuchet-offline-20260728.1-linux-x64.tar.gz
+sudo ./scripts/install-system-deps-offline.sh /opt/bookuchet/vendor/debs
+cd /opt/bookuchet
+./scripts/setup-databases.sh
+OFFLINE_MODE=1 ./scripts/migrate.sh prod
+OFFLINE_MODE=1 ./scripts/run-prod.sh
+```
+
+Frontend-разработка offline:
+
+```bash
+OFFLINE_MODE=1 ./scripts/setup-offline-frontend-dev.sh
+OFFLINE_MODE=1 ./scripts/dev-offline.sh
 ```
 
 Проверка bundle:
 
 ```bash
-./scripts/verify-offline-bundle.sh dist/offline/bookuchet-offline-20260724.1-linux-x64.tar.gz
+./scripts/verify-offline-bundle.sh dist/offline/bookuchet-offline-20260728.1-linux-x64.tar.gz
 ```
 
 ## Контуры БД

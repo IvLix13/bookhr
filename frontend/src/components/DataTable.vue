@@ -10,6 +10,8 @@ const props = withDefaults(
     searchPlaceholder?: string
     loading?: boolean
     emptyText?: string
+    rowClass?: (row: T) => string | Record<string, boolean> | undefined
+    rowAttrs?: (row: T) => Record<string, string | number | undefined>
   }>(),
   {
     searchPlaceholder: 'Поиск по таблице...',
@@ -102,7 +104,12 @@ function sortIndicator(key: string): string {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="(row, index) in filteredRows" :key="resolveRowKey(row, index)">
+          <tr
+            v-for="(row, index) in filteredRows"
+            :key="resolveRowKey(row, index)"
+            :class="rowClass?.(row)"
+            v-bind="rowAttrs?.(row)"
+          >
             <td v-for="column in columns" :key="column.key">
               <slot
                 :name="`cell-${column.key}`"

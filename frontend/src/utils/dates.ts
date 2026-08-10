@@ -48,6 +48,15 @@ export function formatDisplayDate(iso: string): string {
   })
 }
 
+/** Формат «ДД.ММ.ГГГГ» без сдвига часового пояса. */
+export function formatNumericDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const datePart = iso.slice(0, 10)
+  const [year, month, day] = datePart.split('-').map(Number)
+  if (!year || !month || !day) return iso
+  return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`
+}
+
 /** Формат «ДД месяц ГГГГ г.» без сдвига часового пояса. */
 export function formatShortDate(iso: string | null | undefined): string {
   if (!iso) return '—'

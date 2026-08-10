@@ -13,86 +13,120 @@ import {
   IconStats,
   IconTable,
 } from '@/components/icons'
+import IconCake from '@/components/icons/IconCake.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useRoute } from 'vue-router'
 
-import { ref } from 'vue';
+import { ref } from 'vue'
 
-const isSidebarOpen = ref(false);
+const isSidebarOpen = ref(false)
 
 const toggleSidebar = () => {
-  isSidebarOpen.value = !isSidebarOpen.value;
-};
+  isSidebarOpen.value = !isSidebarOpen.value
+}
 
 const route = useRoute()
 const auth = useAuthStore()
 </script>
 
 <template>
-  <aside class="sidebar card" :class="{'sidebar-open':isSidebarOpen}">
+  <aside class="sidebar card" :class="{ 'sidebar-open': isSidebarOpen }">
     <div class="brand-div">
-      <div class="brand">B</div>
-      <label class="label" v-if="isSidebarOpen">Василий Васильев</label>
+      <div class="brand">К</div>
+      <label v-if="isSidebarOpen" class="label">Календарь событий</label>
     </div>
-    
+
     <nav>
-      <NavItem name="calendar" label="" :active="route.name === 'calendar'">
+      <NavItem
+        name="calendar"
+        label="Календарь"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'calendar'"
+      >
         <IconCalendar />
-        <label class="label" v-if="isSidebarOpen">Календарь</label>
       </NavItem>
-      <NavItem name="statistics" label="" :active="route.name === 'statistics'">
+      <NavItem
+        name="statistics"
+        label="Статистика"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'statistics'"
+      >
         <IconStats />
-        <label class="label" v-if="isSidebarOpen">Статистика</label>
       </NavItem>
-      <NavItem name="employees" label="" :active="route.name === 'employees'">
+      <NavItem
+        name="employees"
+        label="Сотрудники"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'employees'"
+      >
         <IconTable />
-        <label class="label" v-if="isSidebarOpen">Сотрудники</label>
       </NavItem>
-      <NavItem name="import" label="" :active="route.name === 'import'">
+      <NavItem name="import" label="Импорт" :expanded="isSidebarOpen" :active="route.name === 'import'">
         <IconImport />
-        <label class="label" v-if="isSidebarOpen">Импорт</label>
       </NavItem>
-      <NavItem name="event-create" label="" :active="route.name === 'event-create'">
+      <NavItem
+        name="event-create"
+        label="Событие"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'event-create'"
+      >
         <IconEvent />
-        <label class="label" v-if="isSidebarOpen">Событие</label>
       </NavItem>
-      <NavItem name="contracts" label="" :active="route.name === 'contracts'">
+      <NavItem
+        name="contracts"
+        label="Договоры"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'contracts'"
+      >
         <IconContract />
-        <label class="label" v-if="isSidebarOpen">Контракты</label>
       </NavItem>
-      <NavItem name="grades" label="" :active="route.name === 'grades'">
+      <NavItem name="grades" label="грейды" :expanded="isSidebarOpen" :active="route.name === 'grades'">
         <IconGrade />
-        <label class="label" v-if="isSidebarOpen">Грейды</label>
       </NavItem>
-      <NavItem name="awards" label="" :active="route.name === 'awards'">
+      <NavItem
+        name="rewards"
+        label="Поощрения"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'rewards'"
+      >
         <IconAward />
-        <label class="label" v-if="isSidebarOpen">Поощрения</label>
       </NavItem>
-      <NavItem name="passports" label="" :active="route.name === 'passports'">
+      <NavItem
+        name="awards"
+        label="Поощрения за стаж"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'awards'"
+      >
+        <IconCake />
+      </NavItem>
+      <NavItem
+        name="passports"
+        label="Паспорта"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'passports'"
+      >
         <IconPassport />
-        <label class="label" v-if="isSidebarOpen">Паспорта</label>
       </NavItem>
-      <NavItem name="events" label="" :active="route.name === 'events'">
+      <NavItem name="events" label="Мероприятия" :expanded="isSidebarOpen" :active="route.name === 'events'">
         <IconEmployees />
-        <label class="label" v-if="isSidebarOpen">Мероприятия</label>
       </NavItem>
-      <NavItem name="grade-catalog" label="" :active="route.name === 'grade-catalog'">
-        <IconGrade />
-        <label class="label" v-if="isSidebarOpen">Справочник</label>
-      </NavItem>
-      <NavItem v-if="auth.isAdmin()" name="settings" label="" :active="route.name === 'settings'">
+      <NavItem
+        v-if="auth.isAdmin()"
+        name="settings"
+        label="Настройки"
+        :expanded="isSidebarOpen"
+        :active="route.name === 'settings'"
+      >
         <IconSettings />
-        <label class="label" v-if="isSidebarOpen">Настройки</label>
       </NavItem>
     </nav>
     <div class="btn-box">
-      <button @click="toggleSidebar" class="toggle-btn">
+      <button class="toggle-btn" @click="toggleSidebar">
         {{ isSidebarOpen ? '←' : '→' }}
       </button>
     </div>
   </aside>
 </template>
-
 
 <style scoped>
 .sidebar {
@@ -106,7 +140,7 @@ const auth = useAuthStore()
   height: calc(100vh - 2rem);
 }
 
-.brand-div{
+.brand-div {
   display: flex;
   flex-direction: row;
   align-content: center;
@@ -129,19 +163,6 @@ nav {
   flex-direction: column;
   gap: 0.35rem;
   overflow-y: hidden;
-}
-
-.nav-item{
-  padding-left: 21px;
-  flex-direction: row;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 0;
-}
-
-.nav-item :deep(.icon) {
-  width: 22px;
-  height: 22px;
 }
 
 .sidebar-open {
@@ -168,7 +189,7 @@ nav {
   font-weight: 700;
   cursor: pointer;
 }
-.toggle-btn:hover{
+.toggle-btn:hover {
   background: #2f6fed;
   transform: translateY(-1px);
 }

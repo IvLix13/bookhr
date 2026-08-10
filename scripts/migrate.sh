@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
+# shellcheck disable=SC1091
+source "$ROOT_DIR/scripts/offline/common.sh"
 
 TARGET="${1:-}"
 if [[ "$TARGET" != "dev" && "$TARGET" != "prod" ]]; then
@@ -32,7 +34,7 @@ set +a
 if [[ ! -d "backend/.venv" ]]; then
   python3 -m venv backend/.venv
 fi
-backend/.venv/bin/pip install -q -r backend/requirements.txt
+offline_pip_install "$ROOT_DIR/backend/.venv" "$ROOT_DIR/backend/requirements.txt"
 
 if [[ "$TARGET" == "prod" ]]; then
   BACKUP_DIR="${BACKUP_DIR:-$ROOT_DIR/backups}"

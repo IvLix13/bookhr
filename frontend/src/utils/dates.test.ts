@@ -3,6 +3,7 @@ import {
   defaultStatsPeriod,
   formatDisplayDate,
   formatLocalDate,
+  formatNumericDate,
   formatShortDate,
   isSameLocalDate,
   monthRange,
@@ -29,6 +30,11 @@ describe('dates utils', () => {
 
   it('formats display date in Russian locale', () => {
     expect(formatDisplayDate('2026-07-24')).toContain('2026')
+  })
+
+  it('formats numeric date as DD.MM.YYYY', () => {
+    expect(formatNumericDate('2026-07-24')).toBe('24.07.2026')
+    expect(formatNumericDate(null)).toBe('—')
   })
 
   it('formats short date as DD month YYYY г.', () => {

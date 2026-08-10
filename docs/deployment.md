@@ -44,9 +44,10 @@ LDAP_LOCAL_ADMIN_USERNAME=admin
 
 ## Офлайн-разработка
 
-1. На онлайн-машине: `./scripts/prepare-offline-bundle.sh <version>`
+1. На онлайн-машине: `./scripts/export-for-offline.sh <version>`
 2. Перенести tar.gz на офлайн-машину
-3. `./scripts/install-offline.sh <bundle.tar.gz>`
-4. `./scripts/migrate.sh prod`
+3. `OFFLINE_MODE=1 ./scripts/install-offline.sh <bundle.tar.gz>`
+4. `sudo ./scripts/install-system-deps-offline.sh vendor/debs`
+5. `OFFLINE_MODE=1 ./scripts/migrate.sh prod`
 
 Prod может работать без Node.js, если frontend уже собран в bundle.

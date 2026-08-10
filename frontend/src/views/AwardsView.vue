@@ -41,13 +41,13 @@ onMounted(async () => {
 
 <template>
   <section class="card page">
-    <header><h2>Поощрения</h2></header>
+    <header><h2>Поощрения за стаж</h2></header>
     <DataTable
       :columns="columns"
       :rows="rows"
       :row-key="(row) => row.employment_id"
       :loading="loading"
-      search-placeholder="Поиск по поощрениям..."
+      search-placeholder="Поиск по поощрениям за стаж..."
     />
   </section>
 </template>

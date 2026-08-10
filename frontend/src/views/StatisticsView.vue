@@ -18,7 +18,7 @@ const period = ref(defaultStatsPeriod())
 
 const eventTypeLabels: Record<string, string> = {
   contract: 'Договор',
-  grade: 'Грейд',
+  grade: 'грейдов',
   award: 'Поощрение',
   report: 'Рапорт',
   passport: 'Паспорт',
@@ -202,9 +202,9 @@ const tenureChart = computed(() => {
         </article>
 
         <article class="card module-card">
-          <header><h3>Грейды</h3></header>
+          <header><h3>грейды</h3></header>
           <ul class="metric-list">
-            <li><span>Без грейда</span><strong>{{ stats.grades.without_grade }}</strong></li>
+            <li><span>Без грейды</span><strong>{{ stats.grades.without_grade }}</strong></li>
             <li><span>Готовы к повышению</span><strong>{{ stats.grades.eligible_now }}</strong></li>
             <li><span>Повышение ≤30 дн.</span><strong>{{ stats.grades.eligible_30d }}</strong></li>
             <li><span>Назначено за период</span><strong>{{ stats.grades.assigned_in_period }}</strong></li>

@@ -50,6 +50,12 @@ export const api = {
   employees: (params = '') => request(`/api/employees${params}`),
   fetchAllEmployees: () =>
     fetchAllPaginated((params) => api.employees(params) as Promise<Paginated<unknown>>),
+  createEmployee: (body: Record<string, unknown>) =>
+    request('/api/employees', { method: 'POST', body: JSON.stringify(body) }),
+  updateEmployee: (id: number, body: Record<string, unknown>) =>
+    request(`/api/employees/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteEmployee: (id: number) =>
+    request(`/api/employees/${id}`, { method: 'DELETE' }),
   contracts: () => request('/api/contracts'),
   grades: () => request('/api/grades'),
   gradeCatalog: () => request('/api/grade-catalog'),
@@ -57,6 +63,11 @@ export const api = {
     request('/api/grade-catalog', { method: 'POST', body: JSON.stringify(body) }),
   passports: () => request('/api/passports'),
   tenure: () => request('/api/tenure'),
+  rewards: () => request('/api/rewards'),
+  createReward: (body: Record<string, unknown>) =>
+    request('/api/rewards', { method: 'POST', body: JSON.stringify(body) }),
+  updateReward: (id: number, body: Record<string, unknown>) =>
+    request(`/api/rewards/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   events: (params = '') => request(`/api/events${params}`),
   fetchAllEvents: () =>
     fetchAllPaginated((params) => api.events(params) as Promise<Paginated<unknown>>),

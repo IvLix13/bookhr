@@ -11,12 +11,18 @@ from app.models import (
     EmployeeGradeHistory,
     Employment,
     EmploymentStatus,
+    Event,
+    EventStatusHistory,
+    NotificationDelivery,
     Passport,
     Person,
     PersonNameHistory,
     PositionHistory,
+    Reward,
+    TenureAward,
 )
 from app.services.audit import log_audit
+from app.utils.dates import today_moscow
 
 
 def get_current_name(person: Person) -> str | None:
@@ -161,6 +167,127 @@ def dismiss_employment(
         {"status": EmploymentStatus.ACTIVE.value},
         {"status": EmploymentStatus.DISMISSED.value},
     )
+
+
+def sync_active_contract(
+    employment: Employment,
+    end_date: date | None,
+    start_date: date | None = None,
+) -> None:
+    contract = get_active_contract(employment)
+    if end_date is None:
+        if contract:
+            contract.is_active = False
+        return
+
+    contract_start = start_date or employment.hire_date
+    if contract:
+        contract.end_date = end_date
+        if start_date:
+            contract.start_date = start_date
+        contract.is_active = True
+        return
+
+    db.session.add(
+        Contract(
+            employment_id=employment.id,
+            start_date=contract_start,
+            end_date=end_date,
+            is_active=True,
+        )
+    )
+
+
+def sync_actual_grade(
+    employment: Employment,
+    grade_id: int | None,
+    grade_date: date | None,
+) -> None:
+    current = get_current_grade(employment)
+    if grade_id is None or grade_date is None:
+        if current:
+            current.valid_to = today_moscow()
+        return
+
+    if current and current.grade_id == grade_id:
+        current.assigned_date = grade_date
+        return
+
+    if current:
+        current.valid_to = grade_date
+
+    db.session.add(
+        EmployeeGradeHistory(
+            employment_id=employment.id,
+            grade_id=grade_id,
+            assigned_date=grade_date,
+        )
+    )
+
+
+def sync_passport(person: Person, passport_until: date | None) -> None:
+    passport = get_active_passport(person)
+    if passport_until is None:
+        if passport:
+            passport.is_active = False
+        return
+
+    if passport:
+        passport.valid_until = passport_until
+        passport.is_active = True
+        return
+
+    db.session.add(
+        Passport(
+            person_id=person.id,
+            valid_until=passport_until,
+            is_active=True,
+        )
+    )
+
+
+def delete_employment(employment: Employment) -> None:
+    """Hard-delete employment and orphaned person records."""
+    employment_id = employment.id
+    person = employment.person
+    person_id = person.id
+
+    event_ids = [
+        event.id
+        for event in Event.query.filter_by(employment_id=employment_id).all()
+    ]
+    if event_ids:
+        NotificationDelivery.query.filter(
+            NotificationDelivery.event_id.in_(event_ids)
+        ).delete(synchronize_session=False)
+        EventStatusHistory.query.filter(
+            EventStatusHistory.event_id.in_(event_ids)
+        ).delete(synchronize_session=False)
+        Event.query.filter(Event.id.in_(event_ids)).delete(synchronize_session=False)
+
+    Contract.query.filter_by(employment_id=employment_id).delete(synchronize_session=False)
+    EmployeeGradeHistory.query.filter_by(employment_id=employment_id).delete(
+        synchronize_session=False
+    )
+    TenureAward.query.filter_by(employment_id=employment_id).delete(
+        synchronize_session=False
+    )
+    Reward.query.filter_by(employment_id=employment_id).delete(synchronize_session=False)
+    PositionHistory.query.filter_by(employment_id=employment_id).delete(
+        synchronize_session=False
+    )
+    db.session.delete(employment)
+    db.session.flush()
+
+    remaining = Employment.query.filter_by(person_id=person_id).count()
+    if remaining == 0:
+        Passport.query.filter_by(person_id=person_id).delete(synchronize_session=False)
+        PersonNameHistory.query.filter_by(person_id=person_id).delete(
+            synchronize_session=False
+        )
+        db.session.delete(person)
+
+    log_audit("delete", "employment", employment_id, {"person_id": person_id}, None)
 
 
 def rehire_person(
