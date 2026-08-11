@@ -16,16 +16,32 @@ from app.models import (
     NotificationRule,
 )
 from app.models.base import utcnow
-from app.utils.dates import MOSCOW
+from app.services.employees import get_current_name
+from app.services.events import effective_event_status
+from app.utils.dates import MOSCOW, today_moscow
 
 
-def _build_message(event: Event) -> str:
+def _days_overdue(event: Event) -> int:
+    today = today_moscow()
+    if event.event_date >= today:
+        return 0
+    return (today - event.event_date).days
+
+
+def _build_message(event: Event, *, escalated: bool = False) -> str:
     employee_name = ""
     if event.employment and event.employment.person:
-        from app.services.employees import get_current_name
-
         employee_name = get_current_name(event.employment.person) or ""
-    parts = [f"**{event.title}**", f"Дата: {event.event_date.isoformat()}"]
+
+    days = _days_overdue(event)
+    if escalated and days > 0:
+        parts = [f"⚠️ ПРОСРОЧЕНО {days} дн.: **{event.title}**"]
+    elif days > 0 and effective_event_status(event) == EventStatus.OVERDUE.value:
+        parts = [f"**{event.title}** (просрочено {days} дн.)"]
+    else:
+        parts = [f"**{event.title}**"]
+
+    parts.append(f"Дата: {event.event_date.isoformat()}")
     if employee_name:
         parts.append(f"Сотрудник: {employee_name}")
     if event.description:
@@ -57,6 +73,31 @@ def send_talk_message(room_token: str, message: str) -> tuple[int, str]:
         return 0, str(exc)[:500]
 
 
+def _queue_delivery(
+    *,
+    event_id: int,
+    rule_id: int,
+    idempotency_key: str,
+    recipient: str,
+) -> bool:
+    existing = NotificationDelivery.query.filter_by(
+        idempotency_key=idempotency_key
+    ).first()
+    if existing:
+        return False
+
+    delivery = NotificationDelivery(
+        event_id=event_id,
+        rule_id=rule_id,
+        idempotency_key=idempotency_key,
+        recipient=recipient,
+        status=DeliveryStatus.PENDING.value,
+        next_attempt_at=utcnow(),
+    )
+    db.session.add(delivery)
+    return True
+
+
 def queue_notifications_for_event(event: Event) -> int:
     rules = NotificationRule.query.filter(
         NotificationRule.is_enabled.is_(True),
@@ -73,21 +114,40 @@ def queue_notifications_for_event(event: Event) -> int:
     created = 0
     for rule in rules:
         key = f"notify:{event.id}:{rule.id}:{event.event_date.isoformat()}"
-        existing = NotificationDelivery.query.filter_by(idempotency_key=key).first()
-        if existing:
-            continue
-
-        delivery = NotificationDelivery(
+        if _queue_delivery(
             event_id=event.id,
             rule_id=rule.id,
             idempotency_key=key,
             recipient=rule.room_token,
-            status=DeliveryStatus.PENDING.value,
-            next_attempt_at=utcnow(),
-        )
-        db.session.add(delivery)
-        created += 1
+        ):
+            created += 1
+
+        created += queue_escalation_for_event(event, rule)
     return created
+
+
+def queue_escalation_for_event(event: Event, rule: NotificationRule) -> int:
+    """Queue escalation delivery when overdue threshold is reached."""
+    if not rule.escalation_room_token or rule.escalation_after_days is None:
+        return 0
+
+    if effective_event_status(event) != EventStatus.OVERDUE.value:
+        return 0
+
+    days = _days_overdue(event)
+    if days < rule.escalation_after_days:
+        return 0
+
+    bucket = days // max(rule.escalation_after_days, 1)
+    key = f"escalate:{event.id}:{rule.id}:{bucket}"
+    if _queue_delivery(
+        event_id=event.id,
+        rule_id=rule.id,
+        idempotency_key=key,
+        recipient=rule.escalation_room_token,
+    ):
+        return 1
+    return 0
 
 
 def process_pending_notifications() -> dict[str, int]:
@@ -105,7 +165,7 @@ def process_pending_notifications() -> dict[str, int]:
         ),
     ).all()
 
-    stats = {"sent": 0, "failed": 0, "skipped": 0}
+    stats = {"sent": 0, "failed": 0, "skipped": 0, "escalations_queued": 0}
     for delivery in pending:
         event = delivery.event
         rule = delivery.rule
@@ -117,8 +177,16 @@ def process_pending_notifications() -> dict[str, int]:
             stats["skipped"] += 1
             continue
 
+        escalated = bool(
+            delivery.idempotency_key
+            and delivery.idempotency_key.startswith("escalate:")
+        )
+
         delivery.attempt_count += 1
-        code, body = send_talk_message(delivery.recipient, _build_message(event))
+        code, body = send_talk_message(
+            delivery.recipient,
+            _build_message(event, escalated=escalated),
+        )
         delivery.response_code = code
         delivery.response_body = body
 
@@ -128,13 +196,18 @@ def process_pending_notifications() -> dict[str, int]:
             stats["sent"] += 1
         else:
             delivery.status = DeliveryStatus.FAILED.value
-            interval = rule.overdue_interval_days if rule else 3
-            if event.status == EventStatus.OVERDUE.value and rule:
-                interval = rule.overdue_interval_days
-            elif rule:
-                interval = rule.repeat_interval_days
+            interval = 3
+            if rule:
+                if effective_event_status(event) == EventStatus.OVERDUE.value:
+                    interval = rule.overdue_interval_days
+                else:
+                    interval = rule.repeat_interval_days
             delivery.next_attempt_at = utcnow() + timedelta(days=interval)
             stats["failed"] += 1
+
+        # Opportunistically queue escalation while processing overdue events.
+        if rule and not escalated:
+            stats["escalations_queued"] += queue_escalation_for_event(event, rule)
 
     db.session.commit()
     return stats

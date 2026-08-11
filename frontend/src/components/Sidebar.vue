@@ -220,10 +220,26 @@ const auth = useAuthStore()
   place-items: center;
   font-weight: 700;
   cursor: pointer;
+  transition: background var(--transition), transform var(--transition),
+    box-shadow var(--transition);
 }
 
 .toggle-btn:hover {
   background: #2f6fed;
   transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(47, 111, 237, 0.28);
+}
+
+.toggle-btn:active {
+  transform: scale(0.94);
+  box-shadow: none;
+}
+
+.brand {
+  transition: transform var(--transition-slow) var(--ease-out);
+}
+
+.sidebar:hover .brand {
+  transform: rotate(-6deg) scale(1.05);
 }
 </style>

@@ -22,6 +22,8 @@ const form = ref({
   event_type: '',
   repeat_interval_days: 7,
   overdue_interval_days: 3,
+  escalation_room_token: '',
+  escalation_after_days: null as number | null,
   send_time_moscow: '09:00',
 })
 const testMessage = ref('Тестовое уведомление Bookuchet')
@@ -39,6 +41,14 @@ const columns: ColumnDef<NotificationRule>[] = [
     format: (value) => (value ? labelEventType(value as string) : 'Все типы'),
   },
   { key: 'repeat_interval_days', label: 'Повтор, дней' },
+  {
+    key: 'escalation',
+    label: 'Эскалация',
+    getValue: (row) =>
+      row.escalation_room_token
+        ? `${row.escalation_after_days ?? '—'} дн. → ${row.escalation_room_token}`
+        : '—',
+  },
   { key: 'send_time_moscow', label: 'Время (МСК)' },
 ]
 
@@ -103,6 +113,16 @@ async function testSend() {
       </label>
       <label>Повтор, дней<input v-model.number="form.repeat_interval_days" type="number" min="1" /></label>
       <label>Просрочка, дней<input v-model.number="form.overdue_interval_days" type="number" min="1" /></label>
+      <label>Токен комнаты эскалации<input v-model="form.escalation_room_token" placeholder="опционально" /></label>
+      <label>
+        Эскалация после, дней
+        <input
+          v-model.number="form.escalation_after_days"
+          type="number"
+          min="1"
+          placeholder="например 7"
+        />
+      </label>
       <label>Время (МСК)<input v-model="form.send_time_moscow" /></label>
       <button class="btn" type="submit" :disabled="saving">
         {{ saving ? 'Сохранение...' : 'Сохранить правило' }}

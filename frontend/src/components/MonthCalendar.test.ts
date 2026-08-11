@@ -11,6 +11,7 @@ const sampleEvents: EventItem[] = [
     description: null,
     event_date: '2026-07-24',
     status: 'planned',
+    effective_status: 'planned',
     source: 'manual',
     employment_id: null,
     employee_name: null,

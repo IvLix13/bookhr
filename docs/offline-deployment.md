@@ -108,6 +108,17 @@ cd /opt/bookuchet
 
 Переменная окружения `OFFLINE_MODE=1` включает тот же режим принудительно.
 
+### Автомиграции при запуске
+
+`run-prod.sh`, `dev-offline.sh` и systemd unit `bookuchet.service` перед стартом
+вызывают `scripts/ensure-migrations.sh` (через helper `offline_ensure_migrations`):
+
+- сравнивают текущую ревизию Alembic с `heads`;
+- если схема отстаёт — запускают `migrate.sh` (для prod — с бэкапом);
+- если схема актуальна — стартуют без изменений.
+
+Отключить проверку при ручном запуске: `ENSURE_MIGRATIONS=0 ./scripts/run-prod.sh`.
+
 ## Systemd
 
 После `deploy-offline-prod.sh` будут установлены:

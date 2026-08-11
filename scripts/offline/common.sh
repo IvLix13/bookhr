@@ -299,3 +299,81 @@ offline_verify_npm_cache() {
     npm ci --cache "$cache" --offline --prefer-offline
   )
 }
+
+# Returns 0 when the DB schema is behind alembic heads (upgrade needed),
+# 1 when already current, 2 on check failure.
+offline_db_needs_upgrade() {
+  local project_root="$1"
+  local venv_python="${2:-$project_root/backend/.venv/bin/python}"
+  local rc=0
+
+  if [[ ! -x "$venv_python" ]]; then
+    echo "Python venv not found: $venv_python" >&2
+    return 2
+  fi
+
+  (
+    cd "$project_root/backend"
+    export FLASK_APP=wsgi:app
+    "$venv_python" - <<'PY'
+from __future__ import annotations
+
+import sys
+
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from flask import current_app
+
+from wsgi import app
+
+with app.app_context():
+    migrate_cfg = current_app.extensions["migrate"]
+    config = migrate_cfg.migrate.get_config()
+    script = ScriptDirectory.from_config(config)
+    heads = set(script.get_heads())
+    if not heads:
+        print("No Alembic heads found in migrations/", file=sys.stderr)
+        raise SystemExit(2)
+
+    with migrate_cfg.db.engine.connect() as connection:
+        context = MigrationContext.configure(connection)
+        current = set(context.get_current_heads())
+
+    if current == heads:
+        print(f"DB schema is up to date ({', '.join(sorted(heads))})")
+        raise SystemExit(1)
+
+    current_label = ", ".join(sorted(current)) if current else "(none)"
+    heads_label = ", ".join(sorted(heads))
+    print(f"Pending migrations: current={current_label}; heads={heads_label}")
+    raise SystemExit(0)
+PY
+  ) || rc=$?
+
+  return "$rc"
+}
+
+# Apply migrations via migrate.sh when the DB is behind heads.
+offline_ensure_migrations() {
+  local project_root="$1"
+  local target="${2:-prod}"
+  local venv_python="${3:-$project_root/backend/.venv/bin/python}"
+  local status=0
+
+  offline_db_needs_upgrade "$project_root" "$venv_python" || status=$?
+
+  case "$status" in
+    0)
+      echo "Applying pending database migrations ($target)..."
+      bash "$project_root/scripts/migrate.sh" "$target"
+      ;;
+    1)
+      # Already current — nothing to do.
+      ;;
+    *)
+      echo "Failed to check migration status (exit=$status)." >&2
+      return "$status"
+      ;;
+  esac
+}
+

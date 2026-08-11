@@ -105,6 +105,7 @@ echo "  sudo ./scripts/install-system-deps-offline.sh vendor/debs"
 echo "  ./scripts/setup-databases.sh"
 echo "  OFFLINE_MODE=1 ./scripts/migrate.sh prod"
 echo "  OFFLINE_MODE=1 ./scripts/run-prod.sh"
+echo "  # run-prod / systemd also auto-apply pending migrations via ensure-migrations.sh"
 echo
 echo "Frontend development on offline machine:"
 echo "  OFFLINE_MODE=1 ./scripts/setup-offline-frontend-dev.sh"

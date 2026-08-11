@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { getContractReportDisplayMeta, getEventStatusMeta, getPassportStatusMeta, getRewardStatusMeta } from '@/utils/statuses'
+import {
+  getContractReportDisplayMeta,
+  getEventStatusMeta,
+  getPassportStatusMeta,
+  getRewardStatusMeta,
+  resolveEventStatus,
+} from '@/utils/statuses'
 
 describe('status dictionaries', () => {
   it('maps passport statuses to Russian labels', () => {
@@ -17,6 +23,11 @@ describe('status dictionaries', () => {
     expect(getEventStatusMeta('completed')).toEqual({ label: 'Выполнено', variant: 'success' })
     expect(getEventStatusMeta('cancelled')).toEqual({ label: 'Отменено', variant: 'warning' })
     expect(getEventStatusMeta('overdue')).toEqual({ label: 'Просрочено', variant: 'danger' })
+  })
+
+  it('prefers effective_status when resolving event status', () => {
+    expect(resolveEventStatus('planned', 'overdue')).toBe('overdue')
+    expect(resolveEventStatus('planned', null)).toBe('planned')
   })
 
   it('maps reward statuses to Russian labels', () => {
@@ -37,6 +48,12 @@ describe('status dictionaries', () => {
     expect(getContractReportDisplayMeta('2026-07-01', 'planned', '2026-07-28')).toEqual({
       label: 'Запланировано',
       variant: 'warning',
+    })
+    expect(
+      getContractReportDisplayMeta('2026-07-01', 'planned', '2026-07-28', 'overdue'),
+    ).toEqual({
+      label: 'Просрочено',
+      variant: 'danger',
     })
   })
 })

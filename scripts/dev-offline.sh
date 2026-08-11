@@ -27,6 +27,8 @@ if [[ ! -d "backend/.venv" ]]; then
 fi
 offline_pip_install "$ROOT_DIR/backend/.venv" "$ROOT_DIR/backend/requirements-dev.txt"
 
+offline_ensure_migrations "$ROOT_DIR" "dev"
+
 mkdir -p backend/uploads backend/static
 
 echo "Starting Bookuchet offline dev environment..."

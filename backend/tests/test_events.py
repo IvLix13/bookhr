@@ -1,8 +1,15 @@
 from datetime import date
 
+import pytest
+
 from app.extensions import db
-from app.models import Event, EventStatus, EventType
-from app.services.events import create_manual_event
+from app.models import Event, EventStatus, EventStatusHistory, EventType
+from app.services.events import (
+    InvalidEventTransition,
+    create_manual_event,
+    effective_event_status,
+    transition_event_status,
+)
 
 
 def test_list_events_filters_by_day(admin_client, seed_company):
@@ -68,7 +75,7 @@ def test_create_event_hr(admin_client, seed_company):
             "company_id": seed_company.id,
             "title": "New event",
             "event_type": "manual",
-            "event_date": "2026-07-24",
+            "event_date": "2030-07-24",
             "description": "Test",
         },
     )
@@ -76,10 +83,80 @@ def test_create_event_hr(admin_client, seed_company):
     payload = response.get_json()["data"]
     assert payload["title"] == "New event"
     assert payload["status"] == EventStatus.PLANNED.value
+    assert payload["effective_status"] == EventStatus.PLANNED.value
 
 
-def test_overdue_refresh_on_list(admin_client, seed_company, monkeypatch):
+@pytest.mark.parametrize(
+    ("from_status", "to_status", "ok"),
+    [
+        (EventStatus.PLANNED, EventStatus.COMPLETED, True),
+        (EventStatus.PLANNED, EventStatus.CANCELLED, True),
+        (EventStatus.PLANNED, EventStatus.OVERDUE, True),
+        (EventStatus.OVERDUE, EventStatus.COMPLETED, True),
+        (EventStatus.OVERDUE, EventStatus.CANCELLED, True),
+        (EventStatus.OVERDUE, EventStatus.PLANNED, True),
+        (EventStatus.COMPLETED, EventStatus.PLANNED, True),
+        (EventStatus.CANCELLED, EventStatus.PLANNED, True),
+        (EventStatus.CANCELLED, EventStatus.COMPLETED, False),
+        (EventStatus.COMPLETED, EventStatus.CANCELLED, False),
+        (EventStatus.COMPLETED, EventStatus.OVERDUE, False),
+        (EventStatus.CANCELLED, EventStatus.OVERDUE, False),
+    ],
+)
+def test_transition_matrix(app, seed_company, from_status, to_status, ok):
+    with app.app_context():
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Transition",
+            event_type=EventType.MANUAL,
+            event_date=date(2026, 7, 24),
+        )
+        db.session.flush()
+        if from_status != EventStatus.PLANNED:
+            event.status = from_status.value
+            db.session.flush()
+
+        if ok:
+            transition_event_status(event, to_status, "test")
+            assert event.status == to_status.value
+        else:
+            with pytest.raises(InvalidEventTransition):
+                transition_event_status(event, to_status, "test")
+
+
+def test_same_status_is_noop_without_history(app, seed_company):
+    with app.app_context():
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Noop",
+            event_type=EventType.MANUAL,
+            event_date=date(2026, 7, 24),
+        )
+        db.session.commit()
+        before = EventStatusHistory.query.filter_by(event_id=event.id).count()
+        transition_event_status(event, EventStatus.PLANNED, "again")
+        db.session.commit()
+        after = EventStatusHistory.query.filter_by(event_id=event.id).count()
+        assert after == before
+
+
+def test_complete_cancelled_event_returns_409(admin_client, seed_company):
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Cancelled",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+    )
+    transition_event_status(event, EventStatus.CANCELLED, "cancel")
+    db.session.commit()
+
+    response = admin_client.post(f"/api/events/{event.id}/complete", json={})
+    assert response.status_code == 409
+
+
+def test_effective_status_on_list_without_db_write(admin_client, seed_company, monkeypatch):
     monkeypatch.setattr("app.services.events.today_moscow", lambda: date(2026, 7, 24))
+    monkeypatch.setattr("app.api.serializers.today_moscow", lambda: date(2026, 7, 24))
 
     event = create_manual_event(
         company_id=seed_company.id,
@@ -94,4 +171,50 @@ def test_overdue_refresh_on_list(admin_client, seed_company, monkeypatch):
     assert response.status_code == 200
     items = response.get_json()["data"]["items"]
     overdue = next(item for item in items if item["id"] == event.id)
-    assert overdue["status"] == EventStatus.OVERDUE.value
+    assert overdue["status"] == EventStatus.PLANNED.value
+    assert overdue["effective_status"] == EventStatus.OVERDUE.value
+
+    db.session.refresh(event)
+    assert event.status == EventStatus.PLANNED.value
+
+
+def test_filter_status_overdue_includes_virtual(admin_client, seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.events.today_moscow", lambda: date(2026, 7, 24))
+    monkeypatch.setattr("app.api.serializers.today_moscow", lambda: date(2026, 7, 24))
+
+    create_manual_event(
+        company_id=seed_company.id,
+        title="Past planned",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 1),
+    )
+    create_manual_event(
+        company_id=seed_company.id,
+        title="Future planned",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 8, 1),
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/events?company_id={seed_company.id}&status=overdue"
+    )
+    assert response.status_code == 200
+    titles = {item["title"] for item in response.get_json()["data"]["items"]}
+    assert "Past planned" in titles
+    assert "Future planned" not in titles
+
+
+def test_effective_event_status_helper(app, seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.events.today_moscow", lambda: date(2026, 7, 24))
+    with app.app_context():
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Helper",
+            event_type=EventType.MANUAL,
+            event_date=date(2026, 7, 1),
+        )
+        db.session.flush()
+        assert effective_event_status(event) == EventStatus.OVERDUE.value
+        event.status = EventStatus.COMPLETED.value
+        assert effective_event_status(event) == EventStatus.COMPLETED.value

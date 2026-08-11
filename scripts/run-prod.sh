@@ -20,6 +20,12 @@ if [[ ! -d "backend/.venv" ]]; then
 fi
 offline_pip_install "$ROOT_DIR/backend/.venv" "$ROOT_DIR/backend/requirements.txt"
 
+# Apply pending Alembic migrations before serving traffic.
+# Set ENSURE_MIGRATIONS=0 to skip (not recommended for offline installs).
+if [[ "${ENSURE_MIGRATIONS:-1}" == "1" ]]; then
+  offline_ensure_migrations "$ROOT_DIR" "prod"
+fi
+
 if [[ ! -f "backend/static/index.html" ]]; then
   if offline_is_install "$ROOT_DIR"; then
     echo "Offline install requires prebuilt frontend in backend/static."

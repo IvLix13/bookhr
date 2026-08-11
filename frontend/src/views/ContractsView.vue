@@ -47,6 +47,7 @@ const columns: ColumnDef<ContractRow>[] = [
         row.renewal_report_event?.event_date ?? null,
         value as string | null,
         todayIso,
+        row.renewal_report_event?.effective_status,
       ).label,
   },
   {
@@ -97,6 +98,7 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
                 row.renewal_report_event.event_date,
                 row.renewal_report_event.status,
                 todayIso,
+                row.renewal_report_event.effective_status,
               ).label
             "
             :variant="
@@ -104,6 +106,7 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
                 row.renewal_report_event.event_date,
                 row.renewal_report_event.status,
                 todayIso,
+                row.renewal_report_event.effective_status,
               ).variant
             "
           />

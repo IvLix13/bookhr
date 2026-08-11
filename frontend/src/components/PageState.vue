@@ -14,14 +14,26 @@ defineEmits<{
 
 <template>
   <div class="page-state" :aria-busy="loading || refreshing ? 'true' : undefined">
-    <div v-if="loading" class="state-message">Загрузка...</div>
-    <div v-else-if="error" class="state-message error">
-      <p>{{ error }}</p>
-      <button class="btn secondary" type="button" @click="$emit('retry')">Повторить</button>
-    </div>
-    <div v-else-if="empty" class="state-message">{{ emptyText ?? 'Нет данных' }}</div>
-    <slot v-else />
-    <div v-if="refreshing" class="refresh-indicator" aria-live="polite">Обновление...</div>
+    <Transition name="fade" mode="out-in">
+      <div v-if="loading" key="loading" class="state-message loading">
+        <span class="spinner" aria-hidden="true"></span>
+        <span>Загрузка...</span>
+      </div>
+      <div v-else-if="error" key="error" class="state-message error">
+        <p>{{ error }}</p>
+        <button class="btn secondary" type="button" @click="$emit('retry')">Повторить</button>
+      </div>
+      <div v-else-if="empty" key="empty" class="state-message">{{ emptyText ?? 'Нет данных' }}</div>
+      <div v-else key="content">
+        <slot />
+      </div>
+    </Transition>
+    <Transition name="fade">
+      <div v-if="refreshing" class="refresh-indicator" aria-live="polite">
+        <span class="spinner spinner-sm" aria-hidden="true"></span>
+        <span>Обновление...</span>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -33,6 +45,24 @@ defineEmits<{
 .state-message {
   color: var(--muted);
   padding: 0.75rem 0;
+}
+
+.state-message.loading {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.refresh-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.spinner-sm {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-width: 2px;
 }
 
 .state-message.error {

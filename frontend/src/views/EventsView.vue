@@ -11,7 +11,7 @@ import type { ColumnDef } from '@/composables/useDataTable'
 import type { EventItem, Paginated, TableQueryState } from '@/types'
 import { formatShortDate } from '@/utils/dates'
 import { labelEventSource, labelEventType } from '@/utils/labels'
-import { getEventStatusMeta } from '@/utils/statuses'
+import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -74,7 +74,7 @@ const columns: ColumnDef<EventItem>[] = [
   {
     key: 'status',
     label: 'Статус',
-    getValue: (row) => row.status,
+    getValue: (row) => resolveEventStatus(row.status, row.effective_status),
     format: (value) => getEventStatusMeta(value as string | null).label,
   },
   {
@@ -159,13 +159,13 @@ async function complete(id: number) {
       >
         <template #cell-status="{ row }">
           <StatusBadge
-            :label="getEventStatusMeta(row.status).label"
-            :variant="getEventStatusMeta(row.status).variant"
+            :label="getEventStatusMeta(resolveEventStatus(row.status, row.effective_status)).label"
+            :variant="getEventStatusMeta(resolveEventStatus(row.status, row.effective_status)).variant"
           />
         </template>
         <template #cell-actions="{ row }">
           <button
-            v-if="auth.canEdit() && row.status !== 'completed'"
+            v-if="auth.canEdit() && resolveEventStatus(row.status, row.effective_status) !== 'completed' && row.status !== 'cancelled'"
             class="btn secondary"
             type="button"
             @click="complete(row.id)"

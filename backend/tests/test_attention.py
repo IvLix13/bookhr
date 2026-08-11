@@ -8,6 +8,7 @@ from app.services.events import create_manual_event
 
 def test_attention_summary_overdue_events(admin_client, seed_company, monkeypatch):
     monkeypatch.setattr("app.services.attention.today_moscow", lambda: date(2026, 7, 24))
+    monkeypatch.setattr("app.services.events.today_moscow", lambda: date(2026, 7, 24))
 
     _, employment = create_person_with_employment(
         company_id=seed_company.id,
@@ -15,7 +16,7 @@ def test_attention_summary_overdue_events(admin_client, seed_company, monkeypatc
         hire_date=date(2020, 1, 1),
         title="Инженер",
     )
-    create_manual_event(
+    event = create_manual_event(
         company_id=seed_company.id,
         title="Overdue task",
         event_type=EventType.MANUAL,
@@ -23,6 +24,7 @@ def test_attention_summary_overdue_events(admin_client, seed_company, monkeypatc
         employment_id=employment.id,
     )
     db.session.commit()
+    assert event.status == "planned"
 
     response = admin_client.get(f"/api/attention?company_id={seed_company.id}&categories=events")
     assert response.status_code == 200
@@ -31,6 +33,9 @@ def test_attention_summary_overdue_events(admin_client, seed_company, monkeypatc
     data = payload["data"]
     assert data["counts"]["events"] >= 1
     assert any(item["category"] == "events" for item in data["items"])
+
+    db.session.refresh(event)
+    assert event.status == "planned"
 
 
 def test_attention_summary_pending_tenure(admin_client, seed_company, monkeypatch):
