@@ -221,8 +221,12 @@ def import_job_to_dict(job: ImportJob) -> dict:
                 "row_number": row.row_number,
                 "action": row.action,
                 "person_uuid": str(row.person_uuid) if row.person_uuid else None,
+                "candidates": row.candidates,
                 "errors": row.errors,
                 "warnings": row.warnings,
+                "result": row.result,
+                "result_message": row.result_message,
+                "full_name": (row.raw_data or {}).get("full_name"),
             }
             for row in job.rows
         ],

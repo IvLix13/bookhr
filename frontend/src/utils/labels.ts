@@ -30,6 +30,7 @@ export const EVENT_SOURCE_LABELS: Record<string, string> = {
 }
 
 export const IMPORT_STATUS_LABELS: Record<string, string> = {
+  uploaded: 'Загружен',
   pending: 'Ожидает проверки',
   validated: 'Проверен',
   confirmed: 'Подтверждён',
@@ -39,7 +40,37 @@ export const IMPORT_STATUS_LABELS: Record<string, string> = {
 export const IMPORT_ACTION_LABELS: Record<string, string> = {
   create: 'Создать',
   update: 'Обновить',
+  ambiguous: 'Дубликат',
+  error: 'Ошибка',
   skip: 'Пропустить',
+}
+
+export const IMPORT_RESULT_LABELS: Record<string, string> = {
+  created: 'Создан',
+  updated: 'Обновлён',
+  skipped: 'Пропущен',
+  error: 'Ошибка',
+}
+
+export const IMPORT_SUMMARY_LABELS: Record<string, string> = {
+  create: 'К созданию',
+  update: 'К обновлению',
+  ambiguous: 'Дубликаты',
+  error: 'Ошибки проверки',
+  created: 'Создано',
+  updated: 'Обновлено',
+  skipped: 'Пропущено',
+  errors: 'Ошибки',
+}
+
+export const IMPORT_SKIP_REASON_LABELS: Record<string, string> = {
+  ambiguous_unresolved: 'Не выбран дубликат',
+  skipped_by_user: 'Пропущено вручную',
+  no_hire_date: 'Нет даты начала работы',
+  no_employment: 'Нет трудоустройства',
+  no_person: 'Не выбран сотрудник',
+  person_not_found: 'Сотрудник не найден',
+  unknown_action: 'Неизвестное действие',
 }
 
 export function labelEventType(value: string | null | undefined): string {
@@ -62,9 +93,23 @@ export function labelImportAction(value: string | null | undefined): string {
   return IMPORT_ACTION_LABELS[value] ?? value
 }
 
+export function labelImportResult(value: string | null | undefined): string {
+  if (!value) return '—'
+  return IMPORT_RESULT_LABELS[value] ?? value
+}
+
+export function labelImportSummaryKey(value: string): string {
+  return IMPORT_SUMMARY_LABELS[value] ?? value
+}
+
+export function labelImportSkipReason(value: string): string {
+  return IMPORT_SKIP_REASON_LABELS[value] ?? value
+}
+
 export const API_MESSAGE_LABELS: Record<string, string> = {
   'full_name and hire_date are required': 'Укажите ФИО и дату начала работы',
   'Import not validated': 'Импорт ещё не прошёл проверку',
+  'Import failed': 'Импорт завершился с ошибкой',
   Forbidden: 'Недостаточно прав для выполнения действия',
   'Not found': 'Запись не найдена',
   'Invalid credentials': 'Неверный логин или пароль',

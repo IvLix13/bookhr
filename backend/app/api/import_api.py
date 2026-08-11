@@ -13,7 +13,7 @@ from app.api.helpers import api_response, get_json, require_roles
 from app.api.serializers import import_job_to_dict
 from app.extensions import db
 from app.models import ImportJob, ImportStatus, RoleName
-from app.services.import_excel import confirm_import, dry_run_import, export_template_with_uuids, parse_workbook
+from app.services.import_excel import confirm_import, dry_run_import, export_template, parse_workbook
 
 
 def register_routes(bp):
@@ -86,5 +86,5 @@ def register_routes(bp):
         upload_dir = Path(current_app.config["UPLOAD_DIR"])
         upload_dir.mkdir(parents=True, exist_ok=True)
         path = upload_dir / f"template_{company_id}.xlsx"
-        export_template_with_uuids(company_id, path)
+        export_template(company_id, path)
         return send_file(path, as_attachment=True, download_name="employees_template.xlsx")

@@ -40,7 +40,10 @@ class ImportRow(db.Model):
     raw_data = db.Column(db.JSON, nullable=False)
     action = db.Column(db.String(32), nullable=True)
     person_uuid = db.Column(db.Uuid, nullable=True)
+    candidates = db.Column(db.JSON, nullable=True)
     errors = db.Column(db.JSON, nullable=True)
     warnings = db.Column(db.JSON, nullable=True)
+    result = db.Column(db.String(32), nullable=True)
+    result_message = db.Column(db.Text, nullable=True)
 
     import_job = db.relationship("ImportJob", back_populates="rows")

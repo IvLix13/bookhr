@@ -187,20 +187,44 @@ export interface NotificationRule {
   send_time_moscow: string
 }
 
+export interface ImportCandidate {
+  uuid: string
+  full_name: string | null
+  title?: string | null
+}
+
 export interface ImportRow {
   id: number
   row_number: number
   action: string | null
   person_uuid: string | null
+  full_name?: string | null
+  candidates?: ImportCandidate[] | null
   errors: string[] | null
   warnings: string[] | null
+  result?: string | null
+  result_message?: string | null
+}
+
+export interface ImportSummaryCounts {
+  create?: number
+  update?: number
+  ambiguous?: number
+  error?: number
+  created?: number
+  updated?: number
+  skipped?: number
+  errors?: number
+  skipped_reasons?: Record<string, number>
+  [key: string]: number | Record<string, number> | undefined
 }
 
 export interface ImportJob {
   id: number
   filename: string
   status: string
-  summary: Record<string, number> | null
+  summary: ImportSummaryCounts | null
+  error_message?: string | null
   created_at: string | null
   rows: ImportRow[]
 }

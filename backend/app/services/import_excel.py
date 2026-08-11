@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import uuid
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -28,18 +29,18 @@ from app.services.employees import (
 from app.services.events import refresh_overdue_events
 from app.services.rule_engine import run_rule_engine
 from app.services.tenure import ensure_tenure_awards
-from app.utils.dates import normalize_full_name
+from app.utils.dates import format_display_date_ru, normalize_full_name, parse_flexible_date
 
 COLUMN_MAP = {
-    "uuid": "uuid",
-    "фio": "full_name",
     "фио": "full_name",
     "full_name": "full_name",
     "должность": "title",
     "title": "title",
     "грейдов по должности": "position_grade",
+    "грейд по должности": "position_grade",
     "position_grade": "position_grade",
     "фактический грейдов": "actual_grade",
+    "фактический грейд": "actual_grade",
     "actual_grade": "actual_grade",
     "вуз": "has_university",
     "has_university": "has_university",
@@ -54,38 +55,37 @@ COLUMN_MAP = {
     "passport_until": "passport_until",
     "№ п/п": "row_num",
     "row_num": "row_num",
-    "грейд по должности": "position_grade",
-    "фактический грейд": "actual_grade",
 }
+
+DATE_FIELDS = {"hire_date", "contract_end", "grade_date", "passport_until"}
 
 
 def _normalize_header(value: str) -> str:
-    return value.strip().lower().replace("  ", " ")
+    return re.sub(r"\s+", " ", value.strip().lower())
 
 
 def _parse_bool(value: Any) -> bool:
+    parsed = _parse_bool_optional(value)
+    return bool(parsed)
+
+
+def _parse_bool_optional(value: Any) -> bool | None:
     if value is None:
-        return False
+        return None
     if isinstance(value, bool):
         return value
     text = str(value).strip().lower()
-    return text in {"да", "yes", "1", "true", "+", "есть"}
+    if not text:
+        return None
+    if text in {"да", "yes", "1", "true", "+", "есть"}:
+        return True
+    if text in {"нет", "no", "0", "false", "-"}:
+        return False
+    return None
 
 
 def _parse_date(value: Any) -> date | None:
-    if value is None or value == "":
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    text = str(value).strip()
-    for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(text, fmt).date()
-        except ValueError:
-            continue
-    return None
+    return parse_flexible_date(value)
 
 
 def _resolve_grade_id(name: str | None) -> int | None:
@@ -94,10 +94,49 @@ def _resolve_grade_id(name: str | None) -> int | None:
     from app.models import GradeCatalog
 
     needle = str(name).strip().lower()
+    if not needle:
+        return None
     for grade in GradeCatalog.query.all():
         if grade.name.strip().lower() == needle:
             return grade.id
     return None
+
+
+def _serialize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
+    serialized: dict[str, Any] = {}
+    for key, value in data.items():
+        if key.startswith("_"):
+            continue
+        if key in DATE_FIELDS:
+            parsed = _parse_date(value)
+            serialized[key] = parsed.isoformat() if parsed else None
+            continue
+        if key == "has_university":
+            optional = _parse_bool_optional(value)
+            if optional is None:
+                serialized[key] = None
+            else:
+                serialized[key] = "Да" if optional else "Нет"
+            continue
+        serialized[key] = None if value is None else str(value)
+    return serialized
+
+
+def _candidate_payload(person: Person) -> dict[str, str | None]:
+    employment = (
+        Employment.query.filter_by(person_id=person.id)
+        .order_by(Employment.hire_date.desc())
+        .first()
+    )
+    title = None
+    if employment:
+        position = get_current_position(employment)
+        title = position.title if position else None
+    return {
+        "uuid": str(person.uuid),
+        "full_name": get_current_name(person),
+        "title": title,
+    }
 
 
 def parse_workbook(path: Path) -> list[dict[str, Any]]:
@@ -115,6 +154,7 @@ def parse_workbook(path: Path) -> list[dict[str, Any]]:
         if not any(row):
             continue
         data = {mapped_headers[i]: row[i] for i in range(len(mapped_headers)) if i < len(row)}
+        data.pop("uuid", None)
         data["_row_number"] = idx
         parsed.append(data)
     return parsed
@@ -129,15 +169,6 @@ def validate_row(data: dict[str, Any]) -> tuple[list[str], list[str]]:
 
     if not _parse_date(data.get("hire_date")):
         errors.append("Не указана или некорректна дата начала работы")
-
-    person_uuid = data.get("uuid")
-    if person_uuid:
-        try:
-            uuid.UUID(str(person_uuid))
-        except ValueError:
-            errors.append("Некорректный UUID")
-    else:
-        warnings.append("UUID отсутствует — потребуется сопоставление")
 
     return errors, warnings
 
@@ -159,29 +190,22 @@ def dry_run_import(job: ImportJob, rows: list[dict[str, Any]]) -> None:
         errors, warnings = validate_row(data)
         action = None
         person_uuid = None
+        candidates: list[dict[str, str | None]] | None = None
 
         if errors:
             action = "error"
             summary["error"] += 1
-        elif data.get("uuid"):
-            person = Person.query.filter_by(uuid=uuid.UUID(str(data["uuid"]))).first()
-            if person:
-                action = "update"
-                person_uuid = person.uuid
-                summary["update"] += 1
-            else:
-                action = "create"
-                summary["create"] += 1
         else:
-            candidates = find_person_candidates(str(data.get("full_name", "")))
-            if len(candidates) == 1:
+            matches = find_person_candidates(str(data.get("full_name", "")))
+            if len(matches) == 1:
                 action = "update"
-                person_uuid = candidates[0].uuid
+                person_uuid = matches[0].uuid
                 summary["update"] += 1
-            elif len(candidates) > 1:
+            elif len(matches) > 1:
                 action = "ambiguous"
+                candidates = [_candidate_payload(person) for person in matches]
                 summary["ambiguous"] += 1
-                warnings.append("Найдено несколько кандидатов")
+                warnings.append("Найдено несколько кандидатов — выберите действие")
             else:
                 action = "create"
                 summary["create"] += 1
@@ -190,9 +214,10 @@ def dry_run_import(job: ImportJob, rows: list[dict[str, Any]]) -> None:
             ImportRow(
                 import_job_id=job.id,
                 row_number=row_number,
-                raw_data={k: str(v) if v is not None else None for k, v in data.items()},
+                raw_data=_serialize_raw_data(data),
                 action=action,
                 person_uuid=person_uuid,
+                candidates=candidates,
                 errors=errors or None,
                 warnings=warnings or None,
             )
@@ -202,44 +227,161 @@ def dry_run_import(job: ImportJob, rows: list[dict[str, Any]]) -> None:
     job.summary = summary
 
 
+def _resolve_row_action(
+    row: ImportRow,
+    row_actions: dict[int, str | None],
+) -> tuple[str | None, uuid.UUID | None]:
+    chosen = row_actions.get(row.id)
+    if chosen is None or chosen == "":
+        return row.action, row.person_uuid
+
+    chosen = str(chosen).strip()
+    if chosen == "skip":
+        return "skip", None
+    if chosen == "create":
+        return "create", None
+    if chosen == "update":
+        return "update", row.person_uuid
+    if chosen.startswith("update:"):
+        raw_uuid = chosen.split(":", 1)[1].strip()
+        return "update", uuid.UUID(raw_uuid)
+    return chosen, row.person_uuid
+
+
+def _mark_row_result(row: ImportRow, result: str, message: str | None = None) -> None:
+    row.result = result
+    row.result_message = message
+
+
+def _upsert_contract(employment: Employment, hire_date: date, contract_end: date) -> None:
+    existing_contract = Contract.query.filter_by(
+        employment_id=employment.id,
+        end_date=contract_end,
+    ).first()
+    if not existing_contract:
+        db.session.add(
+            Contract(
+                employment_id=employment.id,
+                start_date=hire_date,
+                end_date=contract_end,
+                is_active=True,
+            )
+        )
+
+
+def _upsert_grade(employment: Employment, grade_id: int, grade_date: date) -> None:
+    existing = EmployeeGradeHistory.query.filter_by(
+        employment_id=employment.id,
+        grade_id=grade_id,
+        assigned_date=grade_date,
+    ).first()
+    if existing:
+        return
+    db.session.add(
+        EmployeeGradeHistory(
+            employment_id=employment.id,
+            grade_id=grade_id,
+            assigned_date=grade_date,
+        )
+    )
+
+
+def _upsert_passport(person: Person, passport_until: date) -> None:
+    existing = Passport.query.filter_by(
+        person_id=person.id,
+        valid_until=passport_until,
+        is_active=True,
+    ).first()
+    if existing:
+        return
+    db.session.add(
+        Passport(
+            person_id=person.id,
+            valid_until=passport_until,
+            is_active=True,
+        )
+    )
+
+
 def confirm_import(job: ImportJob, row_actions: dict[int, str | None] | None = None) -> None:
     row_actions = row_actions or {}
+    report = {
+        "created": 0,
+        "updated": 0,
+        "skipped": 0,
+        "errors": 0,
+        "skipped_reasons": {},
+    }
+
+    def bump_skip(reason: str) -> None:
+        report["skipped"] += 1
+        reasons = report["skipped_reasons"]
+        reasons[reason] = reasons.get(reason, 0) + 1
+
     try:
         for row in job.rows:
             if row.action == "error":
+                report["errors"] += 1
+                _mark_row_result(row, "error", "Строка содержит ошибки валидации")
                 continue
 
-            action = row_actions.get(row.id, row.action)
-            data = row.raw_data
+            action, person_uuid = _resolve_row_action(row, row_actions)
+
+            if action == "ambiguous":
+                bump_skip("ambiguous_unresolved")
+                _mark_row_result(row, "skipped", "Не выбрано действие для дубликата")
+                continue
+
+            if action == "skip":
+                bump_skip("skipped_by_user")
+                _mark_row_result(row, "skipped", "Пропущено пользователем")
+                continue
+
+            data = row.raw_data or {}
             hire_date = _parse_date(data.get("hire_date"))
             if not hire_date:
+                bump_skip("no_hire_date")
+                _mark_row_result(row, "skipped", "Некорректная дата начала работы")
                 continue
 
             person: Person | None = None
             employment: Employment | None = None
+            created = False
 
-            if action == "update" and row.person_uuid:
-                person = Person.query.filter_by(uuid=row.person_uuid).first()
-                if person:
-                    employment = (
-                        Employment.query.filter_by(
-                            person_id=person.id,
-                            company_id=job.company_id,
-                        )
-                        .order_by(Employment.hire_date.desc())
-                        .first()
+            if action == "update":
+                if not person_uuid:
+                    bump_skip("no_person")
+                    _mark_row_result(row, "skipped", "Не выбран сотрудник для обновления")
+                    continue
+                person = Person.query.filter_by(uuid=person_uuid).first()
+                if not person:
+                    bump_skip("person_not_found")
+                    _mark_row_result(row, "skipped", "Сотрудник для обновления не найден")
+                    continue
+                employment = (
+                    Employment.query.filter_by(
+                        person_id=person.id,
+                        company_id=job.company_id,
                     )
-
-            if action == "create" or person is None:
+                    .order_by(Employment.hire_date.desc())
+                    .first()
+                )
+            elif action == "create":
+                has_university = _parse_bool_optional(data.get("has_university"))
                 person, employment = create_person_with_employment(
                     company_id=job.company_id,
                     full_name=str(data.get("full_name", "")),
                     hire_date=hire_date,
                     title=str(data.get("title") or "Не указана"),
                     position_grade_id=_resolve_grade_id(data.get("position_grade")),
-                    has_university=_parse_bool(data.get("has_university")),
+                    has_university=bool(has_university) if has_university is not None else False,
                 )
                 row.person_uuid = person.uuid
+                created = True
+            else:
+                bump_skip("unknown_action")
+                _mark_row_result(row, "skipped", f"Неизвестное действие: {action}")
+                continue
 
             if employment is None and person:
                 employment = (
@@ -248,51 +390,44 @@ def confirm_import(job: ImportJob, row_actions: dict[int, str | None] | None = N
                     .first()
                 )
 
-            if employment is None:
+            if employment is None or person is None:
+                bump_skip("no_employment")
+                _mark_row_result(row, "skipped", "Не найдено трудоустройство")
                 continue
 
-            person.has_university = _parse_bool(data.get("has_university"))
+            university = _parse_bool_optional(data.get("has_university"))
+            if university is not None:
+                person.has_university = university
 
             contract_end = _parse_date(data.get("contract_end"))
             if contract_end:
-                existing_contract = Contract.query.filter_by(
-                    employment_id=employment.id,
-                    end_date=contract_end,
-                ).first()
-                if not existing_contract:
-                    db.session.add(
-                        Contract(
-                            employment_id=employment.id,
-                            start_date=hire_date,
-                            end_date=contract_end,
-                            is_active=True,
-                        )
-                    )
+                _upsert_contract(employment, hire_date, contract_end)
 
             grade_date = _parse_date(data.get("grade_date"))
             grade_id = _resolve_grade_id(data.get("actual_grade"))
             if grade_id and grade_date:
-                db.session.add(
-                    EmployeeGradeHistory(
-                        employment_id=employment.id,
-                        grade_id=grade_id,
-                        assigned_date=grade_date,
-                    )
-                )
+                _upsert_grade(employment, grade_id, grade_date)
 
             passport_until = _parse_date(data.get("passport_until"))
             if passport_until:
-                db.session.add(
-                    Passport(
-                        person_id=person.id,
-                        valid_until=passport_until,
-                        is_active=True,
-                    )
-                )
+                _upsert_passport(person, passport_until)
 
             ensure_tenure_awards(employment.id, employment.hire_date)
 
+            if created:
+                report["created"] += 1
+                _mark_row_result(row, "created")
+            else:
+                report["updated"] += 1
+                _mark_row_result(row, "updated")
+
+        preview = {
+            key: (job.summary or {}).get(key, 0)
+            for key in ("create", "update", "ambiguous", "error")
+        }
+        job.summary = {**preview, **report}
         job.status = ImportStatus.CONFIRMED.value
+        job.error_message = None
         db.session.flush()
         run_rule_engine(job.company_id)
         refresh_overdue_events(job.company_id)
@@ -305,20 +440,19 @@ def confirm_import(job: ImportJob, row_actions: dict[int, str | None] | None = N
         raise
 
 
-def export_template_with_uuids(company_id: int, path: Path) -> None:
+def export_template(company_id: int, path: Path) -> None:
     wb = Workbook()
     ws = wb.active
     ws.title = "Employees"
     headers = [
         "№ п/п",
-        "UUID",
         "ФИО",
         "Должность",
-        "грейдов по должности",
-        "Фактический грейдов",
+        "Грейд по должности",
+        "Фактический грейд",
         "ВУЗ",
-        "Окончание Договора",
-        "Дата получения текущего грейды",
+        "Окончание договора",
+        "Дата получения текущего грейда",
         "Начало работы",
         "Срок окончания паспорта",
     ]
@@ -337,17 +471,20 @@ def export_template_with_uuids(company_id: int, path: Path) -> None:
         ws.append(
             [
                 idx,
-                str(person.uuid),
                 get_current_name(person),
                 position.title if position else "",
                 position.position_grade.name if position and position.position_grade else "",
                 grade.grade.name if grade else "",
                 "Да" if person.has_university else "Нет",
-                contract.end_date.isoformat() if contract else "",
-                grade.assigned_date.isoformat() if grade else "",
-                employment.hire_date.isoformat(),
-                passport.valid_until.isoformat() if passport else "",
+                format_display_date_ru(contract.end_date) if contract else "",
+                format_display_date_ru(grade.assigned_date) if grade else "",
+                format_display_date_ru(employment.hire_date),
+                format_display_date_ru(passport.valid_until) if passport else "",
             ]
         )
 
     wb.save(path)
+
+
+# Backward-compatible alias for older callers/tests.
+export_template_with_uuids = export_template
