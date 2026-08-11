@@ -30,8 +30,8 @@ async function submit() {
 <template>
   <div class="login-page">
     <form class="card login-card" @submit.prevent="submit">
-      <h1>Bookuchet</h1>
-      <p>Вход в систему учёта кадровых событий</p>
+      <h1>Учет кадровых событий</h1>
+      <p>Вход в систему</p>
       <label>
         Логин
         <input v-model="username" autocomplete="username" required />
@@ -70,7 +70,7 @@ label {
 
 input {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.75rem 0.9rem;
 }
 

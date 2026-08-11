@@ -282,7 +282,7 @@ async function onCreated() {
 
 .item-meta input {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.55rem 0.75rem;
 }
 

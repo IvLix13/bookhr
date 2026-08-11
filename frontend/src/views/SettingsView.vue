@@ -26,7 +26,7 @@ const form = ref({
   escalation_after_days: null as number | null,
   send_time_moscow: '09:00',
 })
-const testMessage = ref('Тестовое уведомление Bookuchet')
+const testMessage = ref('Тестовое уведомление · Учет кадровых событий')
 
 const columns: ColumnDef<NotificationRule>[] = [
   {
@@ -172,7 +172,7 @@ label {
 
 input {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.75rem 0.9rem;
 }
 </style>

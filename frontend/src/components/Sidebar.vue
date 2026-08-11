@@ -38,8 +38,8 @@ const auth = useAuthStore()
     aria-label="Основная навигация"
   >
     <div class="brand-div">
-      <div class="brand">К</div>
-      <span v-if="expanded" class="brand-label">Календарь событий</span>
+      <div class="brand">У</div>
+      <span v-if="expanded" class="brand-label">Учет кадровых событий</span>
     </div>
 
     <nav id="sidebar-nav" class="sidebar-nav">
@@ -181,7 +181,7 @@ const auth = useAuthStore()
   width: 44px;
   height: 44px;
   margin-left: 10px;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: linear-gradient(135deg, #2f6fed, #6ea1ff);
   color: white;
   display: grid;
@@ -191,7 +191,8 @@ const auth = useAuthStore()
 
 .brand-label {
   margin-left: 10px;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.25;
 }
 
 .sidebar-nav {
@@ -212,7 +213,7 @@ const auth = useAuthStore()
   width: 100%;
   height: 44px;
   margin: 0 auto;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: none;
   background: #6ea1ff;
   color: white;

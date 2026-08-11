@@ -39,7 +39,7 @@ const summaryEntries = computed(() => {
   gap: 0.85rem;
   padding: 1rem;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--bg);
 }
 

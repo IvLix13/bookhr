@@ -388,7 +388,7 @@ watch(
 .data-table-search {
   flex: 1 1 240px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.65rem 0.9rem;
 }
 
@@ -438,7 +438,7 @@ watch(
   width: 100%;
   margin-top: 0.45rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 0.35rem 0.55rem;
   font-size: 0.82rem;
 }
@@ -516,7 +516,7 @@ watch(
 
 .per-page select {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 0.35rem 0.55rem;
   background: var(--surface);
 }
