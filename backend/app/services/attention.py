@@ -9,11 +9,10 @@ from app.models import (
     Employment,
     EmploymentStatus,
     Event,
-    EventStatus,
     TenureAward,
 )
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade, get_current_name
-from app.services.events import refresh_overdue_events
+from app.services.events import effectively_overdue_filter
 from app.services.passports import compute_passport_status
 from app.utils.dates import today_moscow
 
@@ -42,9 +41,9 @@ def _attention_item(
 
 
 def _collect_event_items(company_id: int, limit: int) -> list[dict]:
-    refresh_overdue_events(company_id)
     events = (
-        Event.query.filter_by(company_id=company_id, status=EventStatus.OVERDUE.value)
+        Event.query.filter_by(company_id=company_id)
+        .filter(effectively_overdue_filter())
         .order_by(Event.event_date.asc())
         .limit(limit)
         .all()

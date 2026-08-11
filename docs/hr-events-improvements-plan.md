@@ -1,11 +1,11 @@
 # План устранения замечаний по логике кадровых событий
 
-Документ описывает подробный план работ по четырём замечаниям, найденным при
-анализе логики кадровых событий (`Event`) в модулях `backend/app/services/events.py`,
+Документ описывает план работ по четырём замечаниям, найденным при анализе
+логики кадровых событий (`Event`) в модулях `backend/app/services/events.py`,
 `rule_engine.py`, `notifications.py` и `attention.py`.
 
-Задачи упорядочены по возрастанию риска и объёма. Каждая задача самодостаточна и
-может быть выполнена отдельным PR.
+> **Статус:** все четыре пункта реализованы в ветке
+> `cursor/hr-events-plan-and-ui-animations-f192` (см. ниже раздел «Что сделано»).
 
 ---
 
@@ -267,3 +267,34 @@ def refresh_overdue_events(company_id: int | None = None) -> int:
 - Обновление затронутых сериализаторов и типов фронтенда (`frontend/src/types`,
   `frontend/src/utils/statuses.ts`) при изменении API-контракта.
 - Обновление раздела «Кадровые события» в документации при изменении поведения.
+
+---
+
+## Что сделано
+
+### 1. Машина состояний
+- `InvalidEventTransition`, `ALLOWED_TRANSITIONS`, no-op при том же статусе,
+  параметр `force` в `transition_event_status()`.
+- API `complete` / `cancel` / `reopen` возвращают HTTP 409 при недопустимом переходе.
+- Создание события пишет историю с `old_status=None` через `record_event_created()`.
+
+### 2. Единый `rule_key`
+- Функции `contract_rule_key` / `grade_rule_key` / `passport_rule_key` и префиксы
+  `CONTRACT_RULE_PREFIX` и т. д.
+- `process_*` и `_expected_rule_keys` используют одни и те же функции.
+- Инвариант-тест: открытые rule-события ≡ `_expected_rule_keys(employment)`.
+
+### 3. Overdue на чтении (вариант A)
+- `effective_event_status()`, поле `effective_status` в `event_to_dict` и в
+  `renewal_report_event`.
+- GET `/events`, `/events/upcoming` и attention больше не вызывают
+  `refresh_overdue_events()`; фильтр `status=overdue` учитывает виртуальный overdue.
+- Материализация остаётся в `run_rule_engine()`.
+- Фронтенд: `resolveEventStatus()`, отображение через `effective_status`.
+
+### 4. Эскалация уведомлений
+- Поля `escalation_room_token`, `escalation_after_days` + миграция
+  `0004_notification_escalation`.
+- `queue_escalation_for_event()` с идемпотентным ключом `escalate:{event}:{rule}:{bucket}`.
+- Пометка в сообщении `⚠️ ПРОСРОЧЕНО N дн.:`.
+- Настройки в `SettingsView.vue`.

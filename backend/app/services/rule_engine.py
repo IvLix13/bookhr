@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Callable
 
 from app.extensions import db
 from app.models import (
+    Contract,
     Employment,
     EmploymentStatus,
     Event,
@@ -15,13 +17,33 @@ from app.models import (
     Passport,
 )
 from app.services.employees import get_active_contract, get_current_grade, get_current_name
-from app.services.events import refresh_overdue_events, transition_event_status
+from app.services.events import (
+    record_event_created,
+    refresh_overdue_events,
+    transition_event_status,
+)
 from app.services.grades import compute_grade_eligibility
 from app.utils.dates import subtract_months
 
 
 RULE_VERSION = 1
 OPEN_EVENT_STATUSES = {EventStatus.PLANNED.value, EventStatus.OVERDUE.value}
+
+CONTRACT_RULE_PREFIX = "contract-renewal-report"
+GRADE_RULE_PREFIX = "grade-review"
+PASSPORT_RULE_PREFIX = "passport-preparation"
+
+
+def contract_rule_key(contract: Contract) -> str:
+    return f"{CONTRACT_RULE_PREFIX}:{contract.id}:{contract.end_date.isoformat()}"
+
+
+def grade_rule_key(grade_history_id: int, eligible_date: date) -> str:
+    return f"{GRADE_RULE_PREFIX}:{grade_history_id}:{eligible_date.isoformat()}"
+
+
+def passport_rule_key(passport: Passport) -> str:
+    return f"{PASSPORT_RULE_PREFIX}:{passport.id}:{passport.valid_until.isoformat()}"
 
 
 def _upsert_rule_event(
@@ -54,6 +76,7 @@ def _upsert_rule_event(
         event_type=event_type.value,
         description=description,
         event_date=event_date,
+        status=EventStatus.PLANNED.value,
         source=EventSource.RULE.value,
         rule_key=rule_key,
         rule_version=RULE_VERSION,
@@ -62,7 +85,7 @@ def _upsert_rule_event(
     )
     db.session.add(event)
     db.session.flush()
-    transition_event_status(event, EventStatus.PLANNED, "Auto-created by rule engine")
+    record_event_created(event, "Auto-created by rule engine")
     return event
 
 
@@ -73,9 +96,17 @@ def find_contract_renewal_event(contract_id: int) -> Event | None:
             reference_id=contract_id,
             event_type=EventType.REPORT.value,
         )
-        .filter(Event.rule_key.like("contract-renewal-report:%"))
+        .filter(Event.rule_key.like(f"{CONTRACT_RULE_PREFIX}:%"))
         .filter(Event.status.in_(list(OPEN_EVENT_STATUSES)))
         .order_by(Event.event_date.desc())
+        .first()
+    )
+
+
+def _active_passport(employment: Employment) -> Passport | None:
+    return (
+        Passport.query.filter_by(person_id=employment.person_id, is_active=True)
+        .order_by(Passport.valid_until.desc())
         .first()
     )
 
@@ -85,9 +116,7 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
 
     contract = get_active_contract(employment)
     if contract:
-        keys.add(
-            f"contract-renewal-report:{contract.id}:{contract.end_date.isoformat()}"
-        )
+        keys.add(contract_rule_key(contract))
 
     current = get_current_grade(employment)
     if current:
@@ -95,17 +124,11 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
         next_grade = eligibility["next_grade"]
         eligible_date = eligibility["eligible_date"]
         if next_grade and eligible_date:
-            keys.add(f"grade-review:{current.id}:{eligible_date.isoformat()}")
+            keys.add(grade_rule_key(current.id, eligible_date))
 
-    passport = (
-        Passport.query.filter_by(person_id=employment.person_id, is_active=True)
-        .order_by(Passport.valid_until.desc())
-        .first()
-    )
+    passport = _active_passport(employment)
     if passport:
-        keys.add(
-            f"passport-preparation:{passport.id}:{passport.valid_until.isoformat()}"
-        )
+        keys.add(passport_rule_key(passport))
 
     return keys
 
@@ -138,12 +161,11 @@ def process_contract_rules(employment: Employment) -> int:
         return 0
 
     event_date = subtract_months(contract.end_date, 4)
-    rule_key = f"contract-renewal-report:{contract.id}:{contract.end_date.isoformat()}"
     name = get_current_name(employment.person) or "Сотрудник"
     _upsert_rule_event(
         company_id=employment.company_id,
         employment_id=employment.id,
-        rule_key=rule_key,
+        rule_key=contract_rule_key(contract),
         title=f"Подготовить рапорт на продление Договора: {name}",
         event_type=EventType.REPORT,
         event_date=event_date,
@@ -166,13 +188,11 @@ def process_grade_rules(employment: Employment) -> int:
         return 0
 
     event_date = subtract_months(eligible_date, 1)
-
-    rule_key = f"grade-review:{current.id}:{eligible_date.isoformat()}"
     name = get_current_name(employment.person) or "Сотрудник"
     _upsert_rule_event(
         company_id=employment.company_id,
         employment_id=employment.id,
-        rule_key=rule_key,
+        rule_key=grade_rule_key(current.id, eligible_date),
         title=f"Рассмотреть повышение грейды: {name}",
         event_type=EventType.GRADE,
         event_date=event_date,
@@ -186,21 +206,16 @@ def process_grade_rules(employment: Employment) -> int:
 
 
 def process_passport_rules(employment: Employment) -> int:
-    passport = (
-        Passport.query.filter_by(person_id=employment.person_id, is_active=True)
-        .order_by(Passport.valid_until.desc())
-        .first()
-    )
+    passport = _active_passport(employment)
     if not passport:
         return 0
 
     prep_date = subtract_months(passport.valid_until, 3)
-    rule_key = f"passport-preparation:{passport.id}:{passport.valid_until.isoformat()}"
     name = get_current_name(employment.person) or "Сотрудник"
     _upsert_rule_event(
         company_id=employment.company_id,
         employment_id=employment.id,
-        rule_key=rule_key,
+        rule_key=passport_rule_key(passport),
         title=f"Подготовка документов для паспорта: {name}",
         event_type=EventType.PASSPORT,
         event_date=prep_date,
@@ -211,18 +226,21 @@ def process_passport_rules(employment: Employment) -> int:
     return 1
 
 
+# Registry of rule processors keyed by stats field name.
+RULE_PROCESSORS: list[tuple[str, Callable[[Employment], int]]] = [
+    ("contracts", process_contract_rules),
+    ("grades", process_grade_rules),
+    ("passports", process_passport_rules),
+]
+
+
 def recalculate_employment_events(employment: Employment) -> dict[str, int]:
     """Create/update current rule events and cancel superseded open ones."""
     if employment.status != EmploymentStatus.ACTIVE.value:
         cancelled = cancel_stale_rule_events(employment, set())
         return {"contracts": 0, "grades": 0, "passports": 0, "cancelled": cancelled}
 
-    stats = {
-        "contracts": process_contract_rules(employment),
-        "grades": process_grade_rules(employment),
-        "passports": process_passport_rules(employment),
-        "cancelled": 0,
-    }
+    stats = {name: processor(employment) for name, processor in RULE_PROCESSORS}
     stats["cancelled"] = cancel_stale_rule_events(
         employment,
         _expected_rule_keys(employment),

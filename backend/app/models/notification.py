@@ -26,6 +26,8 @@ class NotificationRule(db.Model, TimestampMixin):
     remind_days_before = db.Column(db.Integer, default=0, nullable=False)
     repeat_interval_days = db.Column(db.Integer, default=7, nullable=False)
     overdue_interval_days = db.Column(db.Integer, default=3, nullable=False)
+    escalation_room_token = db.Column(db.String(128), nullable=True)
+    escalation_after_days = db.Column(db.Integer, nullable=True)
     send_time_moscow = db.Column(db.String(5), default="09:00", nullable=False)
 
     company = db.relationship("Company")

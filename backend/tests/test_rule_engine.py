@@ -1,9 +1,30 @@
 from datetime import date
 
 from app.extensions import db
-from app.models import Company, Contract, Employment, Event, EventStatus, Person, PersonNameHistory
+from app.models import (
+    Company,
+    Contract,
+    EmployeeGradeHistory,
+    Employment,
+    Event,
+    EventSource,
+    EventStatus,
+    GradeCatalog,
+    Passport,
+    Person,
+)
 from app.services.employees import create_person_with_employment
-from app.services.rule_engine import find_contract_renewal_event, process_contract_rules, run_rule_engine
+from app.services.grades import compute_grade_eligibility
+from app.services.rule_engine import (
+    _expected_rule_keys,
+    contract_rule_key,
+    find_contract_renewal_event,
+    grade_rule_key,
+    passport_rule_key,
+    process_contract_rules,
+    recalculate_employment_events,
+    run_rule_engine,
+)
 
 
 def test_rule_engine_creates_contract_event(app):
@@ -12,7 +33,7 @@ def test_rule_engine_creates_contract_event(app):
         db.session.add(company)
         db.session.commit()
 
-        person, employment = create_person_with_employment(
+        _person, employment = create_person_with_employment(
             company_id=company.id,
             full_name="Иван Иванов",
             hire_date=date(2020, 1, 1),
@@ -33,6 +54,7 @@ def test_rule_engine_creates_contract_event(app):
         event = Event.query.filter(Event.rule_key.like("contract-renewal-report:%")).first()
         assert event is not None
         assert event.event_date == date(2026, 8, 1)
+        assert event.rule_key == contract_rule_key(contract)
 
 
 def test_create_contract_triggers_renewal_report(hr_client, seed_company):
@@ -109,6 +131,65 @@ def test_completed_renewal_report_is_not_reopened(app):
         assert updated is not None
         assert updated.id != completed_id
         assert updated.status == EventStatus.PLANNED.value
+
+
+def test_rule_key_invariant_matches_generated_events(app):
+    with app.app_context():
+        company = Company(name="Test Co")
+        db.session.add(company)
+        grade = GradeCatalog(name="Джун", rank=1, min_months=12, is_active=True)
+        next_grade = GradeCatalog(name="Мидл", rank=2, min_months=18, is_active=True)
+        db.session.add_all([grade, next_grade])
+        db.session.commit()
+
+        person, employment = create_person_with_employment(
+            company_id=company.id,
+            full_name="Инвариант Тестов",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+        )
+        contract = Contract(
+            employment_id=employment.id,
+            start_date=date(2025, 1, 1),
+            end_date=date(2026, 12, 1),
+            is_active=True,
+        )
+        history = EmployeeGradeHistory(
+            employment_id=employment.id,
+            grade_id=grade.id,
+            assigned_date=date(2025, 1, 1),
+        )
+        passport = Passport(
+            person_id=person.id,
+            series_number="1234 567890",
+            valid_until=date(2027, 6, 1),
+            is_active=True,
+        )
+        db.session.add_all([contract, history, passport])
+        db.session.commit()
+
+        recalculate_employment_events(employment)
+        db.session.commit()
+
+        open_keys = {
+            event.rule_key
+            for event in Event.query.filter_by(
+                employment_id=employment.id,
+                source=EventSource.RULE.value,
+            )
+            .filter(Event.status.in_([EventStatus.PLANNED.value, EventStatus.OVERDUE.value]))
+            .all()
+        }
+        expected = _expected_rule_keys(employment)
+        assert open_keys == expected
+
+        eligibility = compute_grade_eligibility(employment)
+        assert contract_rule_key(contract) in expected
+        assert grade_rule_key(history.id, eligibility["eligible_date"]) in expected
+        assert passport_rule_key(passport) in expected
+
+        stats = run_rule_engine(company.id)
+        assert stats["cancelled"] == 0
 
 
 def test_rehire_keeps_person_uuid(app):

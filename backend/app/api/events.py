@@ -21,7 +21,12 @@ from app.api.helpers import (
 from app.api.serializers import event_to_dict
 from app.extensions import db
 from app.models import Event, EventStatus, EventType, RoleName
-from app.services.events import create_manual_event, refresh_overdue_events, transition_event_status
+from app.services.events import (
+    InvalidEventTransition,
+    apply_status_filter,
+    create_manual_event,
+    transition_event_status,
+)
 
 
 EVENT_SORT_FIELDS = {
@@ -49,15 +54,12 @@ def register_routes(bp):
             default_direction="asc",
         )
 
-        refresh_overdue_events(company_id)
-
         query = Event.query.filter_by(company_id=company_id)
         if date_from:
             query = query.filter(Event.event_date >= date.fromisoformat(date_from))
         if date_to:
             query = query.filter(Event.event_date <= date.fromisoformat(date_to))
-        if status:
-            query = query.filter_by(status=status)
+        query = apply_status_filter(query, status)
         if event_type:
             query = query.filter_by(event_type=event_type)
 
@@ -71,7 +73,6 @@ def register_routes(bp):
     def upcoming_events():
         company_id = request.args.get("company_id", 1, type=int)
         limit = request.args.get("limit", 10, type=int)
-        refresh_overdue_events(company_id)
 
         events = (
             Event.query.filter_by(company_id=company_id)
@@ -106,11 +107,14 @@ def register_routes(bp):
         if not event:
             return api_response(message="Not found", status=404)
         payload = get_json()
-        transition_event_status(
-            event,
-            EventStatus.COMPLETED,
-            payload.get("comment"),
-        )
+        try:
+            transition_event_status(
+                event,
+                EventStatus.COMPLETED,
+                payload.get("comment"),
+            )
+        except InvalidEventTransition as exc:
+            return api_response(message=str(exc), status=409)
         db.session.commit()
         return api_response(event_to_dict(event))
 
@@ -121,11 +125,14 @@ def register_routes(bp):
         if not event:
             return api_response(message="Not found", status=404)
         payload = get_json()
-        transition_event_status(
-            event,
-            EventStatus.CANCELLED,
-            payload.get("comment"),
-        )
+        try:
+            transition_event_status(
+                event,
+                EventStatus.CANCELLED,
+                payload.get("comment"),
+            )
+        except InvalidEventTransition as exc:
+            return api_response(message=str(exc), status=409)
         db.session.commit()
         return api_response(event_to_dict(event))
 
@@ -135,6 +142,14 @@ def register_routes(bp):
         event = db.session.get(Event, event_id)
         if not event:
             return api_response(message="Not found", status=404)
-        transition_event_status(event, EventStatus.PLANNED, "Reopened by admin")
+        try:
+            transition_event_status(
+                event,
+                EventStatus.PLANNED,
+                "Reopened by admin",
+                force=True,
+            )
+        except InvalidEventTransition as exc:
+            return api_response(message=str(exc), status=409)
         db.session.commit()
         return api_response(event_to_dict(event))

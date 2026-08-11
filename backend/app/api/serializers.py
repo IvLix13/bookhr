@@ -23,6 +23,7 @@ from app.services.employees import (
     get_current_name,
     get_current_position,
 )
+from app.services.events import effective_event_status
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status, passport_days_left
 from app.services.rule_engine import find_contract_renewal_event
@@ -110,6 +111,7 @@ def contract_to_dict(contract: Contract) -> dict:
             "id": renewal_event.id,
             "event_date": renewal_event.event_date.isoformat(),
             "status": renewal_event.status,
+            "effective_status": effective_event_status(renewal_event, today),
         }
         if renewal_event
         else None,
@@ -190,6 +192,7 @@ def event_to_dict(event: Event) -> dict:
         "description": event.description,
         "event_date": event.event_date.isoformat(),
         "status": event.status,
+        "effective_status": effective_event_status(event),
         "source": event.source,
         "employment_id": event.employment_id,
         "reference_type": event.reference_type,
@@ -236,5 +239,7 @@ def notification_rule_to_dict(rule: NotificationRule) -> dict:
         "remind_days_before": rule.remind_days_before,
         "repeat_interval_days": rule.repeat_interval_days,
         "overdue_interval_days": rule.overdue_interval_days,
+        "escalation_room_token": rule.escalation_room_token,
+        "escalation_after_days": rule.escalation_after_days,
         "send_time_moscow": rule.send_time_moscow,
     }

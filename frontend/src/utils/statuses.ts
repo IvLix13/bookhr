@@ -48,6 +48,14 @@ export function getEventStatusMeta(status: string | null | undefined): StatusMet
   return { label: status, variant: '' }
 }
 
+/** Prefer effective_status (virtual overdue) when present. */
+export function resolveEventStatus(
+  status: string | null | undefined,
+  effectiveStatus?: string | null,
+): string {
+  return effectiveStatus || status || ''
+}
+
 export function getRewardStatusMeta(status: string | null | undefined): StatusMeta {
   if (!status) return { label: '—', variant: '' }
   switch (status) {
@@ -68,23 +76,26 @@ export function getContractReportDisplayMeta(
   eventDate: string | null | undefined,
   eventStatus: string | null | undefined,
   todayIso: string,
+  effectiveStatus?: string | null,
 ): StatusMeta {
   if (!eventDate || !eventStatus) {
     return { label: '—', variant: '' }
   }
 
-  if (eventStatus === 'completed') {
+  const status = resolveEventStatus(eventStatus, effectiveStatus)
+
+  if (status === 'completed') {
     return { label: 'Выполнено', variant: 'success' }
   }
-  if (eventStatus === 'overdue') {
+  if (status === 'overdue') {
     return { label: 'Просрочено', variant: 'danger' }
   }
-  if (eventStatus === 'planned' && eventDate > todayIso) {
+  if (status === 'planned' && eventDate > todayIso) {
     return { label: 'Срок не наступил', variant: '' }
   }
-  if (eventStatus === 'planned') {
+  if (status === 'planned') {
     return { label: 'Запланировано', variant: 'warning' }
   }
 
-  return getEventStatusMeta(eventStatus)
+  return getEventStatusMeta(status)
 }

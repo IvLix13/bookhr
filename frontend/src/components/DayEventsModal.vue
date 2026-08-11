@@ -8,7 +8,7 @@ import type { EventItem, Paginated } from '@/types'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { formatDisplayDate } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
-import { getEventStatusMeta } from '@/utils/statuses'
+import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
@@ -152,8 +152,8 @@ async function onCreated() {
             <div class="item-meta">
               <span class="badge">{{ labelEventType(event.event_type) }}</span>
               <StatusBadge
-                :label="getEventStatusMeta(event.status).label"
-                :variant="getEventStatusMeta(event.status).variant"
+                :label="getEventStatusMeta(resolveEventStatus(event.status, event.effective_status)).label"
+                :variant="getEventStatusMeta(resolveEventStatus(event.status, event.effective_status)).variant"
               />
               <template v-if="auth.canEdit() && event.status !== 'completed' && event.status !== 'cancelled'">
                 <input

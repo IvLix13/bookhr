@@ -55,6 +55,7 @@ export interface EventItem {
   description: string | null
   event_date: string
   status: string
+  effective_status?: string
   source: string
   employment_id: number | null
   employee_name: string | null
@@ -76,6 +77,7 @@ export interface ContractRow {
     id: number
     event_date: string
     status: string
+    effective_status?: string
   } | null
 }
 
@@ -180,6 +182,8 @@ export interface NotificationRule {
   remind_days_before: number
   repeat_interval_days: number
   overdue_interval_days: number
+  escalation_room_token: string | null
+  escalation_after_days: number | null
   send_time_moscow: string
 }
 
