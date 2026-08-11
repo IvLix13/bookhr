@@ -1,10 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import AttentionPanel from '@/components/AttentionPanel.vue'
+import CalendarFeedPanel from '@/components/CalendarFeedPanel.vue'
 import DayEventsModal from '@/components/DayEventsModal.vue'
 import MonthCalendar from '@/components/MonthCalendar.vue'
 import PageState from '@/components/PageState.vue'
-import UpcomingPanel from '@/components/UpcomingPanel.vue'
 import { api } from '@/api/client'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import type { EventItem, Paginated } from '@/types'
@@ -51,7 +50,6 @@ onMounted(loadEvents)
 
 <template>
   <div class="calendar-page">
-    <AttentionPanel />
     <PageState
       :loading="calendarResource.isLoading()"
       :refreshing="calendarResource.isRefreshing()"
@@ -65,8 +63,8 @@ onMounted(loadEvents)
         @change-month="(value: Date) => { month = value; loadEvents() }"
         @select-day="openDay"
       />
-      <UpcomingPanel :events="upcoming" :loading="calendarResource.isBusy()" />
     </PageState>
+    <CalendarFeedPanel :events="upcoming" :loading="calendarResource.isBusy()" />
     <DayEventsModal
       :open="dayModalOpen"
       :date="selectedDate ?? formatLocalDate(new Date())"
