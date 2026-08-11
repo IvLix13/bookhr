@@ -13,7 +13,7 @@ from app.api.helpers import api_response, get_json, require_roles
 from app.api.serializers import import_job_to_dict
 from app.extensions import db
 from app.models import ImportJob, ImportStatus, RoleName
-from app.services.import_excel import confirm_import, dry_run_import, export_template_with_uuids, parse_workbook
+from app.services.import_excel import confirm_import, dry_run_import, export_template, parse_workbook
 
 
 def register_routes(bp):
@@ -60,7 +60,15 @@ def register_routes(bp):
 
         payload = get_json()
         row_actions = {int(k): v for k, v in payload.get("row_actions", {}).items()}
-        confirm_import(job, row_actions)
+        try:
+            confirm_import(job, row_actions)
+        except Exception:  # noqa: BLE001 — job is marked FAILED inside confirm_import
+            current_app.logger.exception("Import confirm failed for job %s", job_id)
+            return api_response(
+                import_job_to_dict(job),
+                message="Import failed",
+                status=500,
+            )
         return api_response(import_job_to_dict(job))
 
     @bp.get("/import/<int:job_id>")
@@ -78,5 +86,5 @@ def register_routes(bp):
         upload_dir = Path(current_app.config["UPLOAD_DIR"])
         upload_dir.mkdir(parents=True, exist_ok=True)
         path = upload_dir / f"template_{company_id}.xlsx"
-        export_template_with_uuids(company_id, path)
+        export_template(company_id, path)
         return send_file(path, as_attachment=True, download_name="employees_template.xlsx")

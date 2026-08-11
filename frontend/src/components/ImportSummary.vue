@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { labelImportStatus } from '@/utils/labels'
+import {
+  labelImportSkipReason,
+  labelImportStatus,
+  labelImportSummaryKey,
+} from '@/utils/labels'
 import type { ImportJob } from '@/types'
 
 const props = defineProps<{
@@ -9,7 +13,15 @@ const props = defineProps<{
 
 const summaryEntries = computed(() => {
   if (!props.job.summary) return []
-  return Object.entries(props.job.summary)
+  return Object.entries(props.job.summary).filter(
+    ([key, value]) => key !== 'skipped_reasons' && typeof value === 'number',
+  ) as Array<[string, number]>
+})
+
+const skipReasons = computed(() => {
+  const reasons = props.job.summary?.skipped_reasons
+  if (!reasons) return []
+  return Object.entries(reasons)
 })
 </script>
 
@@ -20,16 +32,23 @@ const summaryEntries = computed(() => {
         <h3>{{ job.filename }}</h3>
         <p>Статус: {{ labelImportStatus(job.status) }}</p>
         <p v-if="job.created_at" class="meta">Загружен: {{ job.created_at }}</p>
+        <p v-if="job.error_message" class="error">{{ job.error_message }}</p>
       </div>
       <span class="badge">{{ job.rows.length }} строк</span>
     </div>
 
     <dl v-if="summaryEntries.length" class="summary-grid">
       <template v-for="[key, value] in summaryEntries" :key="key">
-        <dt>{{ key }}</dt>
+        <dt>{{ labelImportSummaryKey(key) }}</dt>
         <dd>{{ value }}</dd>
       </template>
     </dl>
+
+    <ul v-if="skipReasons.length" class="skip-reasons">
+      <li v-for="[reason, count] in skipReasons" :key="reason">
+        {{ labelImportSkipReason(reason) }}: {{ count }}
+      </li>
+    </ul>
   </section>
 </template>
 
@@ -64,6 +83,10 @@ const summaryEntries = computed(() => {
   font-size: 0.9rem;
 }
 
+.error {
+  color: var(--danger);
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
@@ -79,5 +102,12 @@ const summaryEntries = computed(() => {
 .summary-grid dd {
   margin: 0.15rem 0 0;
   font-weight: 600;
+}
+
+.skip-reasons {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 </style>
