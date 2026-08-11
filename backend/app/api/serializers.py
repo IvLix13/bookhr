@@ -57,6 +57,7 @@ def employment_to_dict(employment: Employment) -> dict:
     passport = get_active_passport(person)
     today = today_moscow()
     eligibility = compute_grade_eligibility(employment, today)
+    latest_reward = _latest_reward(employment)
 
     return {
         "id": employment.id,
@@ -82,7 +83,15 @@ def employment_to_dict(employment: Employment) -> dict:
         else None,
         "passport_days_left": passport_days_left(passport.valid_until) if passport else None,
         "tenure_years": tenure_years(employment.hire_date, today),
+        "reward_status": latest_reward.status if latest_reward else None,
     }
+
+
+def _latest_reward(employment: Employment) -> Reward | None:
+    rewards = list(employment.rewards)
+    if not rewards:
+        return None
+    return max(rewards, key=lambda reward: (reward.updated_at, reward.id))
 
 
 def contract_to_dict(contract: Contract) -> dict:

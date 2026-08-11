@@ -37,6 +37,7 @@ export interface Employee {
   passport_status: string | null
   passport_days_left: number | null
   tenure_years: number
+  reward_status: RewardStatus | null
 }
 
 export interface Grade {

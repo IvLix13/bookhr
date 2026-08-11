@@ -1,6 +1,7 @@
 from datetime import date
 
 from app.extensions import db
+from app.models import Reward, RewardStatus
 from app.services.employees import create_person_with_employment
 
 
@@ -50,6 +51,44 @@ def test_employees_list_search_by_name(admin_client, seed_company):
     items = response.get_json()["data"]["items"]
     assert len(items) == 1
     assert items[0]["full_name"] == "Уникальное Имя Тест"
+
+
+def test_employees_list_includes_latest_reward_status(admin_client, seed_company):
+    _, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="С наградой",
+        hire_date=date(2020, 1, 1),
+        title="Инженер",
+    )
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Без награды",
+        hire_date=date(2020, 2, 1),
+        title="Аналитик",
+    )
+    db.session.add(
+        Reward(
+            employment_id=employment.id,
+            reward_type="Благодарность",
+            status=RewardStatus.IN_HR.value,
+        )
+    )
+    db.session.flush()
+    db.session.add(
+        Reward(
+            employment_id=employment.id,
+            reward_type="Премия",
+            status=RewardStatus.NOT_DELIVERED.value,
+        )
+    )
+    db.session.commit()
+
+    response = admin_client.get(f"/api/employees?company_id={seed_company.id}&q=наград")
+    assert response.status_code == 200
+    items = {item["full_name"]: item for item in response.get_json()["data"]["items"]}
+
+    assert items["С наградой"]["reward_status"] == RewardStatus.NOT_DELIVERED.value
+    assert items["Без награды"]["reward_status"] is None
 
 
 def test_employees_list_requires_auth(client):

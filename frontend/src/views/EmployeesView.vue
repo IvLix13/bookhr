@@ -11,7 +11,7 @@ import type { ColumnDef } from '@/composables/useDataTable'
 import type { Employee, Paginated, TableQueryState } from '@/types'
 import { useAuthStore } from '@/stores/auth'
 import { formatShortDate } from '@/utils/dates'
-import { getPassportStatusMeta } from '@/utils/statuses'
+import { getPassportStatusMeta, getRewardStatusMeta } from '@/utils/statuses'
 
 const route = useRoute()
 const auth = useAuthStore()
@@ -83,6 +83,13 @@ const columns: ColumnDef<Employee>[] = [
     label: 'Паспорт',
     getValue: (row) => row.passport_until,
     format: (value) => formatShortDate(value as string | null),
+  },
+  {
+    key: 'reward_status',
+    label: 'Поощрение',
+    getValue: (row) => row.reward_status,
+    format: (value) => getRewardStatusMeta(value as string | null).label,
+    sortable: false,
   },
   {
     key: 'actions',
@@ -196,6 +203,12 @@ async function removeEmployee(row: Employee) {
           <StatusBadge
             :label="formatShortDate(row.passport_until)"
             :variant="getPassportStatusMeta(row.passport_status).variant"
+          />
+        </template>
+        <template #cell-reward_status="{ row }">
+          <StatusBadge
+            :label="getRewardStatusMeta(row.reward_status).label"
+            :variant="getRewardStatusMeta(row.reward_status).variant"
           />
         </template>
         <template #cell-actions="{ row }">
