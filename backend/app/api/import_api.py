@@ -60,7 +60,15 @@ def register_routes(bp):
 
         payload = get_json()
         row_actions = {int(k): v for k, v in payload.get("row_actions", {}).items()}
-        confirm_import(job, row_actions)
+        try:
+            confirm_import(job, row_actions)
+        except Exception:  # noqa: BLE001 — job is marked FAILED inside confirm_import
+            current_app.logger.exception("Import confirm failed for job %s", job_id)
+            return api_response(
+                import_job_to_dict(job),
+                message="Import failed",
+                status=500,
+            )
         return api_response(import_job_to_dict(job))
 
     @bp.get("/import/<int:job_id>")

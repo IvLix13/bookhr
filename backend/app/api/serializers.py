@@ -213,6 +213,7 @@ def import_job_to_dict(job: ImportJob) -> dict:
         "filename": job.filename,
         "status": job.status,
         "summary": job.summary,
+        "error_message": job.error_message,
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "rows": [
             {

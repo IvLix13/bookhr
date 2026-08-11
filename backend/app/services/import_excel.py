@@ -204,98 +204,105 @@ def dry_run_import(job: ImportJob, rows: list[dict[str, Any]]) -> None:
 
 def confirm_import(job: ImportJob, row_actions: dict[int, str | None] | None = None) -> None:
     row_actions = row_actions or {}
-    for row in job.rows:
-        if row.action == "error":
-            continue
+    try:
+        for row in job.rows:
+            if row.action == "error":
+                continue
 
-        action = row_actions.get(row.id, row.action)
-        data = row.raw_data
-        hire_date = _parse_date(data.get("hire_date"))
-        if not hire_date:
-            continue
+            action = row_actions.get(row.id, row.action)
+            data = row.raw_data
+            hire_date = _parse_date(data.get("hire_date"))
+            if not hire_date:
+                continue
 
-        person: Person | None = None
-        employment: Employment | None = None
+            person: Person | None = None
+            employment: Employment | None = None
 
-        if action == "update" and row.person_uuid:
-            person = Person.query.filter_by(uuid=row.person_uuid).first()
-            if person:
-                employment = (
-                    Employment.query.filter_by(
-                        person_id=person.id,
-                        company_id=job.company_id,
+            if action == "update" and row.person_uuid:
+                person = Person.query.filter_by(uuid=row.person_uuid).first()
+                if person:
+                    employment = (
+                        Employment.query.filter_by(
+                            person_id=person.id,
+                            company_id=job.company_id,
+                        )
+                        .order_by(Employment.hire_date.desc())
+                        .first()
                     )
+
+            if action == "create" or person is None:
+                person, employment = create_person_with_employment(
+                    company_id=job.company_id,
+                    full_name=str(data.get("full_name", "")),
+                    hire_date=hire_date,
+                    title=str(data.get("title") or "Не указана"),
+                    position_grade_id=_resolve_grade_id(data.get("position_grade")),
+                    has_university=_parse_bool(data.get("has_university")),
+                )
+                row.person_uuid = person.uuid
+
+            if employment is None and person:
+                employment = (
+                    Employment.query.filter_by(person_id=person.id, company_id=job.company_id)
                     .order_by(Employment.hire_date.desc())
                     .first()
                 )
 
-        if action == "create" or person is None:
-            person, employment = create_person_with_employment(
-                company_id=job.company_id,
-                full_name=str(data.get("full_name", "")),
-                hire_date=hire_date,
-                title=str(data.get("title") or "Не указана"),
-                position_grade_id=_resolve_grade_id(data.get("position_grade")),
-                has_university=_parse_bool(data.get("has_university")),
-            )
-            row.person_uuid = person.uuid
+            if employment is None:
+                continue
 
-        if employment is None and person:
-            employment = (
-                Employment.query.filter_by(person_id=person.id, company_id=job.company_id)
-                .order_by(Employment.hire_date.desc())
-                .first()
-            )
+            person.has_university = _parse_bool(data.get("has_university"))
 
-        if employment is None:
-            continue
+            contract_end = _parse_date(data.get("contract_end"))
+            if contract_end:
+                existing_contract = Contract.query.filter_by(
+                    employment_id=employment.id,
+                    end_date=contract_end,
+                ).first()
+                if not existing_contract:
+                    db.session.add(
+                        Contract(
+                            employment_id=employment.id,
+                            start_date=hire_date,
+                            end_date=contract_end,
+                            is_active=True,
+                        )
+                    )
 
-        person.has_university = _parse_bool(data.get("has_university"))
-
-        contract_end = _parse_date(data.get("contract_end"))
-        if contract_end:
-            existing_contract = Contract.query.filter_by(
-                employment_id=employment.id,
-                end_date=contract_end,
-            ).first()
-            if not existing_contract:
+            grade_date = _parse_date(data.get("grade_date"))
+            grade_id = _resolve_grade_id(data.get("actual_grade"))
+            if grade_id and grade_date:
                 db.session.add(
-                    Contract(
+                    EmployeeGradeHistory(
                         employment_id=employment.id,
-                        start_date=hire_date,
-                        end_date=contract_end,
+                        grade_id=grade_id,
+                        assigned_date=grade_date,
+                    )
+                )
+
+            passport_until = _parse_date(data.get("passport_until"))
+            if passport_until:
+                db.session.add(
+                    Passport(
+                        person_id=person.id,
+                        valid_until=passport_until,
                         is_active=True,
                     )
                 )
 
-        grade_date = _parse_date(data.get("grade_date"))
-        grade_id = _resolve_grade_id(data.get("actual_grade"))
-        if grade_id and grade_date:
-            db.session.add(
-                EmployeeGradeHistory(
-                    employment_id=employment.id,
-                    grade_id=grade_id,
-                    assigned_date=grade_date,
-                )
-            )
+            ensure_tenure_awards(employment.id, employment.hire_date)
 
-        passport_until = _parse_date(data.get("passport_until"))
-        if passport_until:
-            db.session.add(
-                Passport(
-                    person_id=person.id,
-                    valid_until=passport_until,
-                    is_active=True,
-                )
-            )
-
-        ensure_tenure_awards(employment.id, employment.hire_date)
-
-    job.status = ImportStatus.CONFIRMED.value
-    db.session.flush()
-    run_rule_engine(job.company_id)
-    refresh_overdue_events(job.company_id)
-    db.session.commit()
+        job.status = ImportStatus.CONFIRMED.value
+        db.session.flush()
+        run_rule_engine(job.company_id)
+        refresh_overdue_events(job.company_id)
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        job.status = ImportStatus.FAILED.value
+        job.error_message = str(exc)
+        db.session.commit()
+        raise
 
 
 def export_template_with_uuids(company_id: int, path: Path) -> None:
