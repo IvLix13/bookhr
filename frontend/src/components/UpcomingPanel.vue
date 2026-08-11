@@ -3,15 +3,19 @@ import type { EventItem } from '@/types'
 import { formatShortDate } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
 
-defineProps<{
-  events: EventItem[]
-  loading?: boolean
-}>()
+withDefaults(
+  defineProps<{
+    events: EventItem[]
+    loading?: boolean
+    embedded?: boolean
+  }>(),
+  { embedded: false },
+)
 </script>
 
 <template>
-  <section class="upcoming card">
-    <header>
+  <section class="upcoming" :class="{ card: !embedded, embedded }">
+    <header v-if="!embedded">
       <h3>Ближайшие события</h3>
     </header>
     <div v-if="loading" class="empty">Загрузка...</div>
@@ -36,6 +40,10 @@ defineProps<{
 <style scoped>
 .upcoming {
   padding: 1rem 1.2rem;
+}
+
+.upcoming.embedded {
+  padding: 0;
 }
 
 header h3 {

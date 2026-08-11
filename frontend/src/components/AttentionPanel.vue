@@ -11,6 +11,13 @@ import {
   type BackendAttentionItem,
 } from '@/utils/attention'
 
+withDefaults(
+  defineProps<{
+    embedded?: boolean
+  }>(),
+  { embedded: false },
+)
+
 interface AttentionPayload {
   total: number
   counts: Record<string, number>
@@ -60,10 +67,10 @@ onMounted(() => {
 </script>
 
 <template>
-  <section class="attention card">
+  <section class="attention" :class="{ card: !embedded, embedded }">
     <header class="attention-header">
       <div>
-        <h3>Требует внимания</h3>
+        <h3 v-if="!embedded">Требует внимания</h3>
         <p v-if="summary">Всего: {{ summary.total }}</p>
       </div>
       <button
@@ -125,12 +132,20 @@ onMounted(() => {
   padding: 1rem 1.2rem;
 }
 
+.attention.embedded {
+  padding: 0;
+}
+
 .attention-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 0.75rem;
+}
+
+.attention.embedded .attention-header {
+  align-items: center;
 }
 
 .attention-header h3 {
