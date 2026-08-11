@@ -10,7 +10,12 @@
   --warning: #d18b00;
   --success: #1f8a55;
   --shadow: 0 10px 30px rgba(20, 28, 45, 0.08);
+  --radius-xs: 3px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 12px;
   --radius: 14px;
+  --radius-pill: 999px;
   --sidebar-width-collapsed: 84px;
   --sidebar-width-expanded: 240px;
   --sidebar-width: var(--sidebar-width-collapsed);
@@ -175,16 +180,6 @@ a {
   }
 }
 
-@keyframes pulse-attention {
-  0%,
-  100% {
-    box-shadow: 0 0 0 0 rgba(214, 69, 69, 0.35);
-  }
-  50% {
-    box-shadow: 0 0 0 5px rgba(214, 69, 69, 0);
-  }
-}
-
 /* Reusable animated spinner */
 .spinner {
   display: inline-block;
@@ -199,7 +194,7 @@ a {
 
 /* Skeleton shimmer placeholder */
 .skeleton {
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: linear-gradient(
     90deg,
     var(--border) 25%,
@@ -229,7 +224,7 @@ a {
 
 .btn {
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.65rem 1rem;
   background: var(--accent);
   color: white;
@@ -294,16 +289,11 @@ a {
   display: inline-flex;
   align-items: center;
   padding: 0.2rem 0.55rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-size: 0.65rem;
   background: var(--accent-soft);
   color: var(--accent);
   animation: pop-in var(--transition-slow) var(--ease-out) both;
-}
-
-.badge.danger {
-  animation: pop-in var(--transition-slow) var(--ease-out) both,
-    pulse-attention 2s ease-in-out 0.4s infinite;
 }
 
 .badge.warning {
@@ -324,7 +314,7 @@ a {
 .data-table-search,
 .column-filter {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 .table th.sortable {

@@ -18,8 +18,7 @@ const { sidebarExpanded } = storeToRefs(ui)
     <main id="main-content">
       <header class="topbar">
         <div>
-          <h1>Книга оперативного учета</h1>
-          <p>Оперативный учёт кадровых событий</p>
+          <h1>Учет кадровых событий</h1>
         </div>
         <div class="topbar-actions">
           <GlobalSearch />
@@ -65,7 +64,7 @@ main {
   background: var(--surface);
   color: var(--text);
   padding: 0.5rem 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   z-index: 3000;
 }
 
@@ -85,11 +84,6 @@ main {
 .topbar h1 {
   margin: 0;
   font-size: 1.5rem;
-}
-
-.topbar p {
-  margin: 0.2rem 0 0;
-  color: var(--muted);
 }
 
 .topbar-actions {

@@ -44,7 +44,7 @@ const toast = useToastStore()
   align-items: start;
   gap: 0.75rem;
   padding: 0.85rem 1rem;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   border: 1px solid var(--border);
   background: var(--surface);
   box-shadow: var(--shadow);

@@ -289,7 +289,7 @@ const tenureChart = computed(() => {
 
 .period-form input {
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.65rem 0.8rem;
 }
 

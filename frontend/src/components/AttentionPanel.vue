@@ -161,7 +161,7 @@ onMounted(() => {
   align-items: center;
   gap: 0.45rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 0.25rem 0.65rem;
   font-size: 0.85rem;
   transition: background var(--transition), transform var(--transition),
@@ -193,7 +193,7 @@ onMounted(() => {
   gap: 0.75rem;
   padding: 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   transition: background var(--transition), transform var(--transition),
     box-shadow var(--transition);
 }

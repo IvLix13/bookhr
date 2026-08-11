@@ -27,7 +27,7 @@ defineProps<{
   align-items: center;
   justify-content: center;
   padding: 0.85rem 0.35rem;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   color: var(--muted);
   transition: background var(--transition), color var(--transition), transform var(--transition);
 }
@@ -39,7 +39,7 @@ defineProps<{
   top: 50%;
   width: 3px;
   height: 60%;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
   background: var(--accent);
   transform: translateY(-50%) scaleY(0);
   transform-origin: center;

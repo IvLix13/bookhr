@@ -222,7 +222,7 @@ onUnmounted(() => {
   gap: 0.75rem;
   min-width: 220px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.55rem 0.85rem;
   background: var(--surface);
   color: var(--muted);
@@ -236,7 +236,7 @@ onUnmounted(() => {
 .search-trigger kbd {
   font-size: 0.75rem;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0.1rem 0.35rem;
   color: var(--muted);
   background: var(--bg);
@@ -268,7 +268,7 @@ onUnmounted(() => {
 .search-input {
   flex: 1;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   padding: 0.75rem 0.9rem;
 }
 
@@ -301,7 +301,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 0.75rem;
   padding: 0.65rem 0.75rem;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 
