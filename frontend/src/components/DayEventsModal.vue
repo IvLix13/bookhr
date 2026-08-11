@@ -122,8 +122,9 @@ async function onCreated() {
 
 <template>
   <Teleport to="body">
-    <div v-if="open" class="overlay" @click.self="closeModal">
-      <section
+    <Transition name="modal">
+      <div v-if="open" class="overlay" @click.self="closeModal">
+        <section
         ref="modalRef"
         class="modal card"
         role="dialog"
@@ -138,10 +139,10 @@ async function onCreated() {
           <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">×</button>
         </header>
 
-        <div v-if="loading" class="state">Загрузка...</div>
+        <div v-if="loading" class="state"><span class="spinner"></span> Загрузка...</div>
         <div v-else-if="error" class="state error">{{ error }}</div>
 
-        <ul v-else-if="events.length" class="list">
+        <TransitionGroup v-else-if="events.length" tag="ul" name="list" class="list">
           <li v-for="event in events" :key="event.id" class="item">
             <div class="item-main">
               <strong>{{ event.title }}</strong>
@@ -172,7 +173,7 @@ async function onCreated() {
               </template>
             </div>
           </li>
-        </ul>
+        </TransitionGroup>
         <div v-else class="state">На этот день мероприятий нет</div>
 
         <footer class="modal-footer">
@@ -184,16 +185,19 @@ async function onCreated() {
           >
             + Добавить мероприятие
           </button>
-          <EventForm
-            v-if="showForm && auth.canEdit()"
-            compact
-            :initial-date="date"
-            @created="onCreated"
-            @cancel="showForm = false"
-          />
+          <Transition name="slide-up">
+            <EventForm
+              v-if="showForm && auth.canEdit()"
+              compact
+              :initial-date="date"
+              @created="onCreated"
+              @cancel="showForm = false"
+            />
+          </Transition>
         </footer>
-      </section>
-    </div>
+        </section>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -244,6 +248,7 @@ async function onCreated() {
   padding: 0;
   display: grid;
   gap: 0.75rem;
+  position: relative;
 }
 
 .item {
@@ -251,6 +256,10 @@ async function onCreated() {
   gap: 0.75rem;
   padding: 0.85rem 0;
   border-bottom: 1px solid var(--border);
+}
+
+.state .spinner {
+  margin-right: 0.4rem;
 }
 
 .item:last-child {

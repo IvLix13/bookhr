@@ -84,7 +84,12 @@ onMounted(() => {
       empty-text="Нет срочных задач"
       @retry="loadAttention()"
     >
-      <div v-if="Object.keys(counts).length" class="attention-counts">
+      <TransitionGroup
+        v-if="Object.keys(counts).length"
+        tag="div"
+        name="list"
+        class="attention-counts"
+      >
         <RouterLink
           v-for="(count, key) in counts"
           :key="key"
@@ -94,9 +99,9 @@ onMounted(() => {
           <span class="count-label">{{ categoryLabel(String(key)) }}</span>
           <strong>{{ count }}</strong>
         </RouterLink>
-      </div>
+      </TransitionGroup>
 
-      <ul class="attention-list">
+      <TransitionGroup tag="ul" name="list" class="attention-list">
         <li v-for="item in items" :key="attentionItemKey(item)" class="attention-item">
           <RouterLink
             :to="resolveAttentionRoute(item)"
@@ -115,7 +120,7 @@ onMounted(() => {
             </div>
           </RouterLink>
         </li>
-      </ul>
+      </TransitionGroup>
     </PageState>
   </section>
 </template>
@@ -148,6 +153,7 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.85rem;
+  position: relative;
 }
 
 .count-chip {
@@ -158,11 +164,14 @@ onMounted(() => {
   border-radius: 999px;
   padding: 0.25rem 0.65rem;
   font-size: 0.85rem;
-  transition: background var(--transition);
+  transition: background var(--transition), transform var(--transition),
+    border-color var(--transition);
 }
 
 .count-chip:hover {
   background: var(--accent-soft);
+  border-color: var(--accent-border, var(--accent));
+  transform: translateY(-1px);
 }
 
 .count-label {
@@ -175,6 +184,7 @@ onMounted(() => {
   padding: 0;
   display: grid;
   gap: 0.5rem;
+  position: relative;
 }
 
 .attention-link {
@@ -184,11 +194,14 @@ onMounted(() => {
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: 12px;
-  transition: background var(--transition);
+  transition: background var(--transition), transform var(--transition),
+    box-shadow var(--transition);
 }
 
 .attention-link:hover {
   background: var(--bg);
+  transform: translateX(3px);
+  box-shadow: var(--shadow);
 }
 
 .attention-main p {

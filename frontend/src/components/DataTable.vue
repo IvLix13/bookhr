@@ -263,7 +263,9 @@ watch(
       </button>
     </div>
 
-    <div v-if="loading" class="data-table-state">Загрузка...</div>
+    <div v-if="loading" class="data-table-state">
+      <span class="spinner" aria-hidden="true"></span> Загрузка...
+    </div>
     <div v-else-if="showEmpty" class="data-table-state">
       {{ hasActiveFilters ? 'Ничего не найдено' : emptyText }}
     </div>
@@ -304,7 +306,7 @@ watch(
             </th>
           </tr>
         </thead>
-        <tbody>
+        <TransitionGroup tag="tbody" name="row">
           <tr
             v-for="(row, index) in displayRows"
             :key="resolveRowKey(row, index)"
@@ -325,7 +327,7 @@ watch(
               </slot>
             </td>
           </tr>
-        </tbody>
+        </TransitionGroup>
       </table>
     </div>
 
@@ -444,6 +446,32 @@ watch(
 .data-table-state {
   color: var(--muted);
   padding: 0.5rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  animation: fade var(--transition) var(--ease-out) both;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.row-enter-active {
+  transition: opacity var(--transition-slow), transform var(--transition-slow);
+}
+
+.row-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.row-move {
+  transition: transform var(--transition-slow);
 }
 
 .data-table-footer {

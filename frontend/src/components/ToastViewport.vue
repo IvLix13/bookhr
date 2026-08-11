@@ -5,7 +5,13 @@ const toast = useToastStore()
 </script>
 
 <template>
-  <div class="toast-viewport" aria-live="polite" aria-relevant="additions">
+  <TransitionGroup
+    tag="div"
+    name="toast"
+    class="toast-viewport"
+    aria-live="polite"
+    aria-relevant="additions"
+  >
     <article
       v-for="item in toast.items"
       :key="item.id"
@@ -18,7 +24,7 @@ const toast = useToastStore()
         ×
       </button>
     </article>
-  </div>
+  </TransitionGroup>
 </template>
 
 <style scoped>

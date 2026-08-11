@@ -77,7 +77,8 @@ function dayClasses(date: Date) {
       <span v-for="day in weekdays" :key="day">{{ day }}</span>
     </div>
 
-    <div class="grid">
+    <Transition name="fade" mode="out-in">
+    <div :key="monthLabel" class="grid">
       <article
         v-for="(cell, index) in days"
         :key="index"
@@ -102,6 +103,7 @@ function dayClasses(date: Date) {
         </button>
       </article>
     </div>
+    </Transition>
   </section>
 </template>
 
@@ -161,6 +163,19 @@ header h2 {
 .day-button.selected {
   transform: translateY(-2px);
   box-shadow: var(--shadow);
+  border-color: var(--accent);
+}
+
+.day-button:active {
+  transform: translateY(0) scale(0.98);
+}
+
+.event-chip {
+  transition: transform var(--transition);
+}
+
+.day-button:hover .event-chip {
+  transform: translateX(2px);
 }
 
 .day-button.selected {
