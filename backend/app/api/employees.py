@@ -10,8 +10,10 @@ from flask_login import login_required
 
 from app.api.helpers import (
     api_response,
+    apply_employment_name_search,
     apply_sort,
     get_json,
+    join_current_person_name,
     paginate_query,
     parse_pagination_args,
     parse_search_q,
@@ -78,17 +80,9 @@ def register_routes(bp):
         if active_only:
             query = query.filter_by(status=EmploymentStatus.ACTIVE.value)
 
-        if q or sort == "full_name":
-            from app.models import Person
-
-            query = query.join(Person, Employment.person_id == Person.id).join(
-                PersonNameHistory,
-                (PersonNameHistory.person_id == Person.id)
-                & (PersonNameHistory.valid_to.is_(None)),
-            )
-            if q:
-                query = query.filter(PersonNameHistory.full_name.ilike(f"%{q}%"))
-            query = query.distinct()
+        query = apply_employment_name_search(query, q)
+        if sort == "full_name":
+            query = join_current_person_name(query)
 
         query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
 

@@ -91,6 +91,52 @@ def test_employees_list_includes_latest_reward_status(admin_client, seed_company
     assert items["Без награды"]["reward_status"] is None
 
 
+def test_employees_list_sort_by_full_name(admin_client, seed_company):
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Яковлев Яков",
+        hire_date=date(2020, 1, 1),
+        title="Инженер",
+    )
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Алексеев Алексей",
+        hire_date=date(2020, 2, 1),
+        title="Аналитик",
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/employees?company_id={seed_company.id}&sort=full_name&direction=asc"
+    )
+    assert response.status_code == 200
+    names = [item["full_name"] for item in response.get_json()["data"]["items"]]
+    assert names == sorted(names)
+
+
+def test_tenure_list_sort_by_full_name(admin_client, seed_company):
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Яковлев Яков",
+        hire_date=date(2015, 1, 1),
+        title="Инженер",
+    )
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Алексеев Алексей",
+        hire_date=date(2016, 2, 1),
+        title="Аналитик",
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/tenure?company_id={seed_company.id}&sort=full_name&direction=desc"
+    )
+    assert response.status_code == 200
+    names = [item["full_name"] for item in response.get_json()["data"]["items"]]
+    assert names == sorted(names, reverse=True)
+
+
 def test_employees_list_requires_auth(client):
     response = client.get("/api/employees")
     assert response.status_code in (401, 302)

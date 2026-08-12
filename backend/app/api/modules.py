@@ -12,6 +12,7 @@ from app.api.helpers import (
     apply_employment_name_search,
     apply_sort,
     get_json,
+    join_current_person_name,
     paginate_query,
     parse_pagination_args,
     parse_search_q,
@@ -60,13 +61,6 @@ PASSPORT_SORT_FIELDS = {
 }
 
 
-def _employment_name_join(query):
-    return query.join(Person, Employment.person_id == Person.id).join(
-        PersonNameHistory,
-        (PersonNameHistory.person_id == Person.id) & (PersonNameHistory.valid_to.is_(None)),
-    )
-
-
 def register_routes(bp):
     @bp.get("/contracts")
     @login_required
@@ -88,12 +82,9 @@ def register_routes(bp):
                 Contract.is_active.is_(True),
             )
         )
-
-        if q or sort == "full_name":
-            query = _employment_name_join(query)
-            if q:
-                query = query.filter(PersonNameHistory.full_name.ilike(f"%{q}%"))
-            query = query.distinct()
+        query = apply_employment_name_search(query, q)
+        if sort == "full_name":
+            query = join_current_person_name(query)
 
         query = apply_sort(query, CONTRACT_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, contract_to_dict, page, per_page))
@@ -134,9 +125,8 @@ def register_routes(bp):
             status=EmploymentStatus.ACTIVE.value,
         )
         query = apply_employment_name_search(query, q)
-
-        if sort == "full_name" and not q:
-            query = _employment_name_join(query).distinct()
+        if sort == "full_name":
+            query = join_current_person_name(query)
 
         query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, grade_row_to_dict, page, per_page))
@@ -223,12 +213,9 @@ def register_routes(bp):
             Passport,
             (Passport.person_id == Employment.person_id) & (Passport.is_active.is_(True)),
         )
-
-        if q or sort == "full_name":
-            query = _employment_name_join(query)
-            if q:
-                query = query.filter(PersonNameHistory.full_name.ilike(f"%{q}%"))
-            query = query.distinct()
+        query = apply_employment_name_search(query, q)
+        if sort == "full_name":
+            query = join_current_person_name(query)
 
         query = apply_sort(query, PASSPORT_SORT_FIELDS, sort, direction)
         return api_response(
@@ -298,9 +285,8 @@ def register_routes(bp):
             status=EmploymentStatus.ACTIVE.value,
         )
         query = apply_employment_name_search(query, q)
-
-        if sort == "full_name" and not q:
-            query = _employment_name_join(query).distinct()
+        if sort == "full_name":
+            query = join_current_person_name(query)
 
         query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, tenure_row_to_dict, page, per_page))

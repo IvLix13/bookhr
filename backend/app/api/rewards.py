@@ -10,6 +10,7 @@ from app.api.helpers import (
     apply_employment_name_search,
     apply_sort,
     get_json,
+    join_current_person_name,
     paginate_query,
     parse_pagination_args,
     parse_search_q,
@@ -18,7 +19,7 @@ from app.api.helpers import (
 )
 from app.api.serializers import reward_to_dict
 from app.extensions import db
-from app.models import Employment, Person, PersonNameHistory, Reward, RoleName
+from app.models import Employment, PersonNameHistory, Reward, RoleName
 from app.services.rewards import create_reward, update_reward
 
 
@@ -56,13 +57,8 @@ def register_routes(bp):
             query = query.filter(Reward.employment_id == employment_id)
 
         query = apply_employment_name_search(query, q)
-
-        if sort == "full_name" and not q:
-            query = query.join(Person, Employment.person_id == Person.id).join(
-                PersonNameHistory,
-                (PersonNameHistory.person_id == Person.id)
-                & (PersonNameHistory.valid_to.is_(None)),
-            ).distinct()
+        if sort == "full_name":
+            query = join_current_person_name(query)
 
         query = apply_sort(query, REWARD_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, reward_to_dict, page, per_page))

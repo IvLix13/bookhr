@@ -8,10 +8,11 @@ from typing import Any, Callable, TypeVar
 
 from flask import jsonify, request
 from flask_login import current_user, login_required
+from sqlalchemy import exists
 from sqlalchemy.orm import Query
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.models import RoleName
+from app.models import Employment, Person, PersonNameHistory, RoleName
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -99,21 +100,30 @@ def apply_text_search(
     return query.filter(column.ilike(f"%{q}%"))
 
 
+def join_current_person_name(query: Query[Any]) -> Query[Any]:
+    """Join the current (valid_to IS NULL) person name for sorting/filtering.
+
+    Does not apply DISTINCT. Current name is 1:1 with person, so joins stay
+    row-preserving. Prefer this over SELECT DISTINCT + ORDER BY full_name —
+    PostgreSQL requires ORDER BY expressions to appear in the SELECT list.
+    """
+    return query.join(Person, Employment.person_id == Person.id).join(
+        PersonNameHistory,
+        (PersonNameHistory.person_id == Person.id) & (PersonNameHistory.valid_to.is_(None)),
+    )
+
+
 def apply_employment_name_search(query: Query[Any], q: str | None) -> Query[Any]:
+    """Filter by current person name without JOIN+DISTINCT (PG-safe with ORDER BY)."""
     if not q:
         return query
 
-    from app.models import Employment, Person, PersonNameHistory
-
-    return (
-        query.join(Person, Employment.person_id == Person.id)
-        .join(
-            PersonNameHistory,
-            (PersonNameHistory.person_id == Person.id)
-            & (PersonNameHistory.valid_to.is_(None)),
+    return query.filter(
+        exists().where(
+            PersonNameHistory.person_id == Employment.person_id,
+            PersonNameHistory.valid_to.is_(None),
+            PersonNameHistory.full_name.ilike(f"%{q}%"),
         )
-        .filter(PersonNameHistory.full_name.ilike(f"%{q}%"))
-        .distinct()
     )
 
 
