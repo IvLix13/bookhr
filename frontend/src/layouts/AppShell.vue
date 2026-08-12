@@ -5,10 +5,17 @@ import ToastViewport from '@/components/ToastViewport.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useUiStore } from '@/stores/ui'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
 
 const auth = useAuthStore()
 const ui = useUiStore()
+const router = useRouter()
 const { sidebarExpanded } = storeToRefs(ui)
+
+async function onLogout() {
+  await auth.logout()
+  await router.push({ name: 'login' })
+}
 </script>
 
 <template>
@@ -24,7 +31,7 @@ const { sidebarExpanded } = storeToRefs(ui)
           <GlobalSearch />
           <div class="user-block">
             <span>{{ auth.user?.full_name }}</span>
-            <button class="btn ghost" type="button" @click="auth.logout()">Выйти</button>
+            <button class="btn ghost" type="button" @click="onLogout">Выйти</button>
           </div>
         </div>
       </header>

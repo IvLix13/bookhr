@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from flask import Flask, send_from_directory
+from flask import Flask, jsonify, send_from_directory
 
 from app.config import config_by_name
 from app.extensions import db, login_manager, migrate
@@ -33,6 +33,10 @@ def create_app(config_name: str | None = None) -> Flask:
         return db.session.get(User, int(user_id))
 
     login_manager.login_view = None
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        return jsonify({"success": False, "message": "Unauthorized"}), 401
 
     from app.api import register_blueprints
 

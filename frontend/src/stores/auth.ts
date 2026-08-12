@@ -23,8 +23,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout() {
-    await api.logout()
-    user.value = null
+    try {
+      await api.logout()
+    } catch {
+      // Session may already be gone; clear client state anyway.
+    } finally {
+      user.value = null
+    }
   }
 
   const canEdit = () => user.value?.role === 'admin' || user.value?.role === 'hr'

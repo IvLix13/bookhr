@@ -89,7 +89,6 @@ def register_routes(bp):
         return api_response(user_to_dict(user))
 
     @bp.post("/logout")
-    @login_required
     def logout():
         logout_user()
         return api_response(message="Logged out")

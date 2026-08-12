@@ -25,6 +25,36 @@ def test_login_flow(client, app):
     assert payload["data"]["username"] == "tester"
 
 
+def test_logout_flow(client, app):
+    with app.app_context():
+        role = Role.query.filter_by(name=RoleName.ADMIN.value).first()
+        if not role:
+            role = Role(name=RoleName.ADMIN.value)
+            db.session.add(role)
+            db.session.commit()
+
+        user = User(username="logout_user", full_name="Logout User", role_id=role.id)
+        user.set_password("secret123")
+        db.session.add(user)
+        db.session.commit()
+
+    login = client.post("/api/login", json={"username": "logout_user", "password": "secret123"})
+    assert login.status_code == 200
+
+    logout = client.post("/api/logout")
+    assert logout.status_code == 200
+    assert logout.get_json()["success"] is True
+
+    me = client.get("/api/me")
+    assert me.status_code == 401
+    assert me.is_json
+    assert me.get_json()["success"] is False
+
+    # Idempotent: logout without a session still succeeds.
+    logout_again = client.post("/api/logout")
+    assert logout_again.status_code == 200
+
+
 def test_login_invalid_credentials(client, app):
     with app.app_context():
         role = Role(name=RoleName.VIEWER.value)
