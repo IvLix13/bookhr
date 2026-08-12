@@ -68,10 +68,10 @@ const auth = useAuthStore()
         <IconTable />
       </NavItem>
       <NavItem
-        name="import"
+        name="import-employees"
         :label="MODULE_LABELS.import"
         :expanded="expanded"
-        :active="route.name === 'import'"
+        :active="route.name === 'import-employees' || route.name === 'import-rewards'"
       >
         <IconImport />
       </NavItem>

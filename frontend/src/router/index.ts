@@ -13,7 +13,23 @@ const router = createRouter({
         { path: '', name: 'calendar', component: () => import('@/views/CalendarView.vue') },
         { path: 'statistics', name: 'statistics', component: () => import('@/views/StatisticsView.vue') },
         { path: 'employees', name: 'employees', component: () => import('@/views/EmployeesView.vue') },
-        { path: 'import', name: 'import', component: () => import('@/views/ImportView.vue') },
+        {
+          path: 'import',
+          component: () => import('@/views/import/ImportLayout.vue'),
+          children: [
+            { path: '', redirect: { name: 'import-employees' } },
+            {
+              path: 'employees',
+              name: 'import-employees',
+              component: () => import('@/views/import/ImportEmployeesTab.vue'),
+            },
+            {
+              path: 'rewards',
+              name: 'import-rewards',
+              component: () => import('@/views/import/ImportRewardsTab.vue'),
+            },
+          ],
+        },
         { path: 'events/create', name: 'event-create', component: () => import('@/views/EventCreateView.vue') },
         { path: 'contracts', name: 'contracts', component: () => import('@/views/ContractsView.vue') },
         { path: 'grades', name: 'grades', component: () => import('@/views/GradesView.vue') },

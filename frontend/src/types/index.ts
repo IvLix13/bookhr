@@ -143,16 +143,6 @@ export interface TenureRow {
   awards: Record<string, { milestone_years: number; milestone_date: string | null; is_received: boolean }>
 }
 
-export interface RewardRow {
-  id: number
-  employment_id: number
-  full_name: string | null
-  milestone_years: number
-  milestone_date: string
-  is_received: boolean
-  received_date: string | null
-}
-
 export interface DashboardStats {
   period: { from: string; to: string }
   employees: { active: number; hired_in_period: number; dismissed_in_period: number }
@@ -215,12 +205,15 @@ export interface ImportCandidate {
   title?: string | null
 }
 
+export type ImportType = 'employees' | 'rewards'
+
 export interface ImportRow {
   id: number
   row_number: number
   action: string | null
   person_uuid: string | null
   full_name?: string | null
+  reward_type?: string | null
   candidates?: ImportCandidate[] | null
   errors: string[] | null
   warnings: string[] | null
@@ -244,6 +237,7 @@ export interface ImportSummaryCounts {
 export interface ImportJob {
   id: number
   filename: string
+  import_type?: ImportType
   status: string
   summary: ImportSummaryCounts | null
   error_message?: string | null

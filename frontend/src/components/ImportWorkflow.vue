@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import DataTable from '@/components/DataTable.vue'
 import ImportDropzone from '@/components/ImportDropzone.vue'
 import ImportSummary from '@/components/ImportSummary.vue'
@@ -7,12 +7,16 @@ import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
 import { useToast } from '@/composables/useToast'
 import type { ColumnDef } from '@/composables/useDataTable'
-import type { ImportJob, ImportRow } from '@/types'
+import type { ImportJob, ImportRow, ImportType } from '@/types'
 import {
   labelImportAction,
   labelImportResult,
   labelImportStatus,
 } from '@/utils/labels'
+
+const props = defineProps<{
+  importType: ImportType
+}>()
 
 const toast = useToast()
 
@@ -25,6 +29,8 @@ const confirming = ref(false)
 
 /** row id -> action value: create | skip | update:<uuid> */
 const rowActions = reactive<Record<number, string>>({})
+
+const isRewards = computed(() => props.importType === 'rewards')
 
 const hasRowErrors = computed(() =>
   job.value?.rows.some((row) => row.errors?.length) ?? false,
@@ -47,41 +53,69 @@ const canConfirm = computed(
     && !confirming.value,
 )
 
-const importColumns: ColumnDef<ImportRow>[] = [
-  { key: 'row_number', label: 'Строка' },
-  {
-    key: 'full_name',
-    label: 'ФИО',
-    getValue: (row) => row.full_name ?? '—',
+const importColumns = computed<ColumnDef<ImportRow>[]>(() => {
+  const columns: ColumnDef<ImportRow>[] = [
+    { key: 'row_number', label: 'Строка' },
+    {
+      key: 'full_name',
+      label: 'ФИО',
+      getValue: (row) => row.full_name ?? '—',
+    },
+  ]
+  if (isRewards.value) {
+    columns.push({
+      key: 'reward_type',
+      label: 'Вид поощрения',
+      getValue: (row) => row.reward_type ?? '—',
+    })
+  }
+  columns.push(
+    {
+      key: 'action',
+      label: 'Действие',
+      getValue: (row) => row.action,
+      format: (value) => labelImportAction(value as string | null),
+    },
+    {
+      key: 'result',
+      label: 'Итог',
+      getValue: (row) => row.result ?? null,
+      format: (value) => labelImportResult(value as string | null),
+    },
+    {
+      key: 'details',
+      label: 'Детали',
+      getValue: (row) =>
+        row.result_message
+        ?? row.errors?.join(', ')
+        ?? row.warnings?.join(', ')
+        ?? '—',
+    },
+  )
+  return columns
+})
+
+function resetState() {
+  file.value = null
+  job.value = null
+  error.value = ''
+  for (const key of Object.keys(rowActions)) {
+    delete rowActions[Number(key)]
+  }
+}
+
+watch(
+  () => props.importType,
+  () => {
+    resetState()
   },
-  {
-    key: 'action',
-    label: 'Действие',
-    getValue: (row) => row.action,
-    format: (value) => labelImportAction(value as string | null),
-  },
-  {
-    key: 'result',
-    label: 'Итог',
-    getValue: (row) => row.result ?? null,
-    format: (value) => labelImportResult(value as string | null),
-  },
-  {
-    key: 'details',
-    label: 'Детали',
-    getValue: (row) =>
-      row.result_message
-      ?? row.errors?.join(', ')
-      ?? row.warnings?.join(', ')
-      ?? '—',
-  },
-]
+)
 
 async function downloadTemplate() {
   downloading.value = true
   error.value = ''
   try {
-    await api.downloadImportTemplate()
+    await api.downloadImportTemplate(1, props.importType)
     toast.success('Шаблон скачан')
   } catch (err) {
     error.value = normalizeError(err)
@@ -105,7 +139,7 @@ async function upload() {
   uploading.value = true
   error.value = ''
   try {
-    job.value = (await api.uploadImport(file.value)) as ImportJob
+    job.value = (await api.uploadImport(file.value, props.importType)) as ImportJob
     for (const key of Object.keys(rowActions)) {
       delete rowActions[Number(key)]
     }
@@ -141,11 +175,17 @@ function candidateLabel(candidate: { full_name: string | null; title?: string | 
   const name = candidate.full_name ?? 'Без имени'
   return candidate.title ? `${name} — ${candidate.title}` : name
 }
+
+function ambiguousHint(): string {
+  if (isRewards.value) {
+    return 'Найдено несколько сотрудников с одинаковым ФИО. Для каждой строки выберите сотрудника или пропустите.'
+  }
+  return 'Найдено несколько сотрудников с одинаковым ФИО. Для каждой строки укажите, создать нового, обновить существующего или пропустить.'
+}
 </script>
 
 <template>
-  <section class="card page">
-    <header><h2>Импорт из Excel</h2></header>
+  <div class="workflow">
     <div class="actions">
       <button class="btn secondary" type="button" :disabled="downloading" @click="downloadTemplate">
         {{ downloading ? 'Скачивание...' : 'Скачать шаблон Excel' }}
@@ -171,28 +211,26 @@ function candidateLabel(candidate: { full_name: string | null; title?: string | 
 
       <section v-if="ambiguousRows.length && job.status === 'validated'" class="ambiguous">
         <h3>Дубликаты — выберите действие</h3>
-        <p class="hint">
-          Найдено несколько сотрудников с одинаковым ФИО. Для каждой строки укажите,
-          создать нового, обновить существующего или пропустить.
-        </p>
+        <p class="hint">{{ ambiguousHint() }}</p>
         <ul class="ambiguous-list">
           <li v-for="row in ambiguousRows" :key="row.id" class="ambiguous-item">
             <div class="ambiguous-main">
               <strong>Строка {{ row.row_number }}</strong>
               <span>{{ row.full_name ?? '—' }}</span>
+              <span v-if="row.reward_type" class="meta">{{ row.reward_type }}</span>
             </div>
             <label class="ambiguous-select">
               Действие
               <select v-model="rowActions[row.id]" required>
                 <option disabled value="">Выберите…</option>
-                <option value="create">Создать нового</option>
+                <option v-if="!isRewards" value="create">Создать нового</option>
                 <option value="skip">Пропустить</option>
                 <option
                   v-for="candidate in row.candidates ?? []"
                   :key="candidate.uuid"
                   :value="`update:${candidate.uuid}`"
                 >
-                  Обновить: {{ candidateLabel(candidate) }}
+                  {{ isRewards ? 'Выбрать' : 'Обновить' }}: {{ candidateLabel(candidate) }}
                 </option>
               </select>
             </label>
@@ -222,12 +260,11 @@ function candidateLabel(candidate: { full_name: string | null; title?: string | 
         search-placeholder="Поиск по результатам проверки..."
       />
     </div>
-  </section>
+  </div>
 </template>
 
 <style scoped>
-.page {
-  padding: 1rem;
+.workflow {
   display: grid;
   gap: 1rem;
 }
@@ -259,6 +296,11 @@ function candidateLabel(candidate: { full_name: string | null; title?: string | 
 .error {
   color: var(--danger);
   margin: 0;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .ambiguous {
