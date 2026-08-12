@@ -15,12 +15,22 @@ class ImportStatus(str, Enum):
     FAILED = "failed"
 
 
+class ImportType(str, Enum):
+    EMPLOYEES = "employees"
+    REWARDS = "rewards"
+
+
 class ImportJob(db.Model, TimestampMixin):
     __tablename__ = "import_jobs"
 
     id = db.Column(db.Integer, primary_key=True)
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False)
     filename = db.Column(db.String(256), nullable=False)
+    import_type = db.Column(
+        db.String(32),
+        default=ImportType.EMPLOYEES.value,
+        nullable=False,
+    )
     status = db.Column(db.String(32), default=ImportStatus.UPLOADED.value, nullable=False)
     uploaded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     summary = db.Column(db.JSON, nullable=True)

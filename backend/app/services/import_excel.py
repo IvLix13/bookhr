@@ -122,7 +122,7 @@ def _serialize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
     return serialized
 
 
-def _candidate_payload(person: Person) -> dict[str, str | None]:
+def candidate_payload(person: Person) -> dict[str, str | None]:
     employment = (
         Employment.query.filter_by(person_id=person.id)
         .order_by(Employment.hire_date.desc())
@@ -203,7 +203,7 @@ def dry_run_import(job: ImportJob, rows: list[dict[str, Any]]) -> None:
                 summary["update"] += 1
             elif len(matches) > 1:
                 action = "ambiguous"
-                candidates = [_candidate_payload(person) for person in matches]
+                candidates = [candidate_payload(person) for person in matches]
                 summary["ambiguous"] += 1
                 warnings.append("Найдено несколько кандидатов — выберите действие")
             else:

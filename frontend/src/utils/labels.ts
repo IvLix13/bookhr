@@ -72,7 +72,13 @@ export const IMPORT_SKIP_REASON_LABELS: Record<string, string> = {
   no_employment: 'Нет трудоустройства',
   no_person: 'Не выбран сотрудник',
   person_not_found: 'Сотрудник не найден',
+  no_reward_type: 'Нет вида поощрения',
   unknown_action: 'Неизвестное действие',
+}
+
+export const IMPORT_TYPE_LABELS: Record<string, string> = {
+  employees: 'Общая таблица',
+  rewards: 'Поощрения',
 }
 
 export function labelEventType(value: string | null | undefined): string {
@@ -112,6 +118,7 @@ export const API_MESSAGE_LABELS: Record<string, string> = {
   'full_name and hire_date are required': 'Укажите ФИО и дату начала работы',
   'Import not validated': 'Импорт ещё не прошёл проверку',
   'Import failed': 'Импорт завершился с ошибкой',
+  'Invalid import type': 'Некорректный тип импорта',
   Forbidden: 'Недостаточно прав для выполнения действия',
   'Not found': 'Запись не найдена',
   'Invalid credentials': 'Неверный логин или пароль',

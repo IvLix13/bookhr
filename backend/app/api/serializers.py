@@ -235,6 +235,7 @@ def import_job_to_dict(job: ImportJob) -> dict:
     return {
         "id": job.id,
         "filename": job.filename,
+        "import_type": job.import_type,
         "status": job.status,
         "summary": job.summary,
         "error_message": job.error_message,
@@ -251,6 +252,7 @@ def import_job_to_dict(job: ImportJob) -> dict:
                 "result": row.result,
                 "result_message": row.result_message,
                 "full_name": (row.raw_data or {}).get("full_name"),
+                "reward_type": (row.raw_data or {}).get("reward_type"),
             }
             for row in job.rows
         ],

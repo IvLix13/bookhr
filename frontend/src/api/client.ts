@@ -168,9 +168,10 @@ export const api = {
   search: (q: string, limit = 20) =>
     request<SearchResponse>(`/api/search${buildQuery({ q, limit })}`),
   getImportJob: (jobId: number) => request(`/api/import/${jobId}`),
-  uploadImport: async (file: File) => {
+  uploadImport: async (file: File, importType: 'employees' | 'rewards' = 'employees') => {
     const form = new FormData()
     form.append('file', file)
+    form.append('import_type', importType)
     const response = await fetch('/api/import/upload', {
       method: 'POST',
       credentials: 'include',
@@ -187,10 +188,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ row_actions: rowActions }),
     }),
-  downloadImportTemplate: async (companyId = 1) => {
-    const response = await fetch(`/api/import/template?company_id=${companyId}`, {
-      credentials: 'include',
-    })
+  downloadImportTemplate: async (
+    companyId = 1,
+    importType: 'employees' | 'rewards' = 'employees',
+  ) => {
+    const response = await fetch(
+      `/api/import/template?company_id=${companyId}&import_type=${importType}`,
+      {
+        credentials: 'include',
+      },
+    )
     if (!response.ok) {
       let message = 'Не удалось скачать шаблон'
       try {
@@ -202,6 +209,8 @@ export const api = {
       throw new ApiError(message, response.status)
     }
     const blob = await response.blob()
-    triggerDownload(blob, 'employees_template.xlsx')
+    const filename =
+      importType === 'rewards' ? 'rewards_template.xlsx' : 'employees_template.xlsx'
+    triggerDownload(blob, filename)
   },
 }
