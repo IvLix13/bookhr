@@ -28,6 +28,6 @@ def test_passport_status_thresholds():
 
 def test_grade_eligibility_date():
     assigned = date(2024, 1, 15)
-    eligible = assigned + relativedelta(months=12)
+    eligible = assigned + relativedelta(months=18)
     reminder = subtract_months(eligible, 1)
-    assert reminder == date(2024, 12, 15)
+    assert reminder == date(2025, 6, 15)

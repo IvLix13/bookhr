@@ -33,15 +33,15 @@ def register_commands(app: Flask) -> None:
             db.session.add(company)
 
         default_grades = [
-            ("Стажер", 1, 6),
-            ("Джун", 2, 12),
-            ("Мидл", 3, 18),
-            ("Сеньор", 4, 24),
-            ("Тимлид", 5, 36),
+            ("Стажер", 1, 0.5),
+            ("Джун", 2, 1.0),
+            ("Мидл", 3, 1.5),
+            ("Сеньор", 4, 2.0),
+            ("Тимлид", 5, 3.0),
         ]
-        for name, rank, months in default_grades:
+        for name, rank, years in default_grades:
             if not GradeCatalog.query.filter_by(rank=rank).first():
-                db.session.add(GradeCatalog(name=name, rank=rank, min_months=months))
+                db.session.add(GradeCatalog(name=name, rank=rank, min_years=years))
 
         admin_role = Role.query.filter_by(name=RoleName.ADMIN.value).first()
         if admin_role and not User.query.filter_by(username="admin").first():

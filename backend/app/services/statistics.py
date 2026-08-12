@@ -16,6 +16,7 @@ from app.models import (
     TenureAward,
 )
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade
+from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status
 from app.utils.dates import today_moscow
 
@@ -120,8 +121,10 @@ def build_dashboard_stats(
             without_grade += 1
             continue
         grade_distribution[grade.grade.name] += 1
-        eligible_date = grade.assigned_date + relativedelta(months=grade.grade.min_months)
-        days_left = (eligible_date - today).days
+        eligibility = compute_grade_eligibility(employment, today)
+        days_left = eligibility["days_left"]
+        if days_left is None:
+            continue
         if days_left <= 0:
             eligible_now += 1
         elif days_left <= 30:

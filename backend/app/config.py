@@ -31,6 +31,12 @@ class BaseConfig:
     NEXTCLOUD_BASE_URL = os.getenv("NEXTCLOUD_BASE_URL", "")
     NEXTCLOUD_BOT_TOKEN = os.getenv("NEXTCLOUD_BOT_TOKEN", "")
 
+    PASSWORD_MIN_LENGTH = int(os.getenv("PASSWORD_MIN_LENGTH", "10"))
+    PASSWORD_REQUIRE_UPPER = _env_bool("PASSWORD_REQUIRE_UPPER", True)
+    PASSWORD_REQUIRE_LOWER = _env_bool("PASSWORD_REQUIRE_LOWER", True)
+    PASSWORD_REQUIRE_DIGIT = _env_bool("PASSWORD_REQUIRE_DIGIT", True)
+    PASSWORD_REQUIRE_SPECIAL = _env_bool("PASSWORD_REQUIRE_SPECIAL", False)
+
     LDAP_ENABLED = _env_bool("LDAP_ENABLED", False)
     LDAP_URI = os.getenv("LDAP_URI", "")
     LDAP_BIND_DN = os.getenv("LDAP_BIND_DN", "")

@@ -137,8 +137,8 @@ def test_rule_key_invariant_matches_generated_events(app):
     with app.app_context():
         company = Company(name="Test Co")
         db.session.add(company)
-        grade = GradeCatalog(name="Джун", rank=1, min_months=12, is_active=True)
-        next_grade = GradeCatalog(name="Мидл", rank=2, min_months=18, is_active=True)
+        grade = GradeCatalog(name="Джун", rank=1, min_years=1, is_active=True)
+        next_grade = GradeCatalog(name="Мидл", rank=2, min_years=1.5, is_active=True)
         db.session.add_all([grade, next_grade])
         db.session.commit()
 

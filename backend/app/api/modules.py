@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from flask import request
-from flask_login import login_required
+from flask_login import current_user, login_required
 
 from app.api.helpers import (
     api_response,
@@ -40,6 +40,13 @@ from app.models import (
 )
 from app.services.employees import get_active_passport
 from app.services.events import refresh_overdue_events
+from app.services.grade_catalog import (
+    apply_grade_catalog_payload,
+    commit_grade_catalog,
+    validate_min_years,
+    validate_rank,
+    validate_rank_continuity,
+)
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards
 
@@ -141,13 +148,18 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN)
     def create_grade():
         payload = get_json()
-        grade = GradeCatalog(
-            name=payload["name"],
-            rank=payload["rank"],
-            min_months=payload.get("min_months", 12),
-        )
-        db.session.add(grade)
-        db.session.commit()
+        try:
+            name = str(payload.get("name", "")).strip()
+            if not name:
+                raise ValueError("name is required")
+            rank = validate_rank(payload["rank"])
+            validate_rank_continuity(rank=rank)
+            min_years = validate_min_years(payload.get("min_years", 1))
+            grade = GradeCatalog(name=name, rank=rank, min_years=min_years)
+            db.session.add(grade)
+            commit_grade_catalog()
+        except ValueError as exc:
+            return api_response(message=str(exc), status=400)
         return api_response(grade_to_dict(grade), status=201)
 
     @bp.patch("/grade-catalog/<int:grade_id>")
@@ -157,19 +169,34 @@ def register_routes(bp):
         if not grade:
             return api_response(message="Not found", status=404)
         payload = get_json()
-        for field in ("name", "rank", "min_months", "is_active"):
-            if field in payload:
-                setattr(grade, field, payload[field])
-        db.session.commit()
+        try:
+            apply_grade_catalog_payload(grade, payload)
+            commit_grade_catalog()
+        except ValueError as exc:
+            return api_response(message=str(exc), status=400)
         return api_response(grade_to_dict(grade))
 
     @bp.post("/grades/assign")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def assign_grade():
         payload = get_json()
-        employment = db.session.get(Employment, payload["employment_id"])
+        employment = db.session.get(Employment, payload.get("employment_id"))
         if not employment:
             return api_response(message="Not found", status=404)
+
+        grade = db.session.get(GradeCatalog, payload.get("grade_id"))
+        if not grade:
+            return api_response(message="Grade not found", status=404)
+        if not grade.is_active:
+            return api_response(message="Grade is inactive", status=400)
+
+        assigned_raw = payload.get("assigned_date")
+        if not assigned_raw:
+            return api_response(message="assigned_date is required", status=400)
+        try:
+            assigned_date = date.fromisoformat(str(assigned_raw))
+        except ValueError:
+            return api_response(message="assigned_date must be ISO date", status=400)
 
         current = (
             EmployeeGradeHistory.query.filter_by(
@@ -177,14 +204,14 @@ def register_routes(bp):
                 valid_to=None,
             ).first()
         )
-        assigned_date = date.fromisoformat(payload["assigned_date"])
         if current:
             current.valid_to = assigned_date
 
         history = EmployeeGradeHistory(
             employment_id=employment.id,
-            grade_id=payload["grade_id"],
+            grade_id=grade.id,
             assigned_date=assigned_date,
+            assigned_by_id=current_user.id if current_user.is_authenticated else None,
             basis=payload.get("basis"),
         )
         db.session.add(history)

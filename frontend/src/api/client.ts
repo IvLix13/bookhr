@@ -99,8 +99,19 @@ export const api = {
   grades: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/grades${buildQuery(params)}`),
   gradeCatalog: () => request('/api/grade-catalog'),
-  createGradeCatalog: (body: { name: string; rank: number; min_months?: number }) =>
+  createGradeCatalog: (body: { name: string; rank: number; min_years?: number }) =>
     request('/api/grade-catalog', { method: 'POST', body: JSON.stringify(body) }),
+  updateGradeCatalog: (
+    id: number,
+    body: Partial<{ name: string; rank: number; min_years: number; is_active: boolean }>,
+  ) =>
+    request(`/api/grade-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  assignGrade: (body: {
+    employment_id: number
+    grade_id: number
+    assigned_date: string
+    basis?: string
+  }) => request('/api/grades/assign', { method: 'POST', body: JSON.stringify(body) }),
   passports: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/passports${buildQuery(params)}`),
   tenure: (params: TableQueryParams = {}) =>
@@ -126,8 +137,30 @@ export const api = {
   notificationRules: () => request('/api/notifications/rules'),
   createNotificationRule: (body: Record<string, unknown>) =>
     request('/api/notifications/rules', { method: 'POST', body: JSON.stringify(body) }),
+  updateNotificationRule: (id: number, body: Record<string, unknown>) =>
+    request(`/api/notifications/rules/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   testNotification: (body: Record<string, unknown>) =>
     request('/api/notifications/test', { method: 'POST', body: JSON.stringify(body) }),
+  roles: () => request('/api/roles'),
+  users: (params: TableQueryParams = {}) =>
+    request<Paginated<unknown>>(`/api/users${buildQuery(params)}`),
+  createUser: (body: {
+    username: string
+    password: string
+    full_name: string
+    role: string
+  }) => request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
+  updateUser: (
+    id: number,
+    body: Partial<{ full_name: string; role: string; is_active: boolean }>,
+  ) => request(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  unlockUser: (id: number) =>
+    request(`/api/users/${id}/unlock`, { method: 'POST', body: JSON.stringify({}) }),
+  resetUserPassword: (id: number, password: string) =>
+    request(`/api/users/${id}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
+    }),
   stats: (params: TableQueryParams = {}) =>
     request<DashboardStats>(`/api/stats${buildQuery(params)}`),
   attention: (params: TableQueryParams = {}) =>

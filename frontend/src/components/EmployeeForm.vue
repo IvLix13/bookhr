@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { Employee, Grade } from '@/types'
 
@@ -24,6 +24,7 @@ const form = ref({
   passport_until: '',
 })
 const grades = ref<Grade[]>([])
+const activeGrades = computed(() => grades.value.filter((grade) => grade.is_active !== false))
 const submitting = ref(false)
 const error = ref('')
 
@@ -71,6 +72,10 @@ async function submit() {
   submitting.value = true
   error.value = ''
   try {
+    if (form.value.actual_grade_id && !form.value.grade_date) {
+      throw new Error('Укажите дату текущего грейда')
+    }
+
     const body = {
       full_name: form.value.full_name.trim(),
       title: form.value.title.trim() || 'Не указана',
@@ -126,7 +131,7 @@ async function submit() {
         Грейд по должности
         <select v-model="form.position_grade_id">
           <option value="">Не указан</option>
-          <option v-for="grade in grades" :key="grade.id" :value="String(grade.id)">
+          <option v-for="grade in activeGrades" :key="grade.id" :value="String(grade.id)">
             {{ grade.name }}
           </option>
         </select>
@@ -135,14 +140,14 @@ async function submit() {
         Фактический грейд
         <select v-model="form.actual_grade_id">
           <option value="">Не указан</option>
-          <option v-for="grade in grades" :key="grade.id" :value="String(grade.id)">
+          <option v-for="grade in activeGrades" :key="grade.id" :value="String(grade.id)">
             {{ grade.name }}
           </option>
         </select>
       </label>
       <label>
         Дата текущего грейда
-        <input v-model="form.grade_date" type="date" />
+        <input v-model="form.grade_date" type="date" :required="Boolean(form.actual_grade_id)" />
       </label>
       <label>
         Окончание договора

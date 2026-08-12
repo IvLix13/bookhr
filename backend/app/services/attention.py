@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from dateutil.relativedelta import relativedelta
-
 from app.models import (
     EmployeeGradeHistory,
     Employment,
@@ -13,6 +11,7 @@ from app.models import (
 )
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade, get_current_name
 from app.services.events import effectively_overdue_filter
+from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status
 from app.utils.dates import today_moscow
 
@@ -154,10 +153,13 @@ def _collect_grade_items(company_id: int, limit: int, today) -> list[dict]:
         grade = get_current_grade(employment)
         if not grade:
             continue
-        eligible_date = grade.assigned_date + relativedelta(months=grade.grade.min_months)
-        days_left = (eligible_date - today).days
-        if days_left > 30:
+        eligibility = compute_grade_eligibility(employment, today)
+        if not eligibility["next_grade"] or eligibility["eligible_date"] is None:
             continue
+        days_left = eligibility["days_left"]
+        if days_left is None or days_left > 30:
+            continue
+        eligible_date = eligibility["eligible_date"]
         candidates.append(
             (
                 days_left,

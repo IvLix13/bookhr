@@ -39,6 +39,28 @@ def test_login_invalid_credentials(client, app):
     assert response.status_code == 401
 
 
+def test_login_lockout_after_five_failures(client, app):
+    with app.app_context():
+        role = Role(name=RoleName.VIEWER.value)
+        db.session.add(role)
+        db.session.flush()
+        user = User(username="locked", full_name="Locked", role_id=role.id)
+        user.set_password("secret123")
+        db.session.add(user)
+        db.session.commit()
+
+    for _ in range(5):
+        response = client.post("/api/login", json={"username": "locked", "password": "wrong"})
+        assert response.status_code == 401
+
+    response = client.post("/api/login", json={"username": "locked", "password": "secret123"})
+    assert response.status_code == 401
+
+    with app.app_context():
+        locked_user = User.query.filter_by(username="locked").one()
+        assert locked_user.is_locked() is True
+
+
 @patch("app.api.auth.authenticate_ldap_user")
 def test_ldap_login_creates_user(mock_authenticate, client, app):
     app.config["LDAP_ENABLED"] = True

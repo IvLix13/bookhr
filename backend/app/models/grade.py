@@ -12,7 +12,7 @@ class GradeCatalog(db.Model, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), unique=True, nullable=False)
     rank = db.Column(db.Integer, unique=True, nullable=False)
-    min_months = db.Column(db.Integer, default=12, nullable=False)
+    min_years = db.Column(db.Numeric(5, 2), default=1, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     grade_history = db.relationship("EmployeeGradeHistory", back_populates="grade")

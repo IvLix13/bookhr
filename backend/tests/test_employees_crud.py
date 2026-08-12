@@ -14,8 +14,8 @@ from app.services.employees import create_person_with_employment
 def _seed_grades() -> None:
     db.session.add_all(
         [
-            GradeCatalog(name="Мидл", rank=3, min_months=18),
-            GradeCatalog(name="Сеньор", rank=4, min_months=24),
+            GradeCatalog(name="Мидл", rank=3, min_years=1.5),
+            GradeCatalog(name="Сеньор", rank=4, min_years=2),
         ]
     )
     db.session.commit()

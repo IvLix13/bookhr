@@ -13,6 +13,7 @@ from app.models import (
     Passport,
     Person,
     Reward,
+    Role,
     TenureAward,
     User,
 )
@@ -40,12 +41,35 @@ def user_to_dict(user: User) -> dict:
     }
 
 
+def role_to_dict(role: Role) -> dict:
+    return {
+        "id": role.id,
+        "name": role.name,
+    }
+
+
+def user_admin_to_dict(user: User) -> dict:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "full_name": user.full_name,
+        "role": user.role_name,
+        "auth_source": user.auth_source,
+        "is_active": user.is_active,
+        "is_locked": user.is_locked(),
+        "failed_login_attempts": user.failed_login_attempts,
+        "locked_until": user.locked_until.isoformat() if user.locked_until else None,
+        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "updated_at": user.updated_at.isoformat() if user.updated_at else None,
+    }
+
+
 def grade_to_dict(grade: GradeCatalog) -> dict:
     return {
         "id": grade.id,
         "name": grade.name,
         "rank": grade.rank,
-        "min_months": grade.min_months,
+        "min_years": float(grade.min_years),
         "is_active": grade.is_active,
     }
 

@@ -129,3 +129,31 @@ def test_create_notification_rule_with_escalation(admin_client, seed_company):
     payload = response.get_json()["data"]
     assert payload["escalation_room_token"] == "room-boss"
     assert payload["escalation_after_days"] == 5
+
+
+def test_update_notification_rule(admin_client, seed_company):
+    created = admin_client.post(
+        "/api/notifications/rules",
+        json={
+            "company_id": seed_company.id,
+            "room_token": "room-main",
+            "room_name": "Main",
+            "is_enabled": True,
+            "remind_days_before": 1,
+        },
+    )
+    rule_id = created.get_json()["data"]["id"]
+
+    response = admin_client.patch(
+        f"/api/notifications/rules/{rule_id}",
+        json={
+            "room_name": "Updated",
+            "is_enabled": False,
+            "remind_days_before": 3,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["room_name"] == "Updated"
+    assert payload["is_enabled"] is False
+    assert payload["remind_days_before"] == 3

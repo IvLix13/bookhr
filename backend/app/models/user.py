@@ -81,4 +81,10 @@ class User(UserMixin, db.Model, TimestampMixin):
     def is_locked(self) -> bool:
         if self.locked_until is None:
             return False
-        return self.locked_until > utcnow()
+        locked_until = self.locked_until
+        now = utcnow()
+        if locked_until.tzinfo is None:
+            from datetime import timezone
+
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        return locked_until > now

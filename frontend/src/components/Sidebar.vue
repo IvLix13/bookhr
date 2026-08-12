@@ -133,10 +133,10 @@ const auth = useAuthStore()
       </NavItem>
       <NavItem
         v-if="auth.isAdmin()"
-        name="settings"
+        name="settings-users"
         :label="MODULE_LABELS.settings"
         :expanded="expanded"
-        :active="route.name === 'settings'"
+        :active="typeof route.name === 'string' && route.name.startsWith('settings')"
       >
         <IconSettings />
       </NavItem>

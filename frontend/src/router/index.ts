@@ -22,7 +22,24 @@ const router = createRouter({
         { path: 'passports', name: 'passports', component: () => import('@/views/PassportsView.vue') },
         { path: 'events', name: 'events', component: () => import('@/views/EventsView.vue') },
         { path: 'grade-catalog', name: 'grade-catalog', component: () => import('@/views/GradeCatalogView.vue') },
-        { path: 'settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+        {
+          path: 'settings',
+          component: () => import('@/views/settings/SettingsLayout.vue'),
+          meta: { requiresAdmin: true },
+          children: [
+            { path: '', redirect: { name: 'settings-users' } },
+            {
+              path: 'users',
+              name: 'settings-users',
+              component: () => import('@/views/settings/SettingsUsersTab.vue'),
+            },
+            {
+              path: 'notifications',
+              name: 'settings-notifications',
+              component: () => import('@/views/settings/SettingsNotificationsTab.vue'),
+            },
+          ],
+        },
       ],
     },
   ],
@@ -37,6 +54,9 @@ router.beforeEach(async (to) => {
     return { name: 'login', query: { redirect: to.fullPath } }
   }
   if (to.name === 'login' && auth.user) {
+    return { name: 'calendar' }
+  }
+  if (to.matched.some((record) => record.meta.requiresAdmin) && !auth.isAdmin()) {
     return { name: 'calendar' }
   }
 })

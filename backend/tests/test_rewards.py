@@ -132,8 +132,8 @@ def test_create_reward_requires_type(hr_client, seed_company):
 
 def test_employee_list_includes_eligible_date(admin_client, seed_company, app):
     with app.app_context():
-        grade_a = GradeCatalog(name="Junior", rank=1, min_months=12)
-        grade_b = GradeCatalog(name="Middle", rank=2, min_months=12)
+        grade_a = GradeCatalog(name="Junior", rank=1, min_years=1)
+        grade_b = GradeCatalog(name="Middle", rank=2, min_years=1)
         db.session.add_all([grade_a, grade_b])
         db.session.flush()
 

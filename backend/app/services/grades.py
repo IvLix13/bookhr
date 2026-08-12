@@ -8,6 +8,7 @@ from dateutil.relativedelta import relativedelta
 
 from app.models import Employment, GradeCatalog
 from app.services.employees import get_current_grade
+from app.services.grade_catalog import min_years_to_months
 from app.utils.dates import today_moscow
 
 
@@ -28,7 +29,8 @@ def compute_grade_eligibility(
         ).first()
         if next_grade_obj:
             next_grade = next_grade_obj
-            eligible_date = grade.assigned_date + relativedelta(months=grade.grade.min_months)
+            months = min_years_to_months(grade.grade.min_years)
+            eligible_date = grade.assigned_date + relativedelta(months=months)
             days_left = (eligible_date - today).days
 
     return {

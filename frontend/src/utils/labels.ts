@@ -12,6 +12,8 @@ export const MODULE_LABELS = {
   passports: 'Паспорта',
   events: 'Все мероприятия',
   settings: 'Настройки',
+  settingsUsers: 'Пользователи и роли',
+  settingsNotifications: 'Настройки бота',
 } as const
 
 export const EVENT_TYPE_LABELS: Record<string, string> = {

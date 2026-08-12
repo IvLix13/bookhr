@@ -90,8 +90,8 @@ def _seed_import_company():
     db.session.add(user)
     db.session.add_all(
         [
-            GradeCatalog(name="Мидл", rank=3, min_months=18),
-            GradeCatalog(name="Сеньор", rank=4, min_months=24),
+            GradeCatalog(name="Мидл", rank=3, min_years=1.5),
+            GradeCatalog(name="Сеньор", rank=4, min_years=2),
         ]
     )
     db.session.commit()

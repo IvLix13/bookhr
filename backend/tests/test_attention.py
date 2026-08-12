@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.extensions import db
-from app.models import EventType, TenureAward
+from app.models import EmployeeGradeHistory, EventType, GradeCatalog, TenureAward
 from app.services.employees import create_person_with_employment
 from app.services.events import create_manual_event
 
@@ -64,6 +64,36 @@ def test_attention_summary_pending_tenure(admin_client, seed_company, monkeypatc
     data = response.get_json()["data"]
     assert data["counts"]["tenure"] == 1
     assert data["items"][0]["category"] == "tenure"
+
+
+def test_attention_excludes_max_grade_without_next(admin_client, seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.attention.today_moscow", lambda: date(2026, 7, 24))
+
+    grade = GradeCatalog(name="Lead", rank=1, min_years=1, is_active=True)
+    db.session.add(grade)
+    db.session.flush()
+    _, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Максимальный грейд",
+        hire_date=date(2020, 1, 1),
+        title="Инженер",
+    )
+    db.session.add(
+        EmployeeGradeHistory(
+            employment_id=employment.id,
+            grade_id=grade.id,
+            assigned_date=date(2024, 1, 1),
+        )
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/attention?company_id={seed_company.id}&categories=grades&limit=5"
+    )
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["counts"]["grades"] == 0
+    assert data["items"] == []
 
 
 def test_attention_requires_auth(client):

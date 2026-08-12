@@ -16,7 +16,29 @@ export interface User {
   id: number
   username: string
   full_name: string
-  role: 'admin' | 'hr' | 'viewer'
+  role: UserRole
+}
+
+export type UserRole = 'admin' | 'hr' | 'viewer'
+export type AuthSource = 'local' | 'ldap'
+
+export interface RoleItem {
+  id: number
+  name: UserRole
+}
+
+export interface UserListItem {
+  id: number
+  username: string
+  full_name: string
+  role: UserRole
+  auth_source: AuthSource
+  is_active: boolean
+  is_locked: boolean
+  failed_login_attempts: number
+  locked_until: string | null
+  created_at: string | null
+  updated_at: string | null
 }
 
 export interface Employee {
@@ -44,7 +66,7 @@ export interface Grade {
   id: number
   name: string
   rank: number
-  min_months: number
+  min_years: number
   is_active?: boolean
 }
 
