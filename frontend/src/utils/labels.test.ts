@@ -33,5 +33,7 @@ describe('labels', () => {
   it('uses glossary module labels', () => {
     expect(MODULE_LABELS.events).toBe('Все мероприятия')
     expect(MODULE_LABELS.awards).toBe('Награды за стаж')
+    expect(MODULE_LABELS.import).toBe('Импорт данных')
+    expect(MODULE_LABELS.eventCreate).toBe('Создать мероприятие')
   })
 })

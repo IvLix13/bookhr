@@ -30,7 +30,7 @@ const replace = vi.hoisted(() => vi.fn(async (location: { query?: Record<string,
   routeState.query = { ...(location.query ?? {}) }
 }))
 
-const { events, getEvent, completeEvent } = vi.hoisted(() => ({
+const { events, getEvent, completeEvent, employees, createEvent } = vi.hoisted(() => ({
   events: vi.fn(async () => ({
     items: [sampleEvent],
     total: 1,
@@ -40,6 +40,14 @@ const { events, getEvent, completeEvent } = vi.hoisted(() => ({
   })),
   getEvent: vi.fn(async () => sampleEvent),
   completeEvent: vi.fn(async () => sampleEvent),
+  employees: vi.fn(async () => ({
+    items: [],
+    total: 0,
+    page: 1,
+    per_page: 200,
+    pages: 0,
+  })),
+  createEvent: vi.fn(async () => ({})),
 }))
 
 vi.mock('vue-router', async () => {
@@ -64,6 +72,8 @@ vi.mock('@/api/client', () => ({
     completeEvent,
     cancelEvent: vi.fn(),
     reopenEvent: vi.fn(),
+    employees,
+    createEvent,
   },
 }))
 
@@ -75,6 +85,8 @@ describe('EventsView event modal', () => {
     events.mockClear()
     getEvent.mockClear()
     completeEvent.mockClear()
+    employees.mockClear()
+    createEvent.mockClear()
     document.body.innerHTML = ''
   })
 
@@ -120,5 +132,29 @@ describe('EventsView event modal', () => {
     await flushPromises()
     expect(completeEvent).toHaveBeenCalledWith(42)
     expect(replace).not.toHaveBeenCalled()
+  })
+
+  it('shows create button for editors and opens create query', async () => {
+    const wrapper = await mountView('hr')
+    const button = wrapper.get('header .btn')
+    expect(button.text()).toBe('Создать мероприятие')
+    await button.trigger('click')
+    expect(replace).toHaveBeenCalledWith({
+      query: { create: '1' },
+    })
+  })
+
+  it('hides create button for viewers', async () => {
+    const wrapper = await mountView('viewer')
+    expect(wrapper.find('header .btn').exists()).toBe(false)
+  })
+
+  it('opens create form from create query', async () => {
+    routeState.query = { create: '1' }
+    await mountView('hr')
+    await flushPromises()
+    expect(employees).toHaveBeenCalled()
+    expect(document.body.textContent).toContain('Создать мероприятие')
+    expect(document.body.textContent).toContain('Название')
   })
 })

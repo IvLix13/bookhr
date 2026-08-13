@@ -27,6 +27,22 @@ from app.services.tenure import ensure_tenure_awards
 from app.utils.dates import today_moscow
 
 
+DEMO_GRADES = [
+    ("Стажер", 1, 0.5),
+    ("Джун", 2, 1.0),
+    ("Мидл", 3, 1.5),
+    ("Сеньор", 4, 2.0),
+    ("Тимлид", 5, 3.0),
+]
+
+
+def _ensure_demo_grades() -> None:
+    for name, rank, years in DEMO_GRADES:
+        if not GradeCatalog.query.filter_by(rank=rank).first():
+            db.session.add(GradeCatalog(name=name, rank=rank, min_years=years))
+    db.session.flush()
+
+
 def _grade_id(name: str) -> int:
     grade = GradeCatalog.query.filter_by(name=name).first()
     if not grade:
@@ -95,6 +111,8 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
 
     if force:
         clear_demo_data(company.id)
+
+    _ensure_demo_grades()
 
     demo_people = [
         {

@@ -11,7 +11,6 @@ import {
   IconPassport,
   IconSettings,
   IconStats,
-  IconTable,
 } from '@/components/icons'
 import IconCake from '@/components/icons/IconCake.vue'
 import { MODULE_LABELS } from '@/utils/labels'
@@ -52,12 +51,12 @@ const auth = useAuthStore()
         <IconCalendar />
       </NavItem>
       <NavItem
-        name="statistics"
-        :label="MODULE_LABELS.statistics"
+        name="events"
+        :label="MODULE_LABELS.events"
         :expanded="expanded"
-        :active="route.name === 'statistics'"
+        :active="route.name === 'events'"
       >
-        <IconStats />
+        <IconEvent />
       </NavItem>
       <NavItem
         name="employees"
@@ -65,23 +64,7 @@ const auth = useAuthStore()
         :expanded="expanded"
         :active="route.name === 'employees'"
       >
-        <IconTable />
-      </NavItem>
-      <NavItem
-        name="import-employees"
-        :label="MODULE_LABELS.import"
-        :expanded="expanded"
-        :active="route.name === 'import-employees' || route.name === 'import-rewards'"
-      >
-        <IconImport />
-      </NavItem>
-      <NavItem
-        name="event-create"
-        :label="MODULE_LABELS.eventCreate"
-        :expanded="expanded"
-        :active="route.name === 'event-create'"
-      >
-        <IconEvent />
+        <IconEmployees />
       </NavItem>
       <NavItem
         name="contracts"
@@ -124,12 +107,20 @@ const auth = useAuthStore()
         <IconPassport />
       </NavItem>
       <NavItem
-        name="events"
-        :label="MODULE_LABELS.events"
+        name="import-employees"
+        :label="MODULE_LABELS.import"
         :expanded="expanded"
-        :active="route.name === 'events'"
+        :active="route.name === 'import-employees' || route.name === 'import-rewards'"
       >
-        <IconEmployees />
+        <IconImport />
+      </NavItem>
+      <NavItem
+        name="statistics"
+        :label="MODULE_LABELS.statistics"
+        :expanded="expanded"
+        :active="route.name === 'statistics'"
+      >
+        <IconStats />
       </NavItem>
       <NavItem
         v-if="auth.isAdmin()"
