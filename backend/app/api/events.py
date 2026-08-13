@@ -137,7 +137,7 @@ def register_routes(bp):
         return api_response(event_to_dict(event))
 
     @bp.post("/events/<int:event_id>/reopen")
-    @require_roles(RoleName.ADMIN)
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def reopen_event(event_id: int):
         event = db.session.get(Event, event_id)
         if not event:
@@ -146,7 +146,7 @@ def register_routes(bp):
             transition_event_status(
                 event,
                 EventStatus.PLANNED,
-                "Reopened by admin",
+                "Reopened",
                 force=True,
             )
         except InvalidEventTransition as exc:

@@ -22,6 +22,7 @@ vi.mock('@/api/client', () => ({
 
 vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
+    canEdit: () => true,
     isAdmin: () => true,
   }),
 }))

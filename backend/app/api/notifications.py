@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-from flask import request
-from flask_login import login_required
-
 from app.api.helpers import api_response, get_json, require_roles
 from app.api.serializers import notification_rule_to_dict
 from app.extensions import db
@@ -14,7 +11,7 @@ from app.services.notifications import send_talk_message
 
 def register_routes(bp):
     @bp.get("/notifications/rules")
-    @login_required
+    @require_roles(RoleName.ADMIN)
     def list_rules():
         rules = NotificationRule.query.order_by(NotificationRule.id.asc()).all()
         return api_response([notification_rule_to_dict(r) for r in rules])

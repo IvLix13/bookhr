@@ -157,3 +157,24 @@ def test_update_notification_rule(admin_client, seed_company):
     assert payload["room_name"] == "Updated"
     assert payload["is_enabled"] is False
     assert payload["remind_days_before"] == 3
+
+
+def test_notification_rules_forbidden_for_hr(hr_client, seed_company):
+    listed = hr_client.get("/api/notifications/rules")
+    assert listed.status_code == 403
+
+    created = hr_client.post(
+        "/api/notifications/rules",
+        json={
+            "company_id": seed_company.id,
+            "room_token": "room-main",
+            "room_name": "Main",
+        },
+    )
+    assert created.status_code == 403
+
+    tested = hr_client.post(
+        "/api/notifications/test",
+        json={"room_token": "room-main", "message": "test"},
+    )
+    assert tested.status_code == 403

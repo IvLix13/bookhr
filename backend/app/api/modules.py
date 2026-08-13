@@ -145,7 +145,7 @@ def register_routes(bp):
         return api_response([grade_to_dict(g) for g in grades])
 
     @bp.post("/grade-catalog")
-    @require_roles(RoleName.ADMIN)
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def create_grade():
         payload = get_json()
         try:
@@ -163,7 +163,7 @@ def register_routes(bp):
         return api_response(grade_to_dict(grade), status=201)
 
     @bp.patch("/grade-catalog/<int:grade_id>")
-    @require_roles(RoleName.ADMIN)
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def update_grade(grade_id: int):
         grade = db.session.get(GradeCatalog, grade_id)
         if not grade:
