@@ -68,6 +68,30 @@ def test_complete_event_viewer_forbidden(viewer_client, seed_company):
     assert response.status_code == 403
 
 
+def test_get_event_returns_detail(admin_client, seed_company):
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Detail event",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+        description="Details here",
+    )
+    db.session.commit()
+
+    response = admin_client.get(f"/api/events/{event.id}")
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["id"] == event.id
+    assert payload["title"] == "Detail event"
+    assert payload["description"] == "Details here"
+    assert payload["status"] == EventStatus.PLANNED.value
+
+
+def test_get_event_not_found(admin_client):
+    response = admin_client.get("/api/events/999999")
+    assert response.status_code == 404
+
+
 def test_reopen_event_hr(hr_client, seed_company):
     event = create_manual_event(
         company_id=seed_company.id,

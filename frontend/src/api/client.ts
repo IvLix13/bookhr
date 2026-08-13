@@ -124,6 +124,7 @@ export const api = {
     request(`/api/rewards/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   events: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/events${buildQuery(params)}`),
+  getEvent: (id: number) => request(`/api/events/${id}`),
   fetchAllEvents: () =>
     fetchAllPaginated((params) => api.events(params) as Promise<Paginated<unknown>>),
   upcomingEvents: (limit = 10) => request(`/api/events/upcoming?limit=${limit}`),
@@ -133,6 +134,16 @@ export const api = {
     request(`/api/events/${id}/complete`, {
       method: 'POST',
       body: JSON.stringify({ comment }),
+    }),
+  cancelEvent: (id: number, comment?: string) =>
+    request(`/api/events/${id}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ comment }),
+    }),
+  reopenEvent: (id: number) =>
+    request(`/api/events/${id}/reopen`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     }),
   notificationRules: () => request('/api/notifications/rules'),
   createNotificationRule: (body: Record<string, unknown>) =>
