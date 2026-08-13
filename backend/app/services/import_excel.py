@@ -32,7 +32,7 @@ from app.services.employees import (
 )
 from app.services.events import refresh_overdue_events
 from app.services.rule_engine import run_rule_engine
-from app.services.tenure import ensure_tenure_awards
+from app.services.tenure import auto_mark_reached_awards, ensure_tenure_awards
 from app.utils.dates import format_display_date_ru, normalize_full_name, parse_flexible_date
 
 COLUMN_MAP = {
@@ -376,13 +376,20 @@ def _upsert_passport(person: Person, passport_until: date) -> None:
     )
 
 
-def confirm_import(job: ImportJob, row_actions: dict[int, str | None] | None = None) -> None:
+def confirm_import(
+    job: ImportJob,
+    row_actions: dict[int, str | None] | None = None,
+    *,
+    mark_reached_tenure: bool = True,
+    update_existing_tenure: bool = False,
+) -> None:
     row_actions = row_actions or {}
     report = {
         "created": 0,
         "updated": 0,
         "skipped": 0,
         "errors": 0,
+        "tenure_marked": 0,
         "skipped_reasons": {},
     }
 
@@ -485,7 +492,9 @@ def confirm_import(job: ImportJob, row_actions: dict[int, str | None] | None = N
             if passport_until:
                 _upsert_passport(person, passport_until)
 
-            ensure_tenure_awards(employment.id, employment.hire_date)
+            awards = ensure_tenure_awards(employment.id, employment.hire_date)
+            if mark_reached_tenure and (created or update_existing_tenure):
+                report["tenure_marked"] += auto_mark_reached_awards(awards)
 
             if created:
                 report["created"] += 1
