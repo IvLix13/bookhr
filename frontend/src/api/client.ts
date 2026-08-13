@@ -188,6 +188,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ row_actions: rowActions }),
     }),
+  revalidateImport: (jobId: number) =>
+    request(`/api/import/${jobId}/revalidate`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }),
   downloadImportTemplate: async (
     companyId = 1,
     importType: 'employees' | 'rewards' = 'employees',

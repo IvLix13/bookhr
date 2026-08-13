@@ -1,7 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import GradeCreateModal from '@/components/GradeCreateModal.vue'
 import { api } from '@/api/client'
 import type { Employee, Grade } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+
+type GradeField = 'position' | 'actual'
 
 const props = defineProps<{
   initial?: Employee | null
@@ -12,6 +16,7 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
+const auth = useAuthStore()
 const form = ref({
   full_name: '',
   title: '',
@@ -27,6 +32,7 @@ const grades = ref<Grade[]>([])
 const activeGrades = computed(() => grades.value.filter((grade) => grade.is_active !== false))
 const submitting = ref(false)
 const error = ref('')
+const createGradeFor = ref<GradeField | null>(null)
 
 function resetForm() {
   form.value = {
@@ -64,9 +70,41 @@ watch(
   { immediate: true },
 )
 
-onMounted(async () => {
+async function loadGrades() {
   grades.value = (await api.gradeCatalog()) as Grade[]
+}
+
+onMounted(async () => {
+  await loadGrades()
 })
+
+function openGradeModal(field: GradeField) {
+  createGradeFor.value = field
+}
+
+function closeGradeModal() {
+  createGradeFor.value = null
+}
+
+async function onGradeCreated(grade: Grade) {
+  const field = createGradeFor.value
+  closeGradeModal()
+  await loadGrades()
+  switch (field) {
+    case 'position':
+      form.value.position_grade_id = String(grade.id)
+      break
+    case 'actual':
+      form.value.actual_grade_id = String(grade.id)
+      break
+    case null:
+      break
+    default: {
+      const _exhaustive: never = field
+      return _exhaustive
+    }
+  }
+}
 
 async function submit() {
   submitting.value = true
@@ -127,24 +165,44 @@ async function submit() {
         <input v-model="form.has_university" type="checkbox" />
         Есть ВУЗ
       </label>
-      <label>
-        Грейд по должности
-        <select v-model="form.position_grade_id">
-          <option value="">Не указан</option>
-          <option v-for="grade in activeGrades" :key="grade.id" :value="String(grade.id)">
-            {{ grade.name }}
-          </option>
-        </select>
-      </label>
-      <label>
-        Фактический грейд
-        <select v-model="form.actual_grade_id">
-          <option value="">Не указан</option>
-          <option v-for="grade in activeGrades" :key="grade.id" :value="String(grade.id)">
-            {{ grade.name }}
-          </option>
-        </select>
-      </label>
+      <div class="field-with-action">
+        <label>
+          Грейд по должности
+          <select v-model="form.position_grade_id">
+            <option value="">Не указан</option>
+            <option v-for="grade in activeGrades" :key="grade.id" :value="String(grade.id)">
+              {{ grade.name }}
+            </option>
+          </select>
+        </label>
+        <button
+          v-if="auth.isAdmin()"
+          class="btn ghost"
+          type="button"
+          @click="openGradeModal('position')"
+        >
+          + Новый грейд
+        </button>
+      </div>
+      <div class="field-with-action">
+        <label>
+          Фактический грейд
+          <select v-model="form.actual_grade_id">
+            <option value="">Не указан</option>
+            <option v-for="grade in activeGrades" :key="grade.id" :value="String(grade.id)">
+              {{ grade.name }}
+            </option>
+          </select>
+        </label>
+        <button
+          v-if="auth.isAdmin()"
+          class="btn ghost"
+          type="button"
+          @click="openGradeModal('actual')"
+        >
+          + Новый грейд
+        </button>
+      </div>
       <label>
         Дата текущего грейда
         <input v-model="form.grade_date" type="date" :required="Boolean(form.actual_grade_id)" />
@@ -167,6 +225,11 @@ async function submit() {
       </button>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
+    <GradeCreateModal
+      :open="createGradeFor !== null"
+      @close="closeGradeModal"
+      @saved="onGradeCreated"
+    />
   </form>
 </template>
 
@@ -193,6 +256,16 @@ label.checkbox {
   justify-content: start;
   align-items: center;
   gap: 0.5rem;
+}
+
+.field-with-action {
+  display: grid;
+  gap: 0.35rem;
+  align-content: start;
+}
+
+.field-with-action .btn {
+  justify-self: start;
 }
 
 input,
