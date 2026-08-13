@@ -92,11 +92,18 @@ def register_routes(bp):
 
         payload = get_json()
         row_actions = {int(k): v for k, v in payload.get("row_actions", {}).items()}
+        mark_reached_tenure = bool(payload.get("mark_reached_tenure", True))
+        update_existing_tenure = bool(payload.get("update_existing_tenure", False))
         try:
             if job.import_type == ImportType.REWARDS.value:
                 confirm_rewards_import(job, row_actions)
             else:
-                confirm_import(job, row_actions)
+                confirm_import(
+                    job,
+                    row_actions,
+                    mark_reached_tenure=mark_reached_tenure,
+                    update_existing_tenure=update_existing_tenure,
+                )
         except Exception:  # noqa: BLE001 — job is marked FAILED inside confirm_*
             current_app.logger.exception("Import confirm failed for job %s", job_id)
             return api_response(
