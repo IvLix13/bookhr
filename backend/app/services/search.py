@@ -63,7 +63,7 @@ def search_all(company_id: int, q: str, limit: int = 20) -> dict:
             "id": employment.id,
             "title": get_current_name(employment.person) or "",
             "subtitle": employment_to_dict(employment).get("title"),
-            "route": "/employees",
+            "route": f"/employees?q={get_current_name(employment.person) or ''}",
         }
         for employment in employees
     ]
@@ -73,7 +73,7 @@ def search_all(company_id: int, q: str, limit: int = 20) -> dict:
             "id": event.id,
             "title": event.title,
             "subtitle": event.event_date.isoformat(),
-            "route": "/events",
+            "route": f"/events?event={event.id}",
         }
         for event in events
     ]
@@ -83,7 +83,7 @@ def search_all(company_id: int, q: str, limit: int = 20) -> dict:
             "id": contract.id,
             "title": get_current_name(contract.employment.person) or "",
             "subtitle": contract_to_dict(contract)["end_date"],
-            "route": "/contracts",
+            "route": f"/contracts?q={get_current_name(contract.employment.person) or ''}",
         }
         for contract in contracts
     ]

@@ -74,10 +74,11 @@ async function handleSaved() {
 }
 
 async function toggleActive(row: UserListItem) {
+  const nextActive = !row.is_active
   try {
-    await api.updateUser(row.id, { is_active: !row.is_active })
+    await api.updateUser(row.id, { is_active: nextActive })
     await table.reload()
-    toast.success(row.is_active ? 'Пользователь деактивирован' : 'Пользователь активирован')
+    toast.success(nextActive ? 'Пользователь активирован' : 'Пользователь деактивирован')
   } catch (err) {
     toast.error(err instanceof Error ? err.message : 'Не удалось изменить статус')
   }

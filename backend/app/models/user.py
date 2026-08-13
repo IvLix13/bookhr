@@ -40,11 +40,14 @@ class User(UserMixin, db.Model, TimestampMixin):
     full_name = db.Column(db.String(256), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey("roles.id"), nullable=False)
+    company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, default=1)
     auth_source = db.Column(db.String(16), default=AuthSource.LOCAL.value, nullable=False)
     failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
     locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
+    must_change_password = db.Column(db.Boolean, default=False, nullable=False)
 
     role = db.relationship("Role", back_populates="users")
+    company = db.relationship("Company")
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)

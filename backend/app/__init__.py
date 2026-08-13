@@ -8,7 +8,10 @@ from pathlib import Path
 from flask import Flask, jsonify, send_from_directory
 
 from app.config import config_by_name
-from app.extensions import db, login_manager, migrate
+from app.errors import register_error_handlers
+from app.extensions import db, limiter, login_manager, migrate
+from app.logging_config import configure_logging
+from app.security.csrf import validate_csrf
 
 
 def create_app(config_name: str | None = None) -> Flask:
@@ -22,9 +25,11 @@ def create_app(config_name: str | None = None) -> Flask:
     )
     app.config.from_object(config_by_name[config_name])
 
+    configure_logging(app)
     db.init_app(app)
     migrate.init_app(app, db)
     login_manager.init_app(app)
+    limiter.init_app(app)
 
     from app.models import User  # noqa: F401 — register models
 
@@ -37,6 +42,12 @@ def create_app(config_name: str | None = None) -> Flask:
     @login_manager.unauthorized_handler
     def unauthorized():
         return jsonify({"success": False, "message": "Unauthorized"}), 401
+
+    register_error_handlers(app)
+
+    @app.before_request
+    def enforce_csrf():
+        validate_csrf()
 
     from app.api import register_blueprints
 

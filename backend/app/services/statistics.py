@@ -18,6 +18,7 @@ from app.models import (
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status
+from app.services.events import effective_event_status
 from app.utils.dates import today_moscow
 
 
@@ -72,8 +73,10 @@ def build_dashboard_stats(
         Event.event_date <= date_to,
     )
     events = events_query.all()
-    status_counts = Counter(event.status for event in events)
+    status_counts: Counter[str] = Counter()
     type_counts = Counter(event.event_type for event in events)
+    for event in events:
+        status_counts[effective_event_status(event, today)] += 1
     completed = status_counts.get(EventStatus.COMPLETED.value, 0)
     actionable = completed + status_counts.get(EventStatus.PLANNED.value, 0) + status_counts.get(
         EventStatus.OVERDUE.value, 0
@@ -83,8 +86,9 @@ def build_dashboard_stats(
     monthly: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     for event in events:
         key = _month_key(event.event_date)
+        effective_status = effective_event_status(event, today)
         monthly[key]["total"] += 1
-        monthly[key][event.status] += 1
+        monthly[key][effective_status] += 1
     monthly_series = [
         {
             "month": month,

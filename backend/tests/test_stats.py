@@ -48,7 +48,7 @@ def test_dashboard_stats_company_isolation(seed_company, monkeypatch):
     other_stats = build_dashboard_stats(other.id, date(2026, 1, 1), date(2026, 12, 31))
 
     assert stats["employees"]["active"] == 1
-    assert stats["events"]["planned"] == 1
+    assert stats["events"]["overdue"] == 1
     assert other_stats["employees"]["active"] == 0
     assert other_stats["events"]["planned"] == 0
 
@@ -72,7 +72,7 @@ def test_dashboard_stats_period_filter(seed_company, monkeypatch):
 
     stats = build_dashboard_stats(seed_company.id, date(2026, 1, 1), date(2026, 12, 31))
 
-    assert stats["events"]["planned"] == 1
+    assert stats["events"]["overdue"] == 1
 
 
 def test_dashboard_stats_tenure_and_grades_per_company(seed_company, monkeypatch):

@@ -258,3 +258,20 @@ def test_effective_event_status_helper(app, seed_company, monkeypatch):
         assert effective_event_status(event) == EventStatus.OVERDUE.value
         event.status = EventStatus.COMPLETED.value
         assert effective_event_status(event) == EventStatus.COMPLETED.value
+
+
+def test_invalid_event_date_returns_json_400(admin_client):
+    response = admin_client.get("/api/events?from=notadate")
+    assert response.status_code == 400
+    assert response.is_json
+    assert response.get_json()["success"] is False
+
+
+def test_create_event_missing_title_returns_json_400(admin_client, seed_company):
+    response = admin_client.post(
+        "/api/events",
+        json={"event_date": "2030-01-01"},
+    )
+    assert response.status_code == 400
+    assert response.is_json
+    assert response.get_json()["success"] is False

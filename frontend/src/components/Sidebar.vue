@@ -123,8 +123,8 @@ const auth = useAuthStore()
         <IconStats />
       </NavItem>
       <NavItem
-        v-if="auth.isAdmin()"
-        name="settings-users"
+        v-if="auth.canManageNotifications()"
+        :name="auth.isAdmin() ? 'settings-users' : 'settings-notifications'"
         :label="MODULE_LABELS.settings"
         :expanded="expanded"
         :active="typeof route.name === 'string' && route.name.startsWith('settings')"

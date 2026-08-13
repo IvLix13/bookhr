@@ -118,6 +118,10 @@ def transition_event_status(
         if _current_user_id():
             event.completed_by_id = _current_user_id()
         event.completion_comment = comment
+    elif new_status in {EventStatus.PLANNED, EventStatus.CANCELLED}:
+        event.completed_at = None
+        event.completed_by_id = None
+        event.completion_comment = None
 
     history = EventStatusHistory(
         event_id=event.id,
@@ -171,6 +175,10 @@ def create_manual_event(
     db.session.flush()
     record_event_created(event, "Created")
     log_audit("create", "event", event.id, None, {"title": title})
+
+    from app.services.notifications import queue_notifications_for_event
+
+    queue_notifications_for_event(event)
     return event
 
 

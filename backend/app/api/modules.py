@@ -49,6 +49,7 @@ from app.services.grade_catalog import (
 )
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards
+from app.tenant import get_request_company_id
 
 
 CONTRACT_SORT_FIELDS = {
@@ -72,7 +73,7 @@ def register_routes(bp):
     @bp.get("/contracts")
     @login_required
     def list_contracts():
-        company_id = request.args.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         page, per_page = parse_pagination_args()
         q = parse_search_q()
         sort, direction = parse_sort_args(
@@ -118,7 +119,7 @@ def register_routes(bp):
     @bp.get("/grades")
     @login_required
     def list_grades():
-        company_id = request.args.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         page, per_page = parse_pagination_args()
         q = parse_search_q()
         sort, direction = parse_sort_args(
@@ -224,7 +225,7 @@ def register_routes(bp):
     @bp.get("/passports")
     @login_required
     def list_passports():
-        company_id = request.args.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         page, per_page = parse_pagination_args()
         q = parse_search_q()
         sort, direction = parse_sort_args(
@@ -290,7 +291,7 @@ def register_routes(bp):
     @bp.get("/tenure")
     @login_required
     def list_tenure():
-        company_id = request.args.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         page, per_page = parse_pagination_args()
         q = parse_search_q()
         sort, direction = parse_sort_args(

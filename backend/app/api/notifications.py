@@ -2,26 +2,38 @@
 
 from __future__ import annotations
 
-from app.api.helpers import api_response, get_json, require_roles
+from app.api.helpers import api_response, get_json, load_schema, require_roles
+from app.api.schemas import NotificationRuleSchema, NotificationTestSchema
 from app.api.serializers import notification_rule_to_dict
 from app.extensions import db
 from app.models import NotificationRule, RoleName
 from app.services.notifications import send_talk_message
+from app.tenant import get_request_company_id
 
 
 def register_routes(bp):
     @bp.get("/notifications/rules")
-    @require_roles(RoleName.ADMIN)
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def list_rules():
-        rules = NotificationRule.query.order_by(NotificationRule.id.asc()).all()
+        company_id = get_request_company_id()
+        rules = (
+            NotificationRule.query.filter(
+                db.or_(
+                    NotificationRule.company_id.is_(None),
+                    NotificationRule.company_id == company_id,
+                )
+            )
+            .order_by(NotificationRule.id.asc())
+            .all()
+        )
         return api_response([notification_rule_to_dict(r) for r in rules])
 
     @bp.post("/notifications/rules")
-    @require_roles(RoleName.ADMIN)
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def create_rule():
-        payload = get_json()
+        payload = load_schema(NotificationRuleSchema)
         rule = NotificationRule(
-            company_id=payload.get("company_id"),
+            company_id=get_request_company_id(),
             event_type=payload.get("event_type") or None,
             room_token=payload["room_token"],
             room_name=payload.get("room_name"),
@@ -38,14 +50,15 @@ def register_routes(bp):
         return api_response(notification_rule_to_dict(rule), status=201)
 
     @bp.patch("/notifications/rules/<int:rule_id>")
-    @require_roles(RoleName.ADMIN)
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def update_rule(rule_id: int):
         rule = db.session.get(NotificationRule, rule_id)
         if not rule:
             return api_response(message="Not found", status=404)
+        if rule.company_id and rule.company_id != get_request_company_id():
+            return api_response(message="Not found", status=404)
         payload = get_json()
         for field in (
-            "company_id",
             "event_type",
             "room_token",
             "room_name",
@@ -66,9 +79,9 @@ def register_routes(bp):
         return api_response(notification_rule_to_dict(rule))
 
     @bp.post("/notifications/test")
-    @require_roles(RoleName.ADMIN)
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def test_notification():
-        payload = get_json()
+        payload = load_schema(NotificationTestSchema)
         code, body = send_talk_message(
             payload["room_token"],
             payload.get("message", "Bookuchet test notification"),

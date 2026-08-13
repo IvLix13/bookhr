@@ -11,16 +11,19 @@ from app.api.helpers import (
     apply_sort,
     get_json,
     join_current_person_name,
+    load_schema,
     paginate_query,
     parse_pagination_args,
     parse_search_q,
     parse_sort_args,
     require_roles,
 )
+from app.api.schemas import CreateRewardSchema
 from app.api.serializers import reward_to_dict
 from app.extensions import db
 from app.models import Employment, PersonNameHistory, Reward, RoleName
 from app.services.rewards import create_reward, update_reward
+from app.tenant import get_request_company_id
 
 
 REWARD_SORT_FIELDS = {
@@ -36,7 +39,7 @@ def register_routes(bp):
     @bp.get("/rewards")
     @login_required
     def list_rewards():
-        company_id = request.args.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         status = request.args.get("status", type=str)
         employment_id = request.args.get("employment_id", type=int)
         page, per_page = parse_pagination_args()
@@ -66,7 +69,7 @@ def register_routes(bp):
     @bp.post("/rewards")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def create_reward_route():
-        payload = get_json()
+        payload = load_schema(CreateRewardSchema)
         try:
             reward = create_reward(
                 employment_id=payload["employment_id"],

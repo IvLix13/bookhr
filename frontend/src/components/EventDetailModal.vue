@@ -119,6 +119,10 @@ onUnmounted(() => {
 
 async function runAction(action: 'complete' | 'cancel' | 'reopen') {
   if (!event.value || !canAct.value) return
+  if (action === 'cancel') {
+    const confirmed = window.confirm('Отменить мероприятие? Это действие нельзя отменить.')
+    if (!confirmed) return
+  }
   actionBusy.value = true
   error.value = ''
   try {

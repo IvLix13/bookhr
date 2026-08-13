@@ -200,6 +200,8 @@ def _collect_tenure_items(company_id: int, limit: int) -> list[dict]:
     )
     items: list[dict] = []
     for award in awards:
+        if award.milestone_date > today_moscow():
+            continue
         employment = award.employment
         items.append(
             _attention_item(

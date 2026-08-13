@@ -32,9 +32,20 @@ def _ensure_role(name: RoleName) -> Role:
     return role
 
 
-def _create_user(username: str, role_name: RoleName, password: str = "secret123") -> User:
+def _create_user(
+    username: str,
+    role_name: RoleName,
+    password: str = "secret123",
+    *,
+    company_id: int = 1,
+) -> User:
     role = _ensure_role(role_name)
-    user = User(username=username, full_name=username.title(), role_id=role.id)
+    user = User(
+        username=username,
+        full_name=username.title(),
+        role_id=role.id,
+        company_id=company_id,
+    )
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
@@ -58,7 +69,7 @@ def seed_company(app):
 @pytest.fixture()
 def admin_client(client, seed_company):
     with client.application.app_context():
-        _create_user("admin_user", RoleName.ADMIN)
+        _create_user("admin_user", RoleName.ADMIN, company_id=seed_company.id)
     _login(client, "admin_user")
     return client
 
@@ -66,7 +77,7 @@ def admin_client(client, seed_company):
 @pytest.fixture()
 def hr_client(client, seed_company):
     with client.application.app_context():
-        _create_user("hr_user", RoleName.HR)
+        _create_user("hr_user", RoleName.HR, company_id=seed_company.id)
     _login(client, "hr_user")
     return client
 
@@ -74,6 +85,6 @@ def hr_client(client, seed_company):
 @pytest.fixture()
 def viewer_client(client, seed_company):
     with client.application.app_context():
-        _create_user("viewer_user", RoleName.VIEWER)
+        _create_user("viewer_user", RoleName.VIEWER, company_id=seed_company.id)
     _login(client, "viewer_user")
     return client

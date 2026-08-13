@@ -44,6 +44,11 @@ def get_json() -> dict[str, Any]:
     return request.get_json(silent=True) or {}
 
 
+def load_schema(schema_class: type, data: dict[str, Any] | None = None) -> dict[str, Any]:
+    schema = schema_class()
+    return schema.load(data if data is not None else get_json())
+
+
 def parse_pagination_args(default_page: int = 1, default_per_page: int = 50) -> tuple[int, int]:
     page = request.args.get("page", default_page, type=int)
     per_page = request.args.get("per_page", default_per_page, type=int)

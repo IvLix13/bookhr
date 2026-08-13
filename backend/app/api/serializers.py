@@ -38,6 +38,8 @@ def user_to_dict(user: User) -> dict:
         "username": user.username,
         "full_name": user.full_name,
         "role": user.role_name,
+        "company_id": user.company_id,
+        "must_change_password": user.must_change_password,
     }
 
 

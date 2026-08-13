@@ -12,13 +12,19 @@ from app.api.helpers import (
     api_response,
     apply_employment_name_search,
     apply_sort,
-    get_json,
+    load_schema,
     join_current_person_name,
     paginate_query,
     parse_pagination_args,
     parse_search_q,
     parse_sort_args,
     require_roles,
+)
+from app.api.schemas import (
+    CreateEmployeeSchema,
+    DismissEmployeeSchema,
+    RehireEmployeeSchema,
+    UpdateEmployeeSchema,
 )
 from app.api.serializers import employment_to_dict
 from app.extensions import db
@@ -40,6 +46,7 @@ from app.services.employees import (
 from app.services.events import refresh_overdue_events
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards
+from app.tenant import get_request_company_id
 from app.utils.dates import today_moscow
 
 
@@ -66,7 +73,7 @@ def register_routes(bp):
     @bp.get("/employees")
     @login_required
     def list_employees():
-        company_id = request.args.get("company_id", type=int, default=1)
+        company_id = get_request_company_id()
         active_only = request.args.get("active_only", "true").lower() == "true"
         page, per_page = parse_pagination_args()
         q = parse_search_q()
@@ -91,12 +98,10 @@ def register_routes(bp):
     @bp.post("/employees")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def create_employee():
-        payload = get_json()
-        company_id = payload.get("company_id", 1)
-        hire_date = _parse_optional_date(payload.get("hire_date"))
-        full_name = (payload.get("full_name") or "").strip()
-        if not full_name or not hire_date:
-            return api_response(message="full_name and hire_date are required", status=400)
+        payload = load_schema(CreateEmployeeSchema)
+        company_id = get_request_company_id()
+        hire_date = payload["hire_date"]
+        full_name = payload["full_name"].strip()
 
         person, employment = create_person_with_employment(
             company_id=company_id,
@@ -110,15 +115,15 @@ def register_routes(bp):
 
         sync_active_contract(
             employment,
-            _parse_optional_date(payload.get("contract_end")),
+            payload.get("contract_end"),
             start_date=hire_date,
         )
         sync_actual_grade(
             employment,
             payload.get("actual_grade_id"),
-            _parse_optional_date(payload.get("grade_date")),
+            payload.get("grade_date"),
         )
-        sync_passport(person, _parse_optional_date(payload.get("passport_until")))
+        sync_passport(person, payload.get("passport_until"))
         db.session.flush()
         recalculate_employment_events(employment)
         refresh_overdue_events(employment.company_id)
@@ -129,19 +134,15 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def update_employee(employment_id: int):
         employment = db.session.get(Employment, employment_id)
-        if not employment:
+        if not employment or employment.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
 
-        payload = get_json()
-        effective_date = _parse_optional_date(
-            payload.get("effective_date", today_moscow().isoformat())
-        ) or today_moscow()
+        payload = load_schema(UpdateEmployeeSchema)
+        effective_date = payload.get("effective_date") or today_moscow()
         needs_recalc = False
 
         if _payload_has(payload, "full_name"):
             full_name = (payload.get("full_name") or "").strip()
-            if not full_name:
-                return api_response(message="full_name cannot be empty", status=400)
             if full_name != get_current_name(employment.person):
                 update_person_name(employment.person, full_name, effective_date)
                 needs_recalc = True
@@ -167,10 +168,8 @@ def register_routes(bp):
             employment.person.has_university = bool(payload.get("has_university"))
 
         if _payload_has(payload, "hire_date"):
-            hire_date = _parse_optional_date(payload.get("hire_date"))
-            if not hire_date:
-                return api_response(message="hire_date cannot be empty", status=400)
-            if hire_date != employment.hire_date:
+            hire_date = payload.get("hire_date")
+            if hire_date and hire_date != employment.hire_date:
                 employment.hire_date = hire_date
                 ensure_tenure_awards(employment.id, hire_date)
                 needs_recalc = True
@@ -178,7 +177,7 @@ def register_routes(bp):
         if _payload_has(payload, "contract_end"):
             sync_active_contract(
                 employment,
-                _parse_optional_date(payload.get("contract_end")),
+                payload.get("contract_end"),
             )
             needs_recalc = True
 
@@ -190,7 +189,7 @@ def register_routes(bp):
                 else (current_grade.grade_id if current_grade else None)
             )
             grade_date = (
-                _parse_optional_date(payload.get("grade_date"))
+                payload.get("grade_date")
                 if _payload_has(payload, "grade_date")
                 else (current_grade.assigned_date if current_grade else None)
             )
@@ -200,7 +199,7 @@ def register_routes(bp):
         if _payload_has(payload, "passport_until"):
             sync_passport(
                 employment.person,
-                _parse_optional_date(payload.get("passport_until")),
+                payload.get("passport_until"),
             )
             needs_recalc = True
 
@@ -215,7 +214,7 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def delete_employee(employment_id: int):
         employment = db.session.get(Employment, employment_id)
-        if not employment:
+        if not employment or employment.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
 
         delete_employment(employment)
@@ -226,13 +225,13 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def dismiss(employment_id: int):
         employment = db.session.get(Employment, employment_id)
-        if not employment:
+        if not employment or employment.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
 
-        payload = get_json()
+        payload = load_schema(DismissEmployeeSchema)
         dismiss_employment(
             employment,
-            _parse_optional_date(payload.get("dismissal_date")) or today_moscow(),
+            payload.get("dismissal_date") or today_moscow(),
             payload.get("reason"),
         )
         recalculate_employment_events(employment)
@@ -249,14 +248,12 @@ def register_routes(bp):
         if not person:
             return api_response(message="Not found", status=404)
 
-        payload = get_json()
-        hire_date = _parse_optional_date(payload.get("hire_date"))
-        if not hire_date:
-            return api_response(message="hire_date is required", status=400)
+        payload = load_schema(RehireEmployeeSchema)
+        hire_date = payload["hire_date"]
 
         employment = rehire_person(
             person,
-            payload.get("company_id", 1),
+            get_request_company_id(),
             hire_date,
             payload.get("title", "Не указана"),
             payload.get("position_grade_id"),
@@ -264,15 +261,15 @@ def register_routes(bp):
         ensure_tenure_awards(employment.id, hire_date)
         sync_active_contract(
             employment,
-            _parse_optional_date(payload.get("contract_end")),
+            payload.get("contract_end"),
             start_date=hire_date,
         )
         sync_actual_grade(
             employment,
             payload.get("actual_grade_id"),
-            _parse_optional_date(payload.get("grade_date")),
+            payload.get("grade_date"),
         )
-        sync_passport(person, _parse_optional_date(payload.get("passport_until")))
+        sync_passport(person, payload.get("passport_until"))
         db.session.flush()
         recalculate_employment_events(employment)
         refresh_overdue_events(employment.company_id)

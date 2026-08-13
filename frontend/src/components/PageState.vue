@@ -5,6 +5,7 @@ defineProps<{
   error?: string
   empty?: boolean
   emptyText?: string
+  hasData?: boolean
 }>()
 
 defineEmits<{
@@ -19,12 +20,18 @@ defineEmits<{
         <span class="spinner" aria-hidden="true"></span>
         <span>Загрузка...</span>
       </div>
-      <div v-else-if="error" key="error" class="state-message error">
+      <div v-else-if="error && !hasData" key="error" class="state-message error">
         <p>{{ error }}</p>
         <button class="btn secondary" type="button" @click="$emit('retry')">Повторить</button>
       </div>
-      <div v-else-if="empty" key="empty" class="state-message">{{ emptyText ?? 'Нет данных' }}</div>
+      <div v-else-if="empty && !hasData" key="empty" class="state-message">
+        {{ emptyText ?? 'Нет данных' }}
+      </div>
       <div v-else key="content">
+        <div v-if="error" class="state-message error inline-error">
+          <p>{{ error }}</p>
+          <button class="btn secondary" type="button" @click="$emit('retry')">Повторить</button>
+        </div>
         <slot />
       </div>
     </Transition>
@@ -70,6 +77,14 @@ defineEmits<{
   display: grid;
   gap: 0.75rem;
   justify-items: start;
+}
+
+.state-message.error.inline-error {
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
 .state-message.error p {

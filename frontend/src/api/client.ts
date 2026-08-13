@@ -17,6 +17,21 @@ export interface TableQueryParams {
   [key: string]: string | number | boolean | undefined
 }
 
+let csrfToken: string | null = null
+let unauthorizedHandler: (() => void) | null = null
+
+export function setCsrfToken(token: string | null) {
+  csrfToken = token
+}
+
+export function getCsrfToken(): string | null {
+  return csrfToken
+}
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  unauthorizedHandler = handler
+}
+
 export function buildQuery(params: TableQueryParams = {}): string {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
@@ -31,41 +46,47 @@ async function parseJsonResponse<T>(response: Response): Promise<ApiResponse<T>>
   const contentType = response.headers.get('content-type') ?? ''
   if (!contentType.includes('application/json')) {
     throw new ApiError(
-      localizeApiMessage(response.status === 401 ? 'Invalid credentials' : undefined),
+      localizeApiMessage(response.status === 401 ? 'Unauthorized' : undefined),
       response.status,
     )
   }
   return (await response.json()) as ApiResponse<T>
 }
 
+function buildHeaders(options: RequestInit, isJsonBody: boolean): HeadersInit {
+  const headers: Record<string, string> = {
+    ...(isJsonBody ? { 'Content-Type': 'application/json' } : {}),
+    ...(options.headers as Record<string, string> | undefined),
+  }
+  if (csrfToken && options.method && options.method !== 'GET') {
+    headers['X-CSRF-Token'] = csrfToken
+  }
+  return headers
+}
+
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
+  const isJsonBody = Boolean(options.body) && !(options.body instanceof FormData)
   const response = await fetch(url, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(options.headers ?? {}),
-    },
+    headers: buildHeaders(options, isJsonBody),
     ...options,
   })
+
+  if (response.status === 401 && !url.endsWith('/api/login')) {
+    unauthorizedHandler?.()
+  }
 
   const payload = await parseJsonResponse<T>(response)
   if (!response.ok || !payload.success) {
     throw new ApiError(localizeApiMessage(payload.message), response.status, payload.message)
   }
-  return payload.data as T
-}
 
-async function fetchAllPaginated<T>(
-  fetchPage: (params: TableQueryParams) => Promise<Paginated<T>>,
-  perPage = 200,
-): Promise<T[]> {
-  const first = await fetchPage({ page: 1, per_page: perPage })
-  const all = [...first.items]
-  for (let page = 2; page <= first.pages; page += 1) {
-    const data = await fetchPage({ page, per_page: perPage })
-    all.push(...data.items)
+  if (payload.data && typeof payload.data === 'object' && 'csrf_token' in payload.data) {
+    const token = (payload.data as { csrf_token?: string }).csrf_token
+    if (token) setCsrfToken(token)
   }
-  return all
+
+  return payload.data as T
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -78,6 +99,11 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export const api = {
+  fetchCsrf: () =>
+    request<{ csrf_token: string }>('/api/csrf').then((data) => {
+      if (data?.csrf_token) setCsrfToken(data.csrf_token)
+      return data
+    }),
   login: (username: string, password: string) =>
     request('/api/login', {
       method: 'POST',
@@ -87,8 +113,6 @@ export const api = {
   me: () => request('/api/me'),
   employees: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/employees${buildQuery(params)}`),
-  fetchAllEmployees: () =>
-    fetchAllPaginated((params) => api.employees(params) as Promise<Paginated<unknown>>),
   createEmployee: (body: Record<string, unknown>) =>
     request('/api/employees', { method: 'POST', body: JSON.stringify(body) }),
   updateEmployee: (id: number, body: Record<string, unknown>) =>
@@ -125,8 +149,6 @@ export const api = {
   events: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/events${buildQuery(params)}`),
   getEvent: (id: number) => request(`/api/events/${id}`),
-  fetchAllEvents: () =>
-    fetchAllPaginated((params) => api.events(params) as Promise<Paginated<unknown>>),
   upcomingEvents: (limit = 10) => request(`/api/events/upcoming?limit=${limit}`),
   createEvent: (body: Record<string, unknown>) =>
     request('/api/events', { method: 'POST', body: JSON.stringify(body) }),
@@ -186,8 +208,12 @@ export const api = {
     const response = await fetch('/api/import/upload', {
       method: 'POST',
       credentials: 'include',
+      headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
       body: form,
     })
+    if (response.status === 401) {
+      unauthorizedHandler?.()
+    }
     const payload = await parseJsonResponse<unknown>(response)
     if (!response.ok || !payload.success) {
       throw new ApiError(localizeApiMessage(payload.message), response.status, payload.message)

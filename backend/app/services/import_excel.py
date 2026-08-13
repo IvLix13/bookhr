@@ -29,8 +29,11 @@ from app.services.employees import (
     get_current_grade,
     get_current_name,
     get_current_position,
+    sync_active_contract,
+    sync_actual_grade,
+    sync_passport,
+    update_position,
 )
-from app.services.events import refresh_overdue_events
 from app.services.rule_engine import run_rule_engine
 from app.services.tenure import auto_mark_reached_awards, ensure_tenure_awards
 from app.utils.dates import format_display_date_ru, normalize_full_name, parse_flexible_date
@@ -479,18 +482,31 @@ def confirm_import(
             if university is not None:
                 person.has_university = university
 
+            if not created:
+                title = str(data.get("title") or "").strip()
+                if title:
+                    current_position = get_current_position(employment)
+                    current_title = current_position.title if current_position else ""
+                    if title != current_title:
+                        update_position(
+                            employment,
+                            title,
+                            _resolve_grade_id(data.get("position_grade")),
+                            hire_date,
+                        )
+
             contract_end = _parse_date(data.get("contract_end"))
             if contract_end:
-                _upsert_contract(employment, hire_date, contract_end)
+                sync_active_contract(employment, contract_end, start_date=hire_date)
 
             grade_date = _parse_date(data.get("grade_date"))
             grade_id = _resolve_grade_id(data.get("actual_grade"))
             if grade_id and grade_date:
-                _upsert_grade(employment, grade_id, grade_date)
+                sync_actual_grade(employment, grade_id, grade_date)
 
             passport_until = _parse_date(data.get("passport_until"))
             if passport_until:
-                _upsert_passport(person, passport_until)
+                sync_passport(person, passport_until)
 
             awards = ensure_tenure_awards(employment.id, employment.hire_date)
             if mark_reached_tenure and (created or update_existing_tenure):
@@ -512,7 +528,6 @@ def confirm_import(
         job.error_message = None
         db.session.flush()
         run_rule_engine(job.company_id)
-        refresh_overdue_events(job.company_id)
         db.session.commit()
     except Exception as exc:
         db.session.rollback()

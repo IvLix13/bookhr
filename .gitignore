@@ -5,7 +5,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-backend/.venv/
+backend/.deps/
 backend/uploads/*
 !backend/uploads/.gitkeep
 backend/instance/

@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Callable
 
+from sqlalchemy.exc import IntegrityError
+
 from app.extensions import db
 from app.models import (
     Contract,
@@ -83,9 +85,20 @@ def _upsert_rule_event(
         reference_type=reference_type,
         reference_id=reference_id,
     )
-    db.session.add(event)
-    db.session.flush()
-    record_event_created(event, "Auto-created by rule engine")
+    try:
+        with db.session.begin_nested():
+            db.session.add(event)
+            db.session.flush()
+            record_event_created(event, "Auto-created by rule engine")
+    except IntegrityError:
+        existing = Event.query.filter_by(rule_key=rule_key).first()
+        if existing:
+            return existing
+        raise
+
+    from app.services.notifications import queue_notifications_for_event
+
+    queue_notifications_for_event(event)
     return event
 
 
@@ -260,5 +273,4 @@ def run_rule_engine(company_id: int | None = None) -> dict[str, int]:
             stats[key] = stats.get(key, 0) + value
 
     refresh_overdue_events(company_id)
-    db.session.commit()
     return stats

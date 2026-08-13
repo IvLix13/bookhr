@@ -2,15 +2,23 @@
 import { computed } from 'vue'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import { MODULE_LABELS } from '@/utils/labels'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const auth = useAuthStore()
 
 type SettingsTab = 'settings-users' | 'settings-notifications'
 
-const tabs: Array<{ name: SettingsTab; label: string }> = [
-  { name: 'settings-users', label: MODULE_LABELS.settingsUsers },
-  { name: 'settings-notifications', label: MODULE_LABELS.settingsNotifications },
-]
+const tabs = computed(() => {
+  const items: Array<{ name: SettingsTab; label: string }> = []
+  if (auth.isAdmin()) {
+    items.push({ name: 'settings-users', label: MODULE_LABELS.settingsUsers })
+  }
+  if (auth.canManageNotifications()) {
+    items.push({ name: 'settings-notifications', label: MODULE_LABELS.settingsNotifications })
+  }
+  return items
+})
 
 const activeTab = computed(() => route.name as SettingsTab | undefined)
 </script>
@@ -21,7 +29,7 @@ const activeTab = computed(() => route.name as SettingsTab | undefined)
       <h2>{{ MODULE_LABELS.settings }}</h2>
     </header>
 
-    <div class="tabs" role="tablist" aria-label="Разделы настроек">
+    <div v-if="tabs.length > 1" class="tabs" role="tablist" aria-label="Разделы настроек">
       <RouterLink
         v-for="tab in tabs"
         :id="`settings-tab-${tab.name}`"

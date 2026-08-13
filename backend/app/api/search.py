@@ -7,13 +7,14 @@ from flask_login import login_required
 
 from app.api.helpers import api_response
 from app.services.search import search_all
+from app.tenant import get_request_company_id
 
 
 def register_routes(bp):
     @bp.get("/search")
     @login_required
     def search():
-        company_id = request.args.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         limit = request.args.get("limit", 20, type=int)
         q = request.args.get("q", "").strip()
 

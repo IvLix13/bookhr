@@ -1,5 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { setUnauthorizedHandler } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { useToast } from '@/composables/useToast'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -22,6 +24,7 @@ const router = createRouter({
         {
           path: 'import',
           component: () => import('@/views/import/ImportLayout.vue'),
+          meta: { requiresEdit: true },
           children: [
             { path: '', redirect: { name: 'import-employees' } },
             {
@@ -41,18 +44,19 @@ const router = createRouter({
         {
           path: 'settings',
           component: () => import('@/views/settings/SettingsLayout.vue'),
-          meta: { requiresAdmin: true },
           children: [
             { path: '', redirect: { name: 'settings-users' } },
             {
               path: 'users',
               name: 'settings-users',
               component: () => import('@/views/settings/SettingsUsersTab.vue'),
+              meta: { requiresAdmin: true },
             },
             {
               path: 'notifications',
               name: 'settings-notifications',
               component: () => import('@/views/settings/SettingsNotificationsTab.vue'),
+              meta: { requiresEdit: true },
             },
           ],
         },
@@ -61,9 +65,19 @@ const router = createRouter({
   ],
 })
 
+setUnauthorizedHandler(() => {
+  const auth = useAuthStore()
+  if (!auth.user) return
+  auth.clearSession()
+  const toast = useToast()
+  toast.error('Сессия истекла. Войдите снова.')
+  void router.replace({ name: 'login', query: { redirect: router.currentRoute.value.fullPath } })
+})
+
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.user && to.meta.requiresAuth) {
+    await auth.ensureCsrf()
     await auth.fetchMe()
   }
   if (to.meta.requiresAuth && !auth.user) {
@@ -73,7 +87,10 @@ router.beforeEach(async (to) => {
     return { name: 'calendar' }
   }
   if (to.matched.some((record) => record.meta.requiresAdmin) && !auth.isAdmin()) {
-    return { name: 'calendar' }
+    return { name: 'calendar', query: { denied: 'admin' } }
+  }
+  if (to.matched.some((record) => record.meta.requiresEdit) && !auth.canEdit()) {
+    return { name: 'calendar', query: { denied: 'edit' } }
   }
 })
 

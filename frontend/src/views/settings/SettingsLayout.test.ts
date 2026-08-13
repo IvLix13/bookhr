@@ -2,6 +2,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 import SettingsLayout from '@/views/settings/SettingsLayout.vue'
 
+vi.mock('@/stores/auth', () => ({
+  useAuthStore: () => ({
+    isAdmin: () => true,
+    canManageNotifications: () => true,
+  }),
+}))
+
 vi.mock('vue-router', async () => {
   const actual = await vi.importActual<typeof import('vue-router')>('vue-router')
   return {

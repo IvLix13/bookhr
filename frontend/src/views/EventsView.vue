@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
 import EventDetailModal from '@/components/EventDetailModal.vue'
@@ -21,6 +21,8 @@ const route = useRoute()
 const router = useRouter()
 const toast = useToast()
 
+const completingId = ref<number | null>(null)
+
 const table = useServerTable<EventItem>({
   tableId: 'events',
   fetcher: (params) => api.events(params) as Promise<Paginated<EventItem>>,
@@ -34,6 +36,26 @@ const initialSearch = computed(() =>
 if (initialSearch.value) {
   table.setSearch(initialSearch.value)
 }
+
+const initialStatus = computed(() =>
+  typeof route.query.status === 'string' ? route.query.status : '',
+)
+
+if (initialStatus.value) {
+  table.setQuery({ columnFilters: { ...table.query.value.columnFilters, status: initialStatus.value } })
+}
+
+watch(
+  () => route.query.status,
+  (status) => {
+    if (typeof status === 'string' && status) {
+      table.setQuery({
+        columnFilters: { ...table.query.value.columnFilters, status },
+        page: 1,
+      })
+    }
+  },
+)
 
 const openEventId = computed(() => {
   const raw = route.query.event
@@ -93,6 +115,13 @@ const columns: ColumnDef<EventItem>[] = [
 
 function onQueryUpdate(patch: Partial<TableQueryState>) {
   table.setQuery(patch)
+  if (patch.columnFilters?.status !== undefined) {
+    const nextQuery = { ...route.query }
+    const status = patch.columnFilters.status?.trim()
+    if (status) nextQuery.status = status
+    else delete nextQuery.status
+    router.replace({ query: nextQuery })
+  }
 }
 
 function openEvent(id: number) {
@@ -121,13 +150,16 @@ function onRowClick(row: EventItem) {
 }
 
 async function complete(id: number) {
-  if (!auth.canEdit()) return
+  if (!auth.canEdit() || completingId.value != null) return
+  completingId.value = id
   try {
     await api.completeEvent(id)
     toast.success('Мероприятие выполнено')
     await table.reload()
   } catch (err) {
     toast.error(err instanceof Error ? err.message : 'Не удалось выполнить мероприятие')
+  } finally {
+    completingId.value = null
   }
 }
 
@@ -157,6 +189,8 @@ async function onCreated() {
     </header>
     <PageState
       :error="table.error.value"
+      :refreshing="table.refreshing.value"
+      :has-data="table.rows.value.length > 0"
       @retry="table.reload()"
     >
       <DataTable
@@ -189,9 +223,10 @@ async function onCreated() {
             v-if="auth.canEdit() && resolveEventStatus(row.status, row.effective_status) !== 'completed' && row.status !== 'cancelled'"
             class="btn secondary"
             type="button"
+            :disabled="completingId === row.id"
             @click.stop="complete(row.id)"
           >
-            Выполнить
+            {{ completingId === row.id ? 'Сохранение...' : 'Выполнить' }}
           </button>
         </template>
       </DataTable>

@@ -27,7 +27,7 @@ class BaseConfig:
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     PERMANENT_SESSION_LIFETIME = timedelta(hours=8)
-    WTF_CSRF_ENABLED = True
+    WTF_CSRF_ENABLED = False
     NEXTCLOUD_BASE_URL = os.getenv("NEXTCLOUD_BASE_URL", "")
     NEXTCLOUD_BOT_TOKEN = os.getenv("NEXTCLOUD_BOT_TOKEN", "")
 
@@ -50,6 +50,10 @@ class BaseConfig:
     LDAP_DEFAULT_ROLE = os.getenv("LDAP_DEFAULT_ROLE", "viewer")
     LDAP_LOCAL_ADMIN_USERNAME = os.getenv("LDAP_LOCAL_ADMIN_USERNAME", "admin")
 
+    LOGIN_RATE_LIMIT = os.getenv("LOGIN_RATE_LIMIT", "10 per minute")
+    NOTIFICATION_MAX_ATTEMPTS = int(os.getenv("NOTIFICATION_MAX_ATTEMPTS", "10"))
+    NOTIFICATION_BATCH_SIZE = int(os.getenv("NOTIFICATION_BATCH_SIZE", "100"))
+
 
 class DevelopmentConfig(BaseConfig):
     DEBUG = True
@@ -67,6 +71,7 @@ class TestingConfig(BaseConfig):
     WTF_CSRF_ENABLED = False
     SESSION_COOKIE_SECURE = False
     LDAP_ENABLED = False
+    RATELIMIT_ENABLED = False
 
 
 config_by_name = {

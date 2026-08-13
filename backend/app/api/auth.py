@@ -4,11 +4,14 @@ from __future__ import annotations
 
 from flask import current_app, session
 from flask_login import login_required, login_user, logout_user
+from marshmallow import ValidationError
 
-from app.api.helpers import api_response, get_json
+from app.api.helpers import api_response, load_schema
+from app.api.schemas import LoginSchema
 from app.api.serializers import user_to_dict
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import AuthSource, Role, RoleName, User
+from app.security.csrf import get_or_create_csrf_token, rotate_csrf_token
 from app.services.ldap_auth import authenticate_ldap_user
 
 
@@ -53,6 +56,7 @@ def _authenticate_ldap(username: str, password: str) -> User | None:
             username=ldap_user.username,
             full_name=ldap_user.full_name,
             role_id=role.id,
+            company_id=1,
             auth_source=AuthSource.LDAP.value,
             is_active=True,
         )
@@ -68,11 +72,20 @@ def _authenticate_ldap(username: str, password: str) -> User | None:
 
 
 def register_routes(bp):
+    @bp.get("/csrf")
+    def csrf_token():
+        return api_response({"csrf_token": get_or_create_csrf_token()})
+
     @bp.post("/login")
+    @limiter.limit(lambda: current_app.config["LOGIN_RATE_LIMIT"])
     def login():
-        payload = get_json()
-        username = payload.get("username", "").strip()
-        password = payload.get("password", "")
+        try:
+            payload = load_schema(LoginSchema)
+        except ValidationError as exc:
+            return api_response(message=str(exc.messages), status=400)
+
+        username = payload["username"].strip()
+        password = payload["password"]
 
         if current_app.config["LDAP_ENABLED"]:
             user = _authenticate_ldap(username, password)
@@ -86,11 +99,18 @@ def register_routes(bp):
         db.session.commit()
         login_user(user)
         session.permanent = True
-        return api_response(user_to_dict(user))
+        rotate_csrf_token()
+        return api_response(
+            {
+                **user_to_dict(user),
+                "csrf_token": get_or_create_csrf_token(),
+            }
+        )
 
     @bp.post("/logout")
     def logout():
         logout_user()
+        rotate_csrf_token()
         return api_response(message="Logged out")
 
     @bp.get("/me")
@@ -98,4 +118,9 @@ def register_routes(bp):
     def me():
         from flask_login import current_user
 
-        return api_response(user_to_dict(current_user))
+        return api_response(
+            {
+                **user_to_dict(current_user),
+                "csrf_token": get_or_create_csrf_token(),
+            }
+        )

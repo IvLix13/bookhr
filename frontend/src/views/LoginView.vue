@@ -12,12 +12,17 @@ const password = ref('')
 const error = ref('')
 const submitting = ref(false)
 
+function safeRedirect(target: string | undefined): string {
+  if (!target || !target.startsWith('/') || target.startsWith('//')) return '/'
+  return target
+}
+
 async function submit() {
   error.value = ''
   submitting.value = true
   try {
     await auth.login(username.value, password.value)
-    await router.replace((route.query.redirect as string) || '/')
+    await router.replace(safeRedirect(route.query.redirect as string | undefined))
   } catch (err) {
     const message = err instanceof Error ? err.message : undefined
     error.value = localizeApiMessage(message)

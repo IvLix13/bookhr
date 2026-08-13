@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import date
-
 from flask import request
 from flask_login import login_required
 
@@ -11,22 +9,24 @@ from app.api.helpers import (
     api_response,
     apply_sort,
     apply_text_search,
-    get_json,
+    load_schema,
     paginate_query,
     parse_pagination_args,
     parse_search_q,
     parse_sort_args,
     require_roles,
 )
+from app.api.schemas import CreateEventSchema, EventActionSchema, parse_query_date
 from app.api.serializers import event_to_dict
 from app.extensions import db
-from app.models import Event, EventStatus, EventType, RoleName
+from app.models import Event, EventStatus, RoleName
 from app.services.events import (
     InvalidEventTransition,
     apply_status_filter,
     create_manual_event,
     transition_event_status,
 )
+from app.tenant import get_request_company_id
 
 
 EVENT_SORT_FIELDS = {
@@ -41,9 +41,9 @@ def register_routes(bp):
     @bp.get("/events")
     @login_required
     def list_events():
-        company_id = request.args.get("company_id", 1, type=int)
-        date_from = request.args.get("from")
-        date_to = request.args.get("to")
+        company_id = get_request_company_id()
+        date_from = parse_query_date(request.args.get("from"), field_name="from")
+        date_to = parse_query_date(request.args.get("to"), field_name="to")
         status = request.args.get("status")
         event_type = request.args.get("type")
         page, per_page = parse_pagination_args()
@@ -56,9 +56,9 @@ def register_routes(bp):
 
         query = Event.query.filter_by(company_id=company_id)
         if date_from:
-            query = query.filter(Event.event_date >= date.fromisoformat(date_from))
+            query = query.filter(Event.event_date >= date_from)
         if date_to:
-            query = query.filter(Event.event_date <= date.fromisoformat(date_to))
+            query = query.filter(Event.event_date <= date_to)
         query = apply_status_filter(query, status)
         if event_type:
             query = query.filter_by(event_type=event_type)
@@ -72,14 +72,14 @@ def register_routes(bp):
     @login_required
     def get_event(event_id: int):
         event = db.session.get(Event, event_id)
-        if not event:
+        if not event or event.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
         return api_response(event_to_dict(event))
 
     @bp.get("/events/upcoming")
     @login_required
     def upcoming_events():
-        company_id = request.args.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         limit = request.args.get("limit", 10, type=int)
 
         events = (
@@ -96,12 +96,12 @@ def register_routes(bp):
     @bp.post("/events")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def create_event():
-        payload = get_json()
+        payload = load_schema(CreateEventSchema)
         event = create_manual_event(
-            company_id=payload.get("company_id", 1),
+            company_id=get_request_company_id(),
             title=payload["title"],
-            event_type=EventType(payload.get("event_type", EventType.MANUAL.value)),
-            event_date=date.fromisoformat(payload["event_date"]),
+            event_type=payload["event_type"],
+            event_date=payload["event_date"],
             description=payload.get("description"),
             employment_id=payload.get("employment_id"),
         )
@@ -112,9 +112,9 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def complete_event(event_id: int):
         event = db.session.get(Event, event_id)
-        if not event:
+        if not event or event.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
-        payload = get_json()
+        payload = load_schema(EventActionSchema)
         try:
             transition_event_status(
                 event,
@@ -130,9 +130,9 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def cancel_event(event_id: int):
         event = db.session.get(Event, event_id)
-        if not event:
+        if not event or event.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
-        payload = get_json()
+        payload = load_schema(EventActionSchema)
         try:
             transition_event_status(
                 event,
@@ -148,7 +148,7 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def reopen_event(event_id: int):
         event = db.session.get(Event, event_id)
-        if not event:
+        if not event or event.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
         try:
             transition_event_status(

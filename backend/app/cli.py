@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import secrets
+
 import click
 from flask import Flask
 
 from app.extensions import db
-from app.models import Company, Role, RoleName, User
+from app.models import Company, Event, EventStatus, Role, RoleName, User
 from app.services.demo_data import seed_demo_data
-from app.services.events import refresh_overdue_events
-from app.services.notifications import process_pending_notifications
+from app.services.notifications import process_pending_notifications, queue_notifications_for_event
 from app.services.rule_engine import run_rule_engine
 
 
@@ -31,19 +32,26 @@ def register_commands(app: Flask) -> None:
         if not company:
             company = Company(name="Пилотная компания")
             db.session.add(company)
+            db.session.flush()
 
         admin_role = Role.query.filter_by(name=RoleName.ADMIN.value).first()
+        generated_password: str | None = None
         if admin_role and not User.query.filter_by(username="admin").first():
+            generated_password = secrets.token_urlsafe(16)
             admin = User(
                 username="admin",
                 full_name="Администратор",
                 role_id=admin_role.id,
+                company_id=company.id,
+                must_change_password=True,
             )
-            admin.set_password("admin123")
+            admin.set_password(generated_password)
             db.session.add(admin)
 
         db.session.commit()
         click.echo("Seed completed")
+        if generated_password:
+            click.echo(f"Default admin password (change on first login): {generated_password}")
 
     @app.cli.command("seed-demo")
     @click.option("--force", is_flag=True, help="Reload demo data even if employees already exist")
@@ -55,21 +63,22 @@ def register_commands(app: Flask) -> None:
     @app.cli.command("run-rules")
     @click.option("--company-id", type=int, default=None)
     def run_rules(company_id):
-        from app.services.notifications import queue_notifications_for_event
-        from app.models import Event, EventStatus
-
         stats = run_rule_engine(company_id)
-        overdue = refresh_overdue_events(company_id)
-        events = Event.query.filter(
+        events_query = Event.query.filter(
             Event.status.in_([EventStatus.PLANNED.value, EventStatus.OVERDUE.value])
-        ).all()
+        )
+        if company_id:
+            events_query = events_query.filter(Event.company_id == company_id)
         queued = 0
-        for event in events:
+        for event in events_query.all():
             queued += queue_notifications_for_event(event)
         db.session.commit()
-        click.echo(f"Rules: {stats}, overdue updated: {overdue}, notifications queued: {queued}")
+        click.echo(
+            f"Rules: {stats}, notifications queued: {queued}"
+        )
 
     @app.cli.command("send-notifications")
     def send_notifications():
         stats = process_pending_notifications()
+        db.session.commit()
         click.echo(f"Notifications: {stats}")

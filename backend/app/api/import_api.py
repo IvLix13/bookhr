@@ -26,6 +26,7 @@ from app.services.import_rewards import (
     export_rewards_template,
     parse_rewards_workbook,
 )
+from app.tenant import get_request_company_id
 
 
 def _resolve_import_type(raw: str | None) -> ImportType | None:
@@ -54,7 +55,7 @@ def register_routes(bp):
         if import_type is None:
             return api_response(message="Invalid import type", status=400)
 
-        company_id = request.form.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         upload_dir = Path(current_app.config["UPLOAD_DIR"])
         upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -143,7 +144,7 @@ def register_routes(bp):
         if import_type is None:
             return api_response(message="Invalid import type", status=400)
 
-        company_id = request.args.get("company_id", 1, type=int)
+        company_id = get_request_company_id()
         upload_dir = Path(current_app.config["UPLOAD_DIR"])
         upload_dir.mkdir(parents=True, exist_ok=True)
 
