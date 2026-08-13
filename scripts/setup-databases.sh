@@ -80,3 +80,5 @@ LDAP_DEFAULT_ROLE=viewer
 LDAP_LOCAL_ADMIN_USERNAME=admin
 ADMIN_DEFAULT_PASSWORD=IVan1311
 ENV
+
+echo "Created .env.dev and .env.prod"
