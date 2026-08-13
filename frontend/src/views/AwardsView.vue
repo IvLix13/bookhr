@@ -6,12 +6,21 @@ import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { Paginated, TableQueryState, TenureRow } from '@/types'
 import { MODULE_LABELS } from '@/utils/labels'
+import { formatNumericDate } from '@/utils/dates'
 
 const table = useServerTable<TenureRow>({
   tableId: 'awards',
   fetcher: (params) => api.tenure(params) as Promise<Paginated<TenureRow>>,
   defaultSort: { key: 'tenure_years', direction: 'desc' },
 })
+
+function awardLabel(row: TenureRow, years: '10' | '15' | '20'): string {
+  const award = row.awards[years]
+  if (!award) return '—'
+  if (award.is_received) return 'Получено'
+  if (award.milestone_date) return formatNumericDate(award.milestone_date)
+  return '—'
+}
 
 const columns: ColumnDef<TenureRow>[] = [
   { key: 'full_name', label: 'ФИО' },
@@ -24,17 +33,17 @@ const columns: ColumnDef<TenureRow>[] = [
   {
     key: 'award_10',
     label: '10 лет',
-    getValue: (row) => (row.awards['10']?.is_received ? 'Получено' : '—'),
+    getValue: (row) => awardLabel(row, '10'),
   },
   {
     key: 'award_15',
     label: '15 лет',
-    getValue: (row) => (row.awards['15']?.is_received ? 'Получено' : '—'),
+    getValue: (row) => awardLabel(row, '15'),
   },
   {
     key: 'award_20',
     label: '20 лет',
-    getValue: (row) => (row.awards['20']?.is_received ? 'Получено' : '—'),
+    getValue: (row) => awardLabel(row, '20'),
   },
 ]
 

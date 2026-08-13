@@ -66,14 +66,19 @@ def user_admin_to_dict(user: User) -> dict:
     }
 
 
-def grade_to_dict(grade: GradeCatalog) -> dict:
-    return {
+def grade_to_dict(grade: GradeCatalog, *, include_usage: bool = False) -> dict:
+    payload = {
         "id": grade.id,
         "name": grade.name,
         "rank": grade.rank,
         "min_years": float(grade.min_years),
         "is_active": grade.is_active,
     }
+    if include_usage:
+        from app.services.grade_catalog import grade_usage_employment_ids
+
+        payload["in_use_count"] = len(grade_usage_employment_ids(grade.id))
+    return payload
 
 
 def employment_to_dict(employment: Employment) -> dict:

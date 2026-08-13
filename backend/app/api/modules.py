@@ -43,6 +43,7 @@ from app.services.events import refresh_overdue_events
 from app.services.grade_catalog import (
     apply_grade_catalog_payload,
     commit_grade_catalog,
+    delete_grade_catalog,
     validate_min_years,
     validate_rank,
     validate_rank_continuity,
@@ -61,6 +62,12 @@ CONTRACT_SORT_FIELDS = {
 EMPLOYEE_SORT_FIELDS = {
     "full_name": PersonNameHistory.full_name,
     "hire_date": Employment.hire_date,
+}
+
+TENURE_SORT_FIELDS = {
+    "full_name": PersonNameHistory.full_name,
+    "hire_date": Employment.hire_date,
+    "tenure_years": Employment.hire_date,
 }
 
 PASSPORT_SORT_FIELDS = {
@@ -143,7 +150,7 @@ def register_routes(bp):
     @login_required
     def list_grade_catalog():
         grades = GradeCatalog.query.order_by(GradeCatalog.rank.asc()).all()
-        return api_response([grade_to_dict(g) for g in grades])
+        return api_response([grade_to_dict(g, include_usage=True) for g in grades])
 
     @bp.post("/grade-catalog")
     @require_roles(RoleName.ADMIN, RoleName.HR)
@@ -175,7 +182,19 @@ def register_routes(bp):
             commit_grade_catalog()
         except ValueError as exc:
             return api_response(message=str(exc), status=400)
-        return api_response(grade_to_dict(grade))
+        return api_response(grade_to_dict(grade, include_usage=True))
+
+    @bp.delete("/grade-catalog/<int:grade_id>")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def delete_grade(grade_id: int):
+        grade = db.session.get(GradeCatalog, grade_id)
+        if not grade:
+            return api_response(message="Not found", status=404)
+        try:
+            delete_grade_catalog(grade)
+        except ValueError as exc:
+            return api_response(message=str(exc), status=400)
+        return api_response({"id": grade_id})
 
     @bp.post("/grades/assign")
     @require_roles(RoleName.ADMIN, RoleName.HR)
@@ -295,9 +314,9 @@ def register_routes(bp):
         page, per_page = parse_pagination_args()
         q = parse_search_q()
         sort, direction = parse_sort_args(
-            EMPLOYEE_SORT_FIELDS,
-            default_field="full_name",
-            default_direction="asc",
+            TENURE_SORT_FIELDS,
+            default_field="tenure_years",
+            default_direction="desc",
         )
 
         active_employments = Employment.query.filter_by(
@@ -316,7 +335,16 @@ def register_routes(bp):
         if sort == "full_name":
             query = join_current_person_name(query)
 
-        query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
+        if sort == "tenure_years":
+            # Longer tenure = earlier hire_date, so invert the requested direction.
+            query = apply_sort(
+                query,
+                {"hire_date": Employment.hire_date},
+                "hire_date",
+                "asc" if direction == "desc" else "desc",
+            )
+        else:
+            query = apply_sort(query, TENURE_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, tenure_row_to_dict, page, per_page))
 
     @bp.patch("/tenure/<int:award_id>")

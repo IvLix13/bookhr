@@ -368,23 +368,56 @@ def test_confirm_import_update_existing_tenure_requires_flag(app, tmp_path):
         dry_run_import(job1, parse_workbook(path))
         db.session.commit()
         assert job1.summary["update"] == 1
-        confirm_import(job1)
+        confirm_import(job1, update_existing_tenure=False)
 
         assert job1.summary["tenure_marked"] == 0
         awards = _tenure_map(person.employments[0].id)
         assert all(not award.is_received for award in awards.values())
 
-        # Update with the flag: reached milestones get marked.
+        # Default (update existing on): reached milestones get marked.
         job2 = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
         db.session.add(job2)
         db.session.flush()
         dry_run_import(job2, parse_workbook(path))
         db.session.commit()
-        confirm_import(job2, update_existing_tenure=True)
+        confirm_import(job2)
 
         assert job2.summary["tenure_marked"] == 2
         awards = _tenure_map(person.employments[0].id)
         assert awards[10].is_received is True
+        assert awards[15].is_received is True
+        assert awards[20].is_received is False
+
+
+def test_confirm_import_updates_hire_date_and_tenure_milestones(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        person, employment = create_person_with_employment(
+            company_id=company.id,
+            full_name="Стажов Стаж Стажович",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+        )
+        db.session.commit()
+        employment_id = employment.id
+
+        path = tmp_path / "tenure-hire-date.xlsx"
+        _write_minimal_workbook(path, "Стажов Стаж Стажович", "01.01.2010")
+
+        job = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
+        db.session.add(job)
+        db.session.flush()
+        dry_run_import(job, parse_workbook(path))
+        db.session.commit()
+        confirm_import(job)
+
+        db.session.refresh(person)
+        updated = person.employments[0]
+        assert updated.hire_date == date(2010, 1, 1)
+        awards = _tenure_map(employment_id)
+        assert awards[10].milestone_date == date(2020, 1, 1)
+        assert awards[10].is_received is True
+        assert awards[15].milestone_date == date(2025, 1, 1)
         assert awards[15].is_received is True
         assert awards[20].is_received is False
 

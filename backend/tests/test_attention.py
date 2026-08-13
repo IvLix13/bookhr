@@ -32,7 +32,9 @@ def test_attention_summary_overdue_events(admin_client, seed_company, monkeypatc
     assert payload["success"] is True
     data = payload["data"]
     assert data["counts"]["events"] >= 1
-    assert any(item["category"] == "events" for item in data["items"])
+    event_items = [item for item in data["items"] if item["category"] == "events"]
+    assert event_items
+    assert event_items[0]["route"] == f"/?event={event.id}"
 
     db.session.refresh(event)
     assert event.status == "planned"
@@ -94,6 +96,48 @@ def test_attention_excludes_max_grade_without_next(admin_client, seed_company, m
     data = response.get_json()["data"]
     assert data["counts"]["grades"] == 0
     assert data["items"] == []
+
+
+def test_attention_grade_items_link_to_related_event(admin_client, seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.attention.today_moscow", lambda: date(2026, 7, 24))
+    monkeypatch.setattr("app.services.grades.today_moscow", lambda: date(2026, 7, 24))
+
+    junior = GradeCatalog(name="Junior", rank=1, min_years=1.5, is_active=True)
+    middle = GradeCatalog(name="Middle", rank=2, min_years=2, is_active=True)
+    db.session.add_all([junior, middle])
+    db.session.flush()
+    _, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Грейд Событие",
+        hire_date=date(2020, 1, 1),
+        title="Инженер",
+    )
+    db.session.add(
+        EmployeeGradeHistory(
+            employment_id=employment.id,
+            grade_id=junior.id,
+            assigned_date=date(2025, 1, 24),
+        )
+    )
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Рассмотреть повышение грейда",
+        event_type=EventType.GRADE,
+        event_date=date(2026, 7, 10),
+        employment_id=employment.id,
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/attention?company_id={seed_company.id}&categories=grades&limit=5"
+    )
+    assert response.status_code == 200
+    items = response.get_json()["data"]["items"]
+    assert items
+    assert items[0]["category"] == "grades"
+    assert items[0]["id"] == event.id
+    assert items[0]["route"] == f"/?event={event.id}"
+    assert "/grades" not in (items[0]["route"] or "")
 
 
 def test_attention_requires_auth(client):

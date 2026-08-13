@@ -68,6 +68,7 @@ export interface Grade {
   rank: number
   min_years: number
   is_active?: boolean
+  in_use_count?: number
 }
 
 export interface EventItem {

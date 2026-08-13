@@ -37,10 +37,10 @@ const rowActions = reactive<Record<number, string>>({})
 /** normalized grade name -> skipped */
 const gradeSkips = reactive<Record<string, boolean>>({})
 
-/** Auto-mark tenure milestones already reached as received (new employees). */
+/** Auto-mark tenure milestones already reached as received. */
 const markReachedTenure = ref(true)
 /** Extend tenure auto-marking to existing (updated) employees. */
-const updateExistingTenure = ref(false)
+const updateExistingTenure = ref(true)
 
 const isRewards = computed(() => props.importType === 'rewards')
 
@@ -140,7 +140,7 @@ function resetState() {
   error.value = ''
   modalGradeName.value = null
   markReachedTenure.value = true
-  updateExistingTenure.value = false
+  updateExistingTenure.value = true
   clearGradeSkips()
   for (const key of Object.keys(rowActions)) {
     delete rowActions[Number(key)]

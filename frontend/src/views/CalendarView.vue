@@ -1,13 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import CalendarFeedPanel from '@/components/CalendarFeedPanel.vue'
 import DayEventsModal from '@/components/DayEventsModal.vue'
+import EventDetailModal from '@/components/EventDetailModal.vue'
 import MonthCalendar from '@/components/MonthCalendar.vue'
 import PageState from '@/components/PageState.vue'
 import { api } from '@/api/client'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import type { EventItem, Paginated } from '@/types'
 import { formatLocalDate, monthRange } from '@/utils/dates'
+
+const route = useRoute()
+const router = useRouter()
 
 const month = ref(new Date())
 const events = ref<EventItem[]>([])
@@ -16,6 +21,16 @@ const selectedDate = ref<string | null>(null)
 const dayModalOpen = ref(false)
 
 const calendarResource = useAsyncResource<{ events: EventItem[]; upcoming: EventItem[] }>()
+
+const openEventId = computed(() => {
+  const raw = route.query.event
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+})
 
 async function loadEvents() {
   const { from, to } = monthRange(month.value)
@@ -41,7 +56,17 @@ function closeDayModal() {
   dayModalOpen.value = false
 }
 
+function closeEventModal() {
+  const nextQuery = { ...route.query }
+  delete nextQuery.event
+  void router.replace({ query: nextQuery })
+}
+
 async function onDayChanged() {
+  await loadEvents()
+}
+
+async function onEventChanged() {
   await loadEvents()
 }
 
@@ -70,6 +95,12 @@ onMounted(loadEvents)
       :date="selectedDate ?? formatLocalDate(new Date())"
       @close="closeDayModal"
       @changed="onDayChanged"
+    />
+    <EventDetailModal
+      :open="openEventId != null"
+      :event-id="openEventId"
+      @close="closeEventModal"
+      @changed="onEventChanged"
     />
   </div>
 </template>

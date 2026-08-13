@@ -7,6 +7,8 @@ from app.models import (
     Employment,
     EmploymentStatus,
     Event,
+    EventStatus,
+    EventType,
     TenureAward,
 )
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade, get_current_name
@@ -16,6 +18,20 @@ from app.services.passports import compute_passport_status
 from app.utils.dates import today_moscow
 
 ALL_CATEGORIES = ("events", "contracts", "passports", "grades", "tenure")
+_OPEN_EVENT_STATUSES = (EventStatus.PLANNED.value, EventStatus.OVERDUE.value)
+
+
+def _open_event_for(*, company_id: int, employment_id: int, event_type: EventType) -> Event | None:
+    return (
+        Event.query.filter_by(
+            company_id=company_id,
+            employment_id=employment_id,
+            event_type=event_type.value,
+        )
+        .filter(Event.status.in_(_OPEN_EVENT_STATUSES))
+        .order_by(Event.event_date.asc(), Event.id.asc())
+        .first()
+    )
 
 
 def _attention_item(
@@ -58,7 +74,7 @@ def _collect_event_items(company_id: int, limit: int) -> list[dict]:
                 subtitle=subtitle,
                 due_date=event.event_date.isoformat(),
                 severity="danger",
-                route="/events",
+                route=f"/?event={event.id}",
             )
         )
     return items
@@ -160,17 +176,22 @@ def _collect_grade_items(company_id: int, limit: int, today) -> list[dict]:
         if days_left is None or days_left > 30:
             continue
         eligible_date = eligibility["eligible_date"]
+        related_event = _open_event_for(
+            company_id=company_id,
+            employment_id=employment.id,
+            event_type=EventType.GRADE,
+        )
         candidates.append(
             (
                 days_left,
                 _attention_item(
                     category="grades",
-                    item_id=employment.id,
+                    item_id=related_event.id if related_event else employment.id,
                     title=get_current_name(employment.person) or "Сотрудник",
                     subtitle=f"Грейд {grade.grade.name}, eligible {eligible_date.isoformat()}",
                     due_date=eligible_date.isoformat(),
                     severity="warning" if days_left > 0 else "danger",
-                    route="/grades",
+                    route=f"/?event={related_event.id}" if related_event else None,
                 ),
             )
         )

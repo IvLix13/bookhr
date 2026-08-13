@@ -137,6 +137,29 @@ def test_tenure_list_sort_by_full_name(admin_client, seed_company):
     assert names == sorted(names, reverse=True)
 
 
+def test_tenure_list_sort_by_tenure_years(admin_client, seed_company):
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Старый Стаж",
+        hire_date=date(2010, 1, 1),
+        title="Инженер",
+    )
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Новый Стаж",
+        hire_date=date(2020, 1, 1),
+        title="Аналитик",
+    )
+    db.session.commit()
+
+    response = admin_client.get("/api/tenure?sort=tenure_years&direction=desc")
+    assert response.status_code == 200
+    items = response.get_json()["data"]["items"]
+    assert [item["full_name"] for item in items] == ["Старый Стаж", "Новый Стаж"]
+    assert items[0]["tenure_years"] > items[1]["tenure_years"]
+    assert items[0]["awards"]["10"]["milestone_date"] is not None
+
+
 def test_employees_list_requires_auth(client):
     response = client.get("/api/employees")
     assert response.status_code in (401, 302)

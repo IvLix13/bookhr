@@ -1,5 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import CalendarFeedPanel from '@/components/CalendarFeedPanel.vue'
 import type { EventItem } from '@/types'
 
@@ -33,11 +34,22 @@ const sampleEvents: EventItem[] = [
 
 describe('CalendarFeedPanel', () => {
   it('switches between attention and upcoming panels', async () => {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/', name: 'calendar', component: { template: '<div />' } },
+        { path: '/events', name: 'events', component: { template: '<div />' } },
+      ],
+    })
+    await router.push({ name: 'calendar' })
+    await router.isReady()
+
     const wrapper = mount(CalendarFeedPanel, {
       props: {
         events: sampleEvents,
       },
       global: {
+        plugins: [router],
         stubs: {
           RouterLink: {
             template: '<a><slot /></a>',

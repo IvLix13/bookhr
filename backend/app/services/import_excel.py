@@ -384,7 +384,7 @@ def confirm_import(
     row_actions: dict[int, str | None] | None = None,
     *,
     mark_reached_tenure: bool = True,
-    update_existing_tenure: bool = False,
+    update_existing_tenure: bool = True,
 ) -> None:
     row_actions = row_actions or {}
     report = {
@@ -483,6 +483,8 @@ def confirm_import(
                 person.has_university = university
 
             if not created:
+                if hire_date != employment.hire_date:
+                    employment.hire_date = hire_date
                 title = str(data.get("title") or "").strip()
                 if title:
                     current_position = get_current_position(employment)

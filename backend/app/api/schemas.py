@@ -167,7 +167,7 @@ class NotificationTestSchema(BaseSchema):
 class ImportConfirmSchema(BaseSchema):
     row_actions = fields.Dict(keys=fields.Raw(), values=fields.Raw(), load_default=dict)
     mark_reached_tenure = fields.Bool(load_default=True)
-    update_existing_tenure = fields.Bool(load_default=False)
+    update_existing_tenure = fields.Bool(load_default=True)
 
 
 class LoginSchema(BaseSchema):

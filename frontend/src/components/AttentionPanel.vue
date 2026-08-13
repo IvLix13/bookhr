@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import PageState from '@/components/PageState.vue'
 import { api } from '@/api/client'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import {
   attentionCategoryRoute,
+  attentionEventId,
   attentionItemKey,
+  eventDetailLocation,
+  staysOnCalendar,
   resolveAttentionRoute,
   type BackendAttentionItem,
 } from '@/utils/attention'
@@ -17,6 +20,8 @@ withDefaults(
   }>(),
   { embedded: false },
 )
+
+const router = useRouter()
 
 interface AttentionPayload {
   total: number
@@ -61,6 +66,16 @@ async function loadAttention() {
   await resource.execute(() => api.attention({ limit: 12 }) as Promise<AttentionPayload>)
 }
 
+function staysOnCalendarChip(category: string): boolean {
+  return category === 'events' || category === 'grades'
+}
+
+function onCalendarItemClick(item: BackendAttentionItem) {
+  const eventId = attentionEventId(item)
+  if (eventId == null) return
+  void router.replace(eventDetailLocation(eventId))
+}
+
 onMounted(() => {
   void loadAttention()
 })
@@ -97,20 +112,41 @@ onMounted(() => {
         name="list"
         class="attention-counts"
       >
-        <RouterLink
+        <component
+          :is="staysOnCalendarChip(String(key)) ? 'span' : RouterLink"
           v-for="(count, key) in counts"
           :key="key"
-          :to="attentionCategoryRoute(String(key))"
+          v-bind="staysOnCalendarChip(String(key)) ? {} : { to: attentionCategoryRoute(String(key)) }"
           class="count-chip"
+          :class="{ static: staysOnCalendarChip(String(key)) }"
         >
           <span class="count-label">{{ categoryLabel(String(key)) }}</span>
           <strong>{{ count }}</strong>
-        </RouterLink>
+        </component>
       </TransitionGroup>
 
       <TransitionGroup tag="ul" name="list" class="attention-list">
         <li v-for="item in items" :key="attentionItemKey(item)" class="attention-item">
+          <button
+            v-if="staysOnCalendar(item)"
+            type="button"
+            class="attention-link"
+            :class="severityClass(item.severity)"
+            @click="onCalendarItemClick(item)"
+          >
+            <div class="attention-main">
+              <strong>{{ item.title }}</strong>
+              <p v-if="item.subtitle">{{ item.subtitle }}</p>
+            </div>
+            <div class="attention-meta">
+              <span class="badge" :class="severityClass(item.severity)">
+                {{ categoryLabel(item.category) }}
+              </span>
+              <time v-if="item.due_date">{{ item.due_date }}</time>
+            </div>
+          </button>
           <RouterLink
+            v-else
             :to="resolveAttentionRoute(item)"
             class="attention-link"
             :class="severityClass(item.severity)"
@@ -183,10 +219,14 @@ onMounted(() => {
     border-color var(--transition);
 }
 
-.count-chip:hover {
+.count-chip:hover:not(.static) {
   background: var(--accent-soft);
   border-color: var(--accent-border, var(--accent));
   transform: translateY(-1px);
+}
+
+.count-chip.static {
+  cursor: default;
 }
 
 .count-label {
@@ -211,6 +251,16 @@ onMounted(() => {
   border-radius: var(--radius-lg);
   transition: background var(--transition), transform var(--transition),
     box-shadow var(--transition);
+}
+
+button.attention-link {
+  width: 100%;
+  margin: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .attention-link:hover {

@@ -169,7 +169,7 @@ describe('ImportWorkflow tenure options', () => {
     return wrapper
   }
 
-  it('confirms with tenure defaults (mark on, update existing off)', async () => {
+  it('confirms with tenure defaults (mark on, update existing on)', async () => {
     const wrapper = await mountClean()
 
     expect(wrapper.text()).toContain('Автоматически отмечать достигнутые награды за стаж')
@@ -183,16 +183,16 @@ describe('ImportWorkflow tenure options', () => {
 
     expect(confirmImport).toHaveBeenCalledWith(12, {}, {
       markReachedTenure: true,
-      updateExistingTenure: false,
+      updateExistingTenure: true,
     })
   })
 
-  it('passes update-existing flag when checkbox enabled', async () => {
+  it('passes update-existing flag when checkbox disabled', async () => {
     const wrapper = await mountClean()
 
     const checkboxes = wrapper.findAll('.tenure-options input[type="checkbox"]')
     expect(checkboxes).toHaveLength(2)
-    await checkboxes[1].setValue(true)
+    await checkboxes[1].setValue(false)
 
     const confirmButton = wrapper
       .findAll('button')
@@ -202,7 +202,7 @@ describe('ImportWorkflow tenure options', () => {
 
     expect(confirmImport).toHaveBeenCalledWith(12, {}, {
       markReachedTenure: true,
-      updateExistingTenure: true,
+      updateExistingTenure: false,
     })
   })
 })

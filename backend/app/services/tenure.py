@@ -20,11 +20,15 @@ def ensure_tenure_awards(employment_id: int, hire_date: date) -> list[TenureAwar
             employment_id=employment_id,
             milestone_years=years,
         ).first()
+        milestone_date = hire_date + relativedelta(years=years)
         if existing:
+            # Keep received awards as historical facts; refresh pending dates
+            # when hire_date changes (e.g. after import-update).
+            if not existing.is_received and existing.milestone_date != milestone_date:
+                existing.milestone_date = milestone_date
             awards.append(existing)
             continue
 
-        milestone_date = hire_date + relativedelta(years=years)
         award = TenureAward(
             employment_id=employment_id,
             milestone_years=years,

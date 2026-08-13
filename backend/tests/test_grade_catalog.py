@@ -1,8 +1,8 @@
 from datetime import date
 
 from app.extensions import db
-from app.models import EmployeeGradeHistory, GradeCatalog
-from app.services.employees import create_person_with_employment
+from app.models import EmployeeGradeHistory, Employment, GradeCatalog, PositionHistory
+from app.services.employees import create_person_with_employment, get_current_grade, get_current_position
 from app.services.grades import compute_grade_eligibility
 
 
@@ -223,3 +223,70 @@ def test_compute_grade_eligibility_max_rank_has_no_next_grade(app, seed_company)
         eligibility = compute_grade_eligibility(employment, date(2024, 6, 1))
         assert eligibility["next_grade"] is None
         assert eligibility["eligible_date"] is None
+
+
+def test_delete_unused_grade_catalog(admin_client, app):
+    with app.app_context():
+        grade = GradeCatalog(name="Junior", rank=1, min_years=1)
+        db.session.add(grade)
+        db.session.commit()
+        grade_id = grade.id
+
+    response = admin_client.delete(f"/api/grade-catalog/{grade_id}")
+    assert response.status_code == 200
+
+    with app.app_context():
+        assert db.session.get(GradeCatalog, grade_id) is None
+
+
+def test_delete_grade_catalog_unassigns_employees(admin_client, seed_company, app):
+    with app.app_context():
+        grade = GradeCatalog(name="Middle", rank=1, min_years=1, is_active=True)
+        db.session.add(grade)
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Грейд На Удаление",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=grade.id,
+        )
+        db.session.add(
+            EmployeeGradeHistory(
+                employment_id=employment.id,
+                grade_id=grade.id,
+                assigned_date=date(2024, 1, 1),
+            )
+        )
+        db.session.commit()
+        grade_id = grade.id
+        employment_id = employment.id
+
+    listed = admin_client.get("/api/grade-catalog")
+    assert listed.status_code == 200
+    catalog = {item["id"]: item for item in listed.get_json()["data"]}
+    assert catalog[grade_id]["in_use_count"] == 1
+
+    response = admin_client.delete(f"/api/grade-catalog/{grade_id}")
+    assert response.status_code == 200
+
+    with app.app_context():
+        assert db.session.get(GradeCatalog, grade_id) is None
+        employment = db.session.get(Employment, employment_id)
+        assert get_current_grade(employment) is None
+        position = get_current_position(employment)
+        assert position is not None
+        assert position.position_grade_id is None
+        assert EmployeeGradeHistory.query.filter_by(grade_id=grade_id).count() == 0
+        assert PositionHistory.query.filter_by(position_grade_id=grade_id).count() == 0
+
+
+def test_delete_grade_catalog_forbidden_for_viewer(viewer_client, app):
+    with app.app_context():
+        grade = GradeCatalog(name="Junior", rank=1, min_years=1)
+        db.session.add(grade)
+        db.session.commit()
+        grade_id = grade.id
+
+    response = viewer_client.delete(f"/api/grade-catalog/{grade_id}")
+    assert response.status_code == 403

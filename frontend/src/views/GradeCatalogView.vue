@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import ConfirmDialog from '@/components/ConfirmDialog.vue'
 import DataTable from '@/components/DataTable.vue'
 import GradeCatalogForm from '@/components/GradeCatalogForm.vue'
 import { api } from '@/api/client'
@@ -14,6 +15,7 @@ const loading = ref(true)
 const saving = ref(false)
 const error = ref('')
 const editing = ref<Grade | null>(null)
+const pendingDelete = ref<Grade | null>(null)
 
 const columns: ColumnDef<Grade>[] = [
   { key: 'name', label: 'Название' },
@@ -38,6 +40,29 @@ const columns: ColumnDef<Grade>[] = [
   },
 ]
 
+const deleteTitle = computed(() =>
+  pendingDelete.value ? `Удалить грейд «${pendingDelete.value.name}»?` : 'Удалить грейд?',
+)
+
+const deleteMessage = computed(() => {
+  const grade = pendingDelete.value
+  if (!grade) return ''
+  const count = grade.in_use_count ?? 0
+  if (count <= 0) {
+    return 'Грейд будет удалён из справочника.'
+  }
+  const noun = employeeNoun(count)
+  return `Этот грейд используется у ${count} ${noun}. Если удалить его, в поле грейда у сотрудников будет «—».`
+})
+
+function employeeNoun(count: number): string {
+  const abs = Math.abs(count) % 100
+  const last = abs % 10
+  if (abs > 10 && abs < 20) return 'сотрудников'
+  if (last === 1) return 'сотрудника'
+  return 'сотрудников'
+}
+
 async function loadGrades() {
   grades.value = (await api.gradeCatalog()) as Grade[]
 }
@@ -54,6 +79,35 @@ async function onSaved() {
 
 function onCancel() {
   editing.value = null
+}
+
+function startDelete(grade: Grade) {
+  if (!auth.canEdit()) return
+  pendingDelete.value = grade
+}
+
+function cancelDelete() {
+  pendingDelete.value = null
+}
+
+async function confirmDelete() {
+  const grade = pendingDelete.value
+  if (!grade) return
+  saving.value = true
+  error.value = ''
+  try {
+    await api.deleteGradeCatalog(grade.id)
+    pendingDelete.value = null
+    if (editing.value?.id === grade.id) {
+      editing.value = null
+    }
+    await loadGrades()
+  } catch (err) {
+    error.value = normalizeError(err)
+    pendingDelete.value = null
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(async () => {
@@ -113,9 +167,22 @@ async function toggleActive(grade: Grade) {
           <button class="btn ghost" type="button" :disabled="saving" @click="toggleActive(row)">
             {{ row.is_active === false ? 'Активировать' : 'Деактивировать' }}
           </button>
+          <button class="btn ghost" type="button" :disabled="saving" @click="startDelete(row)">
+            Удалить
+          </button>
         </div>
       </template>
     </DataTable>
+
+    <ConfirmDialog
+      :open="pendingDelete != null"
+      :title="deleteTitle"
+      :message="deleteMessage"
+      confirm-label="Удалить"
+      danger
+      @confirm="confirmDelete"
+      @cancel="cancelDelete"
+    />
   </section>
 </template>
 

@@ -130,6 +130,8 @@ export const api = {
     body: Partial<{ name: string; rank: number; min_years: number; is_active: boolean }>,
   ) =>
     request(`/api/grade-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteGradeCatalog: (id: number) =>
+    request(`/api/grade-catalog/${id}`, { method: 'DELETE' }),
   assignGrade: (body: {
     employment_id: number
     grade_id: number
@@ -230,7 +232,7 @@ export const api = {
       body: JSON.stringify({
         row_actions: rowActions,
         mark_reached_tenure: options.markReachedTenure ?? true,
-        update_existing_tenure: options.updateExistingTenure ?? false,
+        update_existing_tenure: options.updateExistingTenure ?? true,
       }),
     }),
   revalidateImport: (jobId: number) =>

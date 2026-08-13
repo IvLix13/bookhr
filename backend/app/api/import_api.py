@@ -94,7 +94,7 @@ def register_routes(bp):
         payload = get_json()
         row_actions = {int(k): v for k, v in payload.get("row_actions", {}).items()}
         mark_reached_tenure = bool(payload.get("mark_reached_tenure", True))
-        update_existing_tenure = bool(payload.get("update_existing_tenure", False))
+        update_existing_tenure = bool(payload.get("update_existing_tenure", True))
         try:
             if job.import_type == ImportType.REWARDS.value:
                 confirm_rewards_import(job, row_actions)
