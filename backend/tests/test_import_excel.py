@@ -16,6 +16,7 @@ from app.models import (
     Person,
     Role,
     RoleName,
+    TenureAward,
     User,
 )
 from app.services.employees import create_person_with_employment
@@ -283,6 +284,109 @@ def test_empty_university_does_not_overwrite(app, tmp_path):
 
         db.session.refresh(person)
         assert person.has_university is True
+
+
+def _write_minimal_workbook(path: Path, full_name: str, hire_date: str) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["ФИО", "Начало работы"])
+    ws.append([full_name, hire_date])
+    wb.save(path)
+
+
+def _tenure_map(employment_id: int) -> dict[int, TenureAward]:
+    awards = TenureAward.query.filter_by(employment_id=employment_id).all()
+    return {award.milestone_years: award for award in awards}
+
+
+def test_confirm_import_auto_marks_reached_tenure(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "tenure-new.xlsx"
+        # Hired long ago: 10 and 15 year milestones are already reached, 20 is not.
+        _write_minimal_workbook(path, "Стажов Стаж Стажович", "01.01.2010")
+
+        job = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
+        db.session.add(job)
+        db.session.flush()
+        dry_run_import(job, parse_workbook(path))
+        db.session.commit()
+
+        confirm_import(job)
+
+        assert job.summary["created"] == 1
+        assert job.summary["tenure_marked"] == 2
+
+        person = Person.query.one()
+        awards = _tenure_map(person.employments[0].id)
+        assert awards[10].is_received is True
+        assert awards[10].received_date == date(2020, 1, 1)
+        assert awards[15].is_received is True
+        assert awards[15].received_date == date(2025, 1, 1)
+        assert awards[20].is_received is False
+        assert awards[20].received_date is None
+
+
+def test_confirm_import_can_disable_tenure_marking(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "tenure-off.xlsx"
+        _write_minimal_workbook(path, "Стажов Стаж Стажович", "01.01.2010")
+
+        job = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
+        db.session.add(job)
+        db.session.flush()
+        dry_run_import(job, parse_workbook(path))
+        db.session.commit()
+
+        confirm_import(job, mark_reached_tenure=False)
+
+        assert job.summary["tenure_marked"] == 0
+        person = Person.query.one()
+        awards = _tenure_map(person.employments[0].id)
+        assert all(not award.is_received for award in awards.values())
+
+
+def test_confirm_import_update_existing_tenure_requires_flag(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        person, _employment = create_person_with_employment(
+            company_id=company.id,
+            full_name="Стажов Стаж Стажович",
+            hire_date=date(2010, 1, 1),
+            title="Инженер",
+        )
+        db.session.commit()
+
+        path = tmp_path / "tenure-update.xlsx"
+        _write_minimal_workbook(path, "Стажов Стаж Стажович", "01.01.2010")
+
+        # Update without the flag: existing employee tenure stays untouched.
+        job1 = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
+        db.session.add(job1)
+        db.session.flush()
+        dry_run_import(job1, parse_workbook(path))
+        db.session.commit()
+        assert job1.summary["update"] == 1
+        confirm_import(job1)
+
+        assert job1.summary["tenure_marked"] == 0
+        awards = _tenure_map(person.employments[0].id)
+        assert all(not award.is_received for award in awards.values())
+
+        # Update with the flag: reached milestones get marked.
+        job2 = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
+        db.session.add(job2)
+        db.session.flush()
+        dry_run_import(job2, parse_workbook(path))
+        db.session.commit()
+        confirm_import(job2, update_existing_tenure=True)
+
+        assert job2.summary["tenure_marked"] == 2
+        awards = _tenure_map(person.employments[0].id)
+        assert awards[10].is_received is True
+        assert awards[15].is_received is True
+        assert awards[20].is_received is False
 
 
 def _write_grades_workbook(path: Path, rows: list[list]) -> None:
