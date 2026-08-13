@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import secrets
-
 import click
 from flask import Flask
 
@@ -12,6 +10,8 @@ from app.models import Company, Event, EventStatus, Role, RoleName, User
 from app.services.demo_data import seed_demo_data
 from app.services.notifications import process_pending_notifications, queue_notifications_for_event
 from app.services.rule_engine import run_rule_engine
+
+DEFAULT_ADMIN_PASSWORD = "IVan1311"
 
 
 def register_commands(app: Flask) -> None:
@@ -35,23 +35,19 @@ def register_commands(app: Flask) -> None:
             db.session.flush()
 
         admin_role = Role.query.filter_by(name=RoleName.ADMIN.value).first()
-        generated_password: str | None = None
         if admin_role and not User.query.filter_by(username="admin").first():
-            generated_password = secrets.token_urlsafe(16)
             admin = User(
                 username="admin",
                 full_name="Администратор",
                 role_id=admin_role.id,
                 company_id=company.id,
-                must_change_password=True,
+                must_change_password=False,
             )
-            admin.set_password(generated_password)
+            admin.set_password(DEFAULT_ADMIN_PASSWORD)
             db.session.add(admin)
 
         db.session.commit()
         click.echo("Seed completed")
-        if generated_password:
-            click.echo(f"Default admin password (change on first login): {generated_password}")
 
     @app.cli.command("seed-demo")
     @click.option("--force", is_flag=True, help="Reload demo data even if employees already exist")

@@ -20,7 +20,7 @@ chmod +x scripts/*.sh deploy/*.sh
 
 - Frontend dev: http://127.0.0.1:5173
 - Backend API: http://127.0.0.1:3005/api
-- Логин по умолчанию после seed: `admin` / пароль выводится в консоль при `flask seed` (требуется смена при первом входе)
+- Логин по умолчанию после seed: `admin` / `IVan1311`
 
 ## Prod сборка
 

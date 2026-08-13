@@ -12,7 +12,7 @@ Environment=FLASK_APP=wsgi:app
 Environment=APP_ENV=production
 Environment=OFFLINE_MODE=1
 ExecStartPre=/opt/bookuchet/scripts/ensure-migrations.sh prod
-ExecStart=/opt/bookuchet/backend/.venv/bin/gunicorn --bind 127.0.0.1:3005 --workers 3 --threads 4 wsgi:app
+ExecStart=/opt/bookuchet/backend/.venv/bin/gunicorn --bind 127.0.0.1:3005 --workers 3 wsgi:app
 Restart=always
 RestartSec=5
 

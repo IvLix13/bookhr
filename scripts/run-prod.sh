@@ -37,4 +37,4 @@ fi
 mkdir -p backend/uploads backend/static
 cd backend
 export FLASK_APP=wsgi:app
-exec ../backend/.venv/bin/gunicorn --bind 127.0.0.1:3005 --workers 2 --threads 4 wsgi:app
+exec ../backend/.venv/bin/gunicorn --bind 127.0.0.1:3005 --workers 2 wsgi:app
