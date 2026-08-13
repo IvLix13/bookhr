@@ -12,7 +12,7 @@ describe('attention utils', () => {
     )
   })
 
-  it('routes events with highlight query', () => {
+  it('routes events with event query for detail modal', () => {
     expect(
       resolveAttentionRoute({
         category: 'events',
@@ -20,7 +20,7 @@ describe('attention utils', () => {
         title: 'Test',
         severity: 'warning',
       }),
-    ).toBe('/events?highlight=12')
+    ).toBe('/events?event=12')
   })
 
   it('maps category summary routes', () => {

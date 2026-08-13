@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
+import EventDetailModal from '@/components/EventDetailModal.vue'
 import PageState from '@/components/PageState.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
@@ -16,6 +17,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const toast = useToast()
 
 const table = useServerTable<EventItem>({
@@ -32,8 +34,8 @@ if (initialSearch.value) {
   table.setSearch(initialSearch.value)
 }
 
-const highlightId = computed(() => {
-  const raw = route.query.highlight
+const openEventId = computed(() => {
+  const raw = route.query.event
   if (typeof raw === 'string' && raw.trim()) {
     const parsed = Number(raw)
     return Number.isFinite(parsed) ? parsed : null
@@ -89,33 +91,18 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
   table.setQuery(patch)
 }
 
-watch(highlightId, () => {
-  scrollToHighlight()
-})
-
-watch(
-  () => [highlightId.value, table.loading.value] as const,
-  ([highlight, loading]) => {
-    if (highlight != null && !loading) {
-      scrollToHighlight()
-    }
-  },
-)
-
-function scrollToHighlight() {
-  if (!highlightId.value) return
-  requestAnimationFrame(() => {
-    const row = document.querySelector(`[data-event-id="${highlightId.value}"]`)
-    row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  })
+function openEvent(id: number) {
+  router.replace({ query: { ...route.query, event: String(id) } })
 }
 
-function rowClass(row: EventItem) {
-  return highlightId.value === row.id ? 'highlighted' : undefined
+function closeEventModal() {
+  const nextQuery = { ...route.query }
+  delete nextQuery.event
+  router.replace({ query: nextQuery })
 }
 
-function rowAttrs(row: EventItem) {
-  return { 'data-event-id': row.id }
+function onRowClick(row: EventItem) {
+  openEvent(row.id)
 }
 
 async function complete(id: number) {
@@ -127,6 +114,10 @@ async function complete(id: number) {
   } catch (err) {
     toast.error(err instanceof Error ? err.message : 'Не удалось выполнить мероприятие')
   }
+}
+
+async function onEventChanged() {
+  await table.reload()
 }
 </script>
 
@@ -143,6 +134,7 @@ async function complete(id: number) {
         :columns="columns"
         :rows="table.rows.value"
         row-key="id"
+        row-clickable
         :loading="table.loading.value"
         :total="table.total.value"
         :page="table.query.value.page"
@@ -151,11 +143,9 @@ async function complete(id: number) {
         :sort-dir="table.query.value.direction"
         :search="table.query.value.q"
         :column-filters="table.query.value.columnFilters"
-        :highlight-row-key="highlightId"
-        :row-class="rowClass"
-        :row-attrs="rowAttrs"
         search-placeholder="Поиск по мероприятиям..."
         @update:query="onQueryUpdate"
+        @row-click="onRowClick"
       >
         <template #cell-status="{ row }">
           <StatusBadge
@@ -168,23 +158,25 @@ async function complete(id: number) {
             v-if="auth.canEdit() && resolveEventStatus(row.status, row.effective_status) !== 'completed' && row.status !== 'cancelled'"
             class="btn secondary"
             type="button"
-            @click="complete(row.id)"
+            @click.stop="complete(row.id)"
           >
             Выполнить
           </button>
         </template>
       </DataTable>
     </PageState>
+
+    <EventDetailModal
+      :open="openEventId != null"
+      :event-id="openEventId"
+      @close="closeEventModal"
+      @changed="onEventChanged"
+    />
   </section>
 </template>
 
 <style scoped>
 .page {
   padding: 1rem;
-}
-
-:deep(.highlighted) {
-  outline: 2px solid var(--accent, #2f6fed);
-  outline-offset: -2px;
 }
 </style>

@@ -68,6 +68,14 @@ def register_routes(bp):
 
         return api_response(paginate_query(query, event_to_dict, page, per_page))
 
+    @bp.get("/events/<int:event_id>")
+    @login_required
+    def get_event(event_id: int):
+        event = db.session.get(Event, event_id)
+        if not event:
+            return api_response(message="Not found", status=404)
+        return api_response(event_to_dict(event))
+
     @bp.get("/events/upcoming")
     @login_required
     def upcoming_events():
