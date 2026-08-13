@@ -15,6 +15,7 @@ from app.models import (
     Contract,
     EmployeeGradeHistory,
     Employment,
+    GradeCatalog,
     ImportJob,
     ImportRow,
     ImportStatus,
@@ -23,6 +24,9 @@ from app.models import (
 )
 from app.services.employees import (
     create_person_with_employment,
+    get_active_contract,
+    get_active_passport,
+    get_current_grade,
     get_current_name,
     get_current_position,
 )
@@ -58,6 +62,9 @@ COLUMN_MAP = {
 }
 
 DATE_FIELDS = {"hire_date", "contract_end", "grade_date", "passport_until"}
+GRADE_FIELDS = ("position_grade", "actual_grade")
+UNKNOWN_GRADE_WARNING_PREFIX = "Грейд «"
+UNKNOWN_GRADE_WARNING_SUFFIX = "» не найден в справочнике"
 
 
 def _normalize_header(value: str) -> str:
@@ -88,18 +95,55 @@ def _parse_date(value: Any) -> date | None:
     return parse_flexible_date(value)
 
 
-def _resolve_grade_id(name: str | None) -> int | None:
-    if not name:
-        return None
-    from app.models import GradeCatalog
+def _normalize_grade_name(name: str | None) -> str:
+    if name is None:
+        return ""
+    return str(name).strip().lower()
 
-    needle = str(name).strip().lower()
+
+def _resolve_grade_id(name: str | None) -> int | None:
+    needle = _normalize_grade_name(name)
     if not needle:
         return None
     for grade in GradeCatalog.query.all():
         if grade.name.strip().lower() == needle:
             return grade.id
     return None
+
+
+def _catalog_name_set() -> set[str]:
+    names: set[str] = set()
+    for grade in GradeCatalog.query.all():
+        normalized = _normalize_grade_name(grade.name)
+        if normalized:
+            names.add(normalized)
+    return names
+
+
+def _row_grade_values(data: dict[str, Any]) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for key in GRADE_FIELDS:
+        raw = data.get(key)
+        if raw is None:
+            continue
+        text = str(raw).strip()
+        needle = _normalize_grade_name(text)
+        if not needle or needle in seen:
+            continue
+        seen.add(needle)
+        values.append(text)
+    return values
+
+
+def _unknown_grade_warning(name: str) -> str:
+    return f"{UNKNOWN_GRADE_WARNING_PREFIX}{name}{UNKNOWN_GRADE_WARNING_SUFFIX}"
+
+
+def _is_unknown_grade_warning(message: str) -> bool:
+    return message.startswith(UNKNOWN_GRADE_WARNING_PREFIX) and message.endswith(
+        UNKNOWN_GRADE_WARNING_SUFFIX
+    )
 
 
 def _serialize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
@@ -223,7 +267,36 @@ def dry_run_import(job: ImportJob, rows: list[dict[str, Any]]) -> None:
             )
         )
 
+    db.session.flush()
     job.status = ImportStatus.VALIDATED.value
+    job.summary = summary
+    annotate_unknown_grades(job)
+
+
+def annotate_unknown_grades(job: ImportJob) -> None:
+    catalog = _catalog_name_set()
+    collected: dict[str, dict[str, Any]] = {}
+
+    for row in job.rows:
+        preserved = [item for item in (row.warnings or []) if not _is_unknown_grade_warning(item)]
+        if row.errors:
+            row.warnings = preserved or None
+            continue
+
+        unknown_in_row: list[str] = []
+        for name in _row_grade_values(row.raw_data or {}):
+            needle = _normalize_grade_name(name)
+            if needle in catalog:
+                continue
+            unknown_in_row.append(name)
+            entry = collected.setdefault(needle, {"name": name, "count": 0})
+            entry["count"] += 1
+
+        warnings = preserved + [_unknown_grade_warning(name) for name in unknown_in_row]
+        row.warnings = warnings or None
+
+    summary = dict(job.summary or {})
+    summary["unknown_grades"] = list(collected.values())
     job.summary = summary
 
 
@@ -462,8 +535,6 @@ def export_template(company_id: int, path: Path) -> None:
     for idx, employment in enumerate(employments, start=1):
         person = employment.person
         position = get_current_position(employment)
-        from app.services.employees import get_active_contract, get_active_passport, get_current_grade
-
         contract = get_active_contract(employment)
         grade = get_current_grade(employment)
         passport = get_active_passport(person)

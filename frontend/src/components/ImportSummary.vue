@@ -14,7 +14,8 @@ const props = defineProps<{
 const summaryEntries = computed(() => {
   if (!props.job.summary) return []
   return Object.entries(props.job.summary).filter(
-    ([key, value]) => key !== 'skipped_reasons' && typeof value === 'number',
+    ([key, value]) =>
+      key !== 'skipped_reasons' && key !== 'unknown_grades' && typeof value === 'number',
   ) as Array<[string, number]>
 })
 

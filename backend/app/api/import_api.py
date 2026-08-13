@@ -13,7 +13,13 @@ from app.api.helpers import api_response, get_json, require_roles
 from app.api.serializers import import_job_to_dict
 from app.extensions import db
 from app.models import ImportJob, ImportStatus, ImportType, RoleName
-from app.services.import_excel import confirm_import, dry_run_import, export_template, parse_workbook
+from app.services.import_excel import (
+    annotate_unknown_grades,
+    confirm_import,
+    dry_run_import,
+    export_template,
+    parse_workbook,
+)
 from app.services.import_rewards import (
     confirm_rewards_import,
     dry_run_rewards_import,
@@ -98,6 +104,21 @@ def register_routes(bp):
                 message="Import failed",
                 status=500,
             )
+        return api_response(import_job_to_dict(job))
+
+    @bp.post("/import/<int:job_id>/revalidate")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def revalidate(job_id: int):
+        job = db.session.get(ImportJob, job_id)
+        if not job:
+            return api_response(message="Not found", status=404)
+        if job.status != ImportStatus.VALIDATED.value:
+            return api_response(message="Import not validated", status=400)
+        if job.import_type != ImportType.EMPLOYEES.value:
+            return api_response(import_job_to_dict(job))
+
+        annotate_unknown_grades(job)
+        db.session.commit()
         return api_response(import_job_to_dict(job))
 
     @bp.get("/import/<int:job_id>")

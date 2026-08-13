@@ -232,12 +232,19 @@ def event_to_dict(event: Event) -> dict:
 
 
 def import_job_to_dict(job: ImportJob) -> dict:
+    raw_summary = job.summary
+    summary = raw_summary
+    unknown_grades: list[dict] = []
+    if isinstance(raw_summary, dict):
+        unknown_grades = list(raw_summary.get("unknown_grades") or [])
+        summary = {key: value for key, value in raw_summary.items() if key != "unknown_grades"}
     return {
         "id": job.id,
         "filename": job.filename,
         "import_type": job.import_type,
         "status": job.status,
-        "summary": job.summary,
+        "summary": summary,
+        "unknown_grades": unknown_grades,
         "error_message": job.error_message,
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "rows": [

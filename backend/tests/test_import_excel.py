@@ -19,7 +19,12 @@ from app.models import (
     User,
 )
 from app.services.employees import create_person_with_employment
-from app.services.import_excel import confirm_import, dry_run_import, parse_workbook
+from app.services.import_excel import (
+    annotate_unknown_grades,
+    confirm_import,
+    dry_run_import,
+    parse_workbook,
+)
 from app.utils.dates import parse_flexible_date
 
 
@@ -278,3 +283,270 @@ def test_empty_university_does_not_overwrite(app, tmp_path):
 
         db.session.refresh(person)
         assert person.has_university is True
+
+
+def _write_grades_workbook(path: Path, rows: list[list]) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.append(
+        [
+            "ФИО",
+            "Должность",
+            "Грейд по должности",
+            "Фактический грейд",
+            "ВУЗ",
+            "Окончание договора",
+            "Дата получения текущего грейда",
+            "Начало работы",
+            "Срок окончания паспорта",
+        ]
+    )
+    for row in rows:
+        ws.append(row)
+    wb.save(path)
+
+
+def _run_dry_import(company_id: int, user_id: int, path: Path) -> ImportJob:
+    job = ImportJob(company_id=company_id, filename=path.name, uploaded_by_id=user_id)
+    db.session.add(job)
+    db.session.flush()
+    dry_run_import(job, parse_workbook(path))
+    db.session.commit()
+    return job
+
+
+def test_dry_run_marks_unknown_grades(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "unknown-grade.xlsx"
+        _write_grades_workbook(
+            path,
+            [
+                [
+                    "Новиков Новик Новикович",
+                    "Инженер",
+                    "Лид",
+                    "Лид",
+                    "Да",
+                    "01.12.2026",
+                    "01.03.2024",
+                    "10.01.2021",
+                    "20.08.2029",
+                ]
+            ],
+        )
+
+        job = _run_dry_import(company.id, user.id, path)
+
+        assert job.summary["create"] == 1
+        assert job.summary["unknown_grades"] == [{"name": "Лид", "count": 1}]
+        assert job.rows[0].warnings == ["Грейд «Лид» не найден в справочнике"]
+
+
+def test_unknown_grades_are_deduplicated_across_rows(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "dup-unknown.xlsx"
+        _write_grades_workbook(
+            path,
+            [
+                [
+                    "Первый Сотрудник",
+                    "Инженер",
+                    "Лид",
+                    "лид",
+                    "Да",
+                    "01.12.2026",
+                    "01.03.2024",
+                    "10.01.2021",
+                    "20.08.2029",
+                ],
+                [
+                    "Второй Сотрудник",
+                    "Инженер",
+                    "Принципал",
+                    "Лид",
+                    "Нет",
+                    "01.12.2026",
+                    "01.03.2024",
+                    "10.01.2022",
+                    "20.08.2029",
+                ],
+            ],
+        )
+
+        job = _run_dry_import(company.id, user.id, path)
+
+        assert job.summary["unknown_grades"] == [
+            {"name": "Лид", "count": 2},
+            {"name": "Принципал", "count": 1},
+        ]
+        assert job.rows[0].warnings == ["Грейд «Лид» не найден в справочнике"]
+        assert job.rows[1].warnings == [
+            "Грейд «Принципал» не найден в справочнике",
+            "Грейд «Лид» не найден в справочнике",
+        ]
+
+
+def test_existing_and_inactive_grades_are_not_unknown(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        db.session.add(GradeCatalog(name="Архив", rank=1, min_years=1, is_active=False))
+        db.session.commit()
+
+        path = tmp_path / "known-grades.xlsx"
+        _write_grades_workbook(
+            path,
+            [
+                [
+                    "Тестов Тест Тестович",
+                    "Инженер",
+                    "мидл",
+                    "Архив",
+                    "Да",
+                    "01.12.2026",
+                    "01.03.2024",
+                    "10.01.2021",
+                    "20.08.2029",
+                ]
+            ],
+        )
+
+        job = _run_dry_import(company.id, user.id, path)
+
+        assert job.summary["unknown_grades"] == []
+        assert job.rows[0].warnings is None
+
+
+def test_error_rows_do_not_contribute_unknown_grades(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "error-unknown.xlsx"
+        _write_grades_workbook(
+            path,
+            [
+                [
+                    "",
+                    "Инженер",
+                    "Лид",
+                    "Лид",
+                    "Да",
+                    "01.12.2026",
+                    "01.03.2024",
+                    "10.01.2021",
+                    "20.08.2029",
+                ]
+            ],
+        )
+
+        job = _run_dry_import(company.id, user.id, path)
+
+        assert job.summary["error"] == 1
+        assert job.summary["unknown_grades"] == []
+        assert all(
+            not str(item).startswith("Грейд «") for item in (job.rows[0].warnings or [])
+        )
+
+
+def test_revalidate_and_confirm_after_creating_unknown_grade(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "create-then-import.xlsx"
+        _write_grades_workbook(
+            path,
+            [
+                [
+                    "Новиков Новик Новикович",
+                    "Инженер",
+                    "Лид",
+                    "Лид",
+                    "Да",
+                    "01.12.2026",
+                    "01.03.2024",
+                    "10.01.2021",
+                    "20.08.2029",
+                ]
+            ],
+        )
+
+        job = _run_dry_import(company.id, user.id, path)
+        assert job.summary["unknown_grades"] == [{"name": "Лид", "count": 1}]
+
+        db.session.add(GradeCatalog(name="Лид", rank=1, min_years=1))
+        db.session.commit()
+
+        annotate_unknown_grades(job)
+        db.session.commit()
+
+        assert job.summary["unknown_grades"] == []
+        assert job.rows[0].warnings is None
+
+        confirm_import(job)
+
+        assert job.status == ImportStatus.CONFIRMED.value
+        assert job.summary["created"] == 1
+        grade = GradeCatalog.query.filter_by(name="Лид").one()
+        history = EmployeeGradeHistory.query.one()
+        assert history.grade_id == grade.id
+
+
+def test_revalidate_api_clears_unknown_grades(admin_client, seed_company, app, tmp_path):
+    with app.app_context():
+        db.session.add(GradeCatalog(name="Мидл", rank=1, min_years=1.5))
+        db.session.commit()
+        company_id = seed_company.id
+
+    path = tmp_path / "api-unknown.xlsx"
+    _write_grades_workbook(
+        path,
+        [
+            [
+                "Новиков Новик Новикович",
+                "Инженер",
+                "Лид",
+                "Лид",
+                "Да",
+                "01.12.2026",
+                "01.03.2024",
+                "10.01.2021",
+                "20.08.2029",
+            ]
+        ],
+    )
+
+    with path.open("rb") as handle:
+        upload = admin_client.post(
+            "/api/import/upload",
+            data={
+                "file": (handle, path.name),
+                "company_id": str(company_id),
+                "import_type": "employees",
+            },
+            content_type="multipart/form-data",
+        )
+    assert upload.status_code == 201
+    payload = upload.get_json()["data"]
+    assert payload["unknown_grades"] == [{"name": "Лид", "count": 1}]
+    assert "unknown_grades" not in (payload["summary"] or {})
+    job_id = payload["id"]
+
+    created = admin_client.post(
+        "/api/grade-catalog",
+        json={"name": "Лид", "rank": 2, "min_years": 2},
+    )
+    assert created.status_code == 201
+
+    revalidate = admin_client.post(f"/api/import/{job_id}/revalidate", json={})
+    assert revalidate.status_code == 200
+    data = revalidate.get_json()["data"]
+    assert data["unknown_grades"] == []
+    assert data["rows"][0]["warnings"] is None
+
+    confirm = admin_client.post(f"/api/import/{job_id}/confirm", json={"row_actions": {}})
+    assert confirm.status_code == 200
+    assert confirm.get_json()["data"]["status"] == "confirmed"
+
+    with app.app_context():
+        grade = GradeCatalog.query.filter_by(name="Лид").one()
+        history = EmployeeGradeHistory.query.one()
+        assert history.grade_id == grade.id

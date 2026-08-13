@@ -25,6 +25,9 @@ describe('labels', () => {
 
   it('localizes known API messages', () => {
     expect(localizeApiMessage('Forbidden')).toBe('Недостаточно прав для выполнения действия')
+    expect(localizeApiMessage('grade name or rank must be unique')).toBe(
+      'Название или ранг грейда должны быть уникальными',
+    )
   })
 
   it('uses glossary module labels', () => {

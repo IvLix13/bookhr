@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
 import DataTable from '@/components/DataTable.vue'
+import GradeCreateModal from '@/components/GradeCreateModal.vue'
 import ImportDropzone from '@/components/ImportDropzone.vue'
 import ImportSummary from '@/components/ImportSummary.vue'
 import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
 import { useToast } from '@/composables/useToast'
 import type { ColumnDef } from '@/composables/useDataTable'
-import type { ImportJob, ImportRow, ImportType } from '@/types'
+import { useAuthStore } from '@/stores/auth'
+import type { ImportJob, ImportRow, ImportType, UnknownGrade } from '@/types'
 import {
   labelImportAction,
   labelImportResult,
@@ -18,6 +20,7 @@ const props = defineProps<{
   importType: ImportType
 }>()
 
+const auth = useAuthStore()
 const toast = useToast()
 
 const file = ref<File | null>(null)
@@ -26,9 +29,13 @@ const error = ref('')
 const downloading = ref(false)
 const uploading = ref(false)
 const confirming = ref(false)
+const revalidating = ref(false)
+const modalGradeName = ref<string | null>(null)
 
 /** row id -> action value: create | skip | update:<uuid> */
 const rowActions = reactive<Record<number, string>>({})
+/** normalized grade name -> skipped */
+const gradeSkips = reactive<Record<string, boolean>>({})
 
 const isRewards = computed(() => props.importType === 'rewards')
 
@@ -44,13 +51,21 @@ const unresolvedAmbiguous = computed(() =>
   ambiguousRows.value.some((row) => !rowActions[row.id]),
 )
 
+const unknownGrades = computed<UnknownGrade[]>(() => job.value?.unknown_grades ?? [])
+
+const unresolvedGrades = computed(() =>
+  unknownGrades.value.some((grade) => !gradeSkips[gradeKey(grade.name)]),
+)
+
 const canConfirm = computed(
   () =>
     !!job.value
     && job.value.status === 'validated'
     && !hasRowErrors.value
     && !unresolvedAmbiguous.value
-    && !confirming.value,
+    && !unresolvedGrades.value
+    && !confirming.value
+    && !revalidating.value,
 )
 
 const importColumns = computed<ColumnDef<ImportRow>[]>(() => {
@@ -95,10 +110,31 @@ const importColumns = computed<ColumnDef<ImportRow>[]>(() => {
   return columns
 })
 
+function gradeKey(name: string): string {
+  return name.trim().toLowerCase()
+}
+
+function clearGradeSkips() {
+  for (const key of Object.keys(gradeSkips)) {
+    delete gradeSkips[key]
+  }
+}
+
+function pruneGradeSkips() {
+  const remaining = new Set(unknownGrades.value.map((grade) => gradeKey(grade.name)))
+  for (const key of Object.keys(gradeSkips)) {
+    if (!remaining.has(key)) {
+      delete gradeSkips[key]
+    }
+  }
+}
+
 function resetState() {
   file.value = null
   job.value = null
   error.value = ''
+  modalGradeName.value = null
+  clearGradeSkips()
   for (const key of Object.keys(rowActions)) {
     delete rowActions[Number(key)]
   }
@@ -129,6 +165,8 @@ function onFileSelect(selected: File) {
   file.value = selected
   job.value = null
   error.value = ''
+  modalGradeName.value = null
+  clearGradeSkips()
   for (const key of Object.keys(rowActions)) {
     delete rowActions[Number(key)]
   }
@@ -140,6 +178,7 @@ async function upload() {
   error.value = ''
   try {
     job.value = (await api.uploadImport(file.value, props.importType)) as ImportJob
+    clearGradeSkips()
     for (const key of Object.keys(rowActions)) {
       delete rowActions[Number(key)]
     }
@@ -181,6 +220,57 @@ function ambiguousHint(): string {
     return 'Найдено несколько сотрудников с одинаковым ФИО. Для каждой строки выберите сотрудника или пропустите.'
   }
   return 'Найдено несколько сотрудников с одинаковым ФИО. Для каждой строки укажите, создать нового, обновить существующего или пропустить.'
+}
+
+function skipGrade(name: string) {
+  gradeSkips[gradeKey(name)] = true
+}
+
+function openGradeModal(name: string) {
+  modalGradeName.value = name
+}
+
+function closeGradeModal() {
+  modalGradeName.value = null
+}
+
+async function onGradeCreated() {
+  if (!job.value) {
+    closeGradeModal()
+    return
+  }
+  revalidating.value = true
+  error.value = ''
+  try {
+    job.value = (await api.revalidateImport(job.value.id)) as ImportJob
+    pruneGradeSkips()
+    closeGradeModal()
+    toast.success('Грейд добавлен')
+  } catch (err) {
+    error.value = normalizeError(err)
+    toast.error(error.value)
+  } finally {
+    revalidating.value = false
+  }
+}
+
+function unknownGradeHint(): string {
+  if (auth.isAdmin()) {
+    return 'Грейды из файла, которых нет в справочнике. Заведите их или пропустите — иначе импорт нельзя подтвердить.'
+  }
+  return 'Грейды из файла, которых нет в справочнике. Завести грейд может только администратор. Пропустите грейд, чтобы импортировать сотрудников без него.'
+}
+
+function gradeStatus(name: string): string {
+  return gradeSkips[gradeKey(name)] ? 'Будет пропущен' : 'Ожидает решения'
+}
+
+function rowsLabel(count: number): string {
+  const mod10 = count % 10
+  const mod100 = count % 100
+  if (mod10 === 1 && mod100 !== 11) return `${count} строка`
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${count} строки`
+  return `${count} строк`
 }
 </script>
 
@@ -238,11 +328,47 @@ function ambiguousHint(): string {
         </ul>
       </section>
 
+      <section v-if="unknownGrades.length && job.status === 'validated'" class="unknown-grades">
+        <h3>Неизвестные грейды</h3>
+        <p class="hint">{{ unknownGradeHint() }}</p>
+        <ul class="unknown-list">
+          <li v-for="grade in unknownGrades" :key="gradeKey(grade.name)" class="unknown-item">
+            <div class="unknown-main">
+              <strong>{{ grade.name }}</strong>
+              <span class="meta">{{ rowsLabel(grade.count) }}</span>
+              <span class="meta">{{ gradeStatus(grade.name) }}</span>
+            </div>
+            <div class="unknown-actions">
+              <button
+                v-if="auth.isAdmin()"
+                class="btn"
+                type="button"
+                :disabled="revalidating"
+                @click="openGradeModal(grade.name)"
+              >
+                Завести в справочнике
+              </button>
+              <button
+                class="btn secondary"
+                type="button"
+                :disabled="Boolean(gradeSkips[gradeKey(grade.name)])"
+                @click="skipGrade(grade.name)"
+              >
+                Пропустить
+              </button>
+            </div>
+          </li>
+        </ul>
+      </section>
+
       <p v-if="hasRowErrors" class="error">
         Исправьте ошибки в файле перед подтверждением импорта.
       </p>
       <p v-else-if="unresolvedAmbiguous" class="error">
         Разрешите все дубликаты перед подтверждением импорта.
+      </p>
+      <p v-else-if="unresolvedGrades" class="error">
+        Разрешите неизвестные грейды перед подтверждением импорта.
       </p>
       <button
         class="btn secondary"
@@ -260,6 +386,13 @@ function ambiguousHint(): string {
         search-placeholder="Поиск по результатам проверки..."
       />
     </div>
+
+    <GradeCreateModal
+      :open="modalGradeName !== null"
+      :initial-name="modalGradeName ?? ''"
+      @close="closeGradeModal"
+      @saved="onGradeCreated"
+    />
   </div>
 </template>
 
@@ -354,5 +487,45 @@ function ambiguousHint(): string {
   border-radius: var(--radius-md);
   padding: 0.55rem 0.75rem;
   background: var(--surface);
+}
+
+.unknown-grades {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.unknown-grades h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.unknown-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.unknown-item {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.unknown-main {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.unknown-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 </style>

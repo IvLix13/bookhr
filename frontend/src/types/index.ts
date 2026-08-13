@@ -207,6 +207,11 @@ export interface ImportCandidate {
 
 export type ImportType = 'employees' | 'rewards'
 
+export interface UnknownGrade {
+  name: string
+  count: number
+}
+
 export interface ImportRow {
   id: number
   row_number: number
@@ -240,6 +245,7 @@ export interface ImportJob {
   import_type?: ImportType
   status: string
   summary: ImportSummaryCounts | null
+  unknown_grades?: UnknownGrade[]
   error_message?: string | null
   created_at: string | null
   rows: ImportRow[]
