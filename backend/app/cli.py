@@ -6,7 +6,7 @@ import click
 from flask import Flask
 
 from app.extensions import db
-from app.models import Company, GradeCatalog, Role, RoleName, User
+from app.models import Company, Role, RoleName, User
 from app.services.demo_data import seed_demo_data
 from app.services.events import refresh_overdue_events
 from app.services.notifications import process_pending_notifications
@@ -22,7 +22,7 @@ def register_commands(app: Flask) -> None:
 
     @app.cli.command("seed")
     def seed():
-        """Seed roles, default company, grades and admin user."""
+        """Seed roles, default company and admin user."""
         for role_name in RoleName:
             if not Role.query.filter_by(name=role_name.value).first():
                 db.session.add(Role(name=role_name.value))
@@ -31,17 +31,6 @@ def register_commands(app: Flask) -> None:
         if not company:
             company = Company(name="Пилотная компания")
             db.session.add(company)
-
-        default_grades = [
-            ("Стажер", 1, 0.5),
-            ("Джун", 2, 1.0),
-            ("Мидл", 3, 1.5),
-            ("Сеньор", 4, 2.0),
-            ("Тимлид", 5, 3.0),
-        ]
-        for name, rank, years in default_grades:
-            if not GradeCatalog.query.filter_by(rank=rank).first():
-                db.session.add(GradeCatalog(name=name, rank=rank, min_years=years))
 
         admin_role = Role.query.filter_by(name=RoleName.ADMIN.value).first()
         if admin_role and not User.query.filter_by(username="admin").first():

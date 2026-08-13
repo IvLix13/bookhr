@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DataTable from '@/components/DataTable.vue'
 import EventDetailModal from '@/components/EventDetailModal.vue'
+import EventForm from '@/components/EventForm.vue'
 import PageState from '@/components/PageState.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
@@ -10,8 +11,8 @@ import { useServerTable } from '@/composables/useServerTable'
 import { useToast } from '@/composables/useToast'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { EventItem, Paginated, TableQueryState } from '@/types'
-import { formatShortDate } from '@/utils/dates'
-import { labelEventSource, labelEventType } from '@/utils/labels'
+import { formatLocalDate, formatShortDate } from '@/utils/dates'
+import { MODULE_LABELS, labelEventSource, labelEventType } from '@/utils/labels'
 import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
 
@@ -42,6 +43,9 @@ const openEventId = computed(() => {
   }
   return null
 })
+
+const createOpen = computed(() => auth.canEdit() && route.query.create === '1')
+const createInitialDate = formatLocalDate(new Date())
 
 const columns: ColumnDef<EventItem>[] = [
   { key: 'title', label: 'Название' },
@@ -101,6 +105,17 @@ function closeEventModal() {
   router.replace({ query: nextQuery })
 }
 
+function openCreate() {
+  if (!auth.canEdit()) return
+  router.replace({ query: { ...route.query, create: '1' } })
+}
+
+function closeCreate() {
+  const nextQuery = { ...route.query }
+  delete nextQuery.create
+  router.replace({ query: nextQuery })
+}
+
 function onRowClick(row: EventItem) {
   openEvent(row.id)
 }
@@ -119,11 +134,27 @@ async function complete(id: number) {
 async function onEventChanged() {
   await table.reload()
 }
+
+async function onCreated() {
+  toast.success('Событие создано')
+  closeCreate()
+  await table.reload()
+}
 </script>
 
 <template>
   <section class="card page">
-    <header><h2>Мероприятия</h2></header>
+    <header class="page-header">
+      <h2>Мероприятия</h2>
+      <button
+        v-if="auth.canEdit()"
+        class="btn"
+        type="button"
+        @click="openCreate"
+      >
+        {{ MODULE_LABELS.eventCreate }}
+      </button>
+    </header>
     <PageState
       :error="table.error.value"
       @retry="table.reload()"
@@ -172,11 +203,80 @@ async function onEventChanged() {
       @close="closeEventModal"
       @changed="onEventChanged"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="createOpen"
+        class="overlay"
+        @click.self="closeCreate"
+      >
+        <section
+          class="card modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Создать мероприятие"
+        >
+          <header class="modal-header">
+            <h3>{{ MODULE_LABELS.eventCreate }}</h3>
+            <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeCreate">
+              ×
+            </button>
+          </header>
+          <EventForm
+            compact
+            :initial-date="createInitialDate"
+            @created="onCreated"
+            @cancel="closeCreate"
+          />
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
 <style scoped>
 .page {
   padding: 1rem;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 1000;
+}
+
+.modal {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.modal-header h3 {
+  margin: 0;
 }
 </style>

@@ -2,7 +2,7 @@ export const MODULE_LABELS = {
   calendar: 'Календарь',
   statistics: 'Статистика',
   employees: 'Сотрудники',
-  import: 'Импорт',
+  import: 'Импорт данных',
   eventCreate: 'Создать мероприятие',
   contracts: 'Договоры',
   grades: 'Грейды',
