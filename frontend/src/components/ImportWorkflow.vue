@@ -37,6 +37,11 @@ const rowActions = reactive<Record<number, string>>({})
 /** normalized grade name -> skipped */
 const gradeSkips = reactive<Record<string, boolean>>({})
 
+/** Auto-mark tenure milestones already reached as received (new employees). */
+const markReachedTenure = ref(true)
+/** Extend tenure auto-marking to existing (updated) employees. */
+const updateExistingTenure = ref(false)
+
 const isRewards = computed(() => props.importType === 'rewards')
 
 const hasRowErrors = computed(() =>
@@ -134,6 +139,8 @@ function resetState() {
   job.value = null
   error.value = ''
   modalGradeName.value = null
+  markReachedTenure.value = true
+  updateExistingTenure.value = false
   clearGradeSkips()
   for (const key of Object.keys(rowActions)) {
     delete rowActions[Number(key)]
@@ -200,7 +207,10 @@ async function confirm() {
     for (const [key, value] of Object.entries(rowActions)) {
       if (value) payload[Number(key)] = value
     }
-    job.value = (await api.confirmImport(job.value.id, payload)) as ImportJob
+    job.value = (await api.confirmImport(job.value.id, payload, {
+      markReachedTenure: markReachedTenure.value,
+      updateExistingTenure: markReachedTenure.value && updateExistingTenure.value,
+    })) as ImportJob
     toast.success('Импорт подтверждён')
   } catch (err) {
     error.value = normalizeError(err)
@@ -359,6 +369,28 @@ function rowsLabel(count: number): string {
             </div>
           </li>
         </ul>
+      </section>
+
+      <section v-if="!isRewards && job.status === 'validated'" class="tenure-options">
+        <h3>Награды за стаж</h3>
+        <label class="tenure-check">
+          <input v-model="markReachedTenure" type="checkbox" />
+          <span>
+            Автоматически отмечать достигнутые награды за стаж
+            <span class="hint">Если стаж уже позволяет получить награду (10/15/20 лет), она отмечается как полученная с датой достижения.</span>
+          </span>
+        </label>
+        <label class="tenure-check" :class="{ disabled: !markReachedTenure }">
+          <input
+            v-model="updateExistingTenure"
+            type="checkbox"
+            :disabled="!markReachedTenure"
+          />
+          <span>
+            Обновить стаж у имеющихся сотрудников
+            <span class="hint">Иначе автоотметка применяется только к вновь создаваемым сотрудникам.</span>
+          </span>
+        </label>
       </section>
 
       <p v-if="hasRowErrors" class="error">
@@ -527,5 +559,37 @@ function rowsLabel(count: number): string {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.tenure-options {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.tenure-options h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.tenure-check {
+  display: flex;
+  gap: 0.6rem;
+  align-items: start;
+}
+
+.tenure-check input {
+  margin-top: 0.2rem;
+}
+
+.tenure-check .hint {
+  display: block;
+  margin-top: 0.2rem;
+}
+
+.tenure-check.disabled {
+  color: var(--muted);
 }
 </style>

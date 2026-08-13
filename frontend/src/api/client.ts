@@ -183,10 +183,18 @@ export const api = {
     }
     return payload.data
   },
-  confirmImport: (jobId: number, rowActions: Record<number, string>) =>
+  confirmImport: (
+    jobId: number,
+    rowActions: Record<number, string>,
+    options: { markReachedTenure?: boolean; updateExistingTenure?: boolean } = {},
+  ) =>
     request(`/api/import/${jobId}/confirm`, {
       method: 'POST',
-      body: JSON.stringify({ row_actions: rowActions }),
+      body: JSON.stringify({
+        row_actions: rowActions,
+        mark_reached_tenure: options.markReachedTenure ?? true,
+        update_existing_tenure: options.updateExistingTenure ?? false,
+      }),
     }),
   revalidateImport: (jobId: number) =>
     request(`/api/import/${jobId}/revalidate`, {

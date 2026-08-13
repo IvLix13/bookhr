@@ -63,6 +63,7 @@ export const IMPORT_SUMMARY_LABELS: Record<string, string> = {
   updated: 'Обновлено',
   skipped: 'Пропущено',
   errors: 'Ошибки',
+  tenure_marked: 'Награды за стаж отмечены',
 }
 
 export const IMPORT_SKIP_REASON_LABELS: Record<string, string> = {
