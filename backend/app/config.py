@@ -53,6 +53,7 @@ class BaseConfig:
     LOGIN_RATE_LIMIT = os.getenv("LOGIN_RATE_LIMIT", "10 per minute")
     NOTIFICATION_MAX_ATTEMPTS = int(os.getenv("NOTIFICATION_MAX_ATTEMPTS", "10"))
     NOTIFICATION_BATCH_SIZE = int(os.getenv("NOTIFICATION_BATCH_SIZE", "100"))
+    ADMIN_DEFAULT_PASSWORD = os.getenv("ADMIN_DEFAULT_PASSWORD", "")
 
 
 class DevelopmentConfig(BaseConfig):
@@ -72,6 +73,7 @@ class TestingConfig(BaseConfig):
     SESSION_COOKIE_SECURE = False
     LDAP_ENABLED = False
     RATELIMIT_ENABLED = False
+    ADMIN_DEFAULT_PASSWORD = "test-seed-password"
 
 
 config_by_name = {

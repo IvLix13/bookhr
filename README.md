@@ -20,7 +20,7 @@ chmod +x scripts/*.sh deploy/*.sh
 
 - Frontend dev: http://127.0.0.1:5173
 - Backend API: http://127.0.0.1:3005/api
-- Логин по умолчанию после seed: `admin` / `IVan1311`
+- Логин по умолчанию после seed: `admin` / пароль из `ADMIN_DEFAULT_PASSWORD` в `.env.dev` (см. `.env.example`)
 
 ## Prod сборка
 

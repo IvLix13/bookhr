@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import click
-from flask import Flask
+from flask import Flask, current_app
 
 from app.extensions import db
 from app.models import Company, Event, EventStatus, Role, RoleName, User
 from app.services.demo_data import seed_demo_data
 from app.services.notifications import process_pending_notifications, queue_notifications_for_event
 from app.services.rule_engine import run_rule_engine
-
-DEFAULT_ADMIN_PASSWORD = "IVan1311"
 
 
 def register_commands(app: Flask) -> None:
@@ -36,6 +34,11 @@ def register_commands(app: Flask) -> None:
 
         admin_role = Role.query.filter_by(name=RoleName.ADMIN.value).first()
         if admin_role and not User.query.filter_by(username="admin").first():
+            password = current_app.config.get("ADMIN_DEFAULT_PASSWORD", "")
+            if not password:
+                raise click.ClickException(
+                    "ADMIN_DEFAULT_PASSWORD is not set. Add it to .env.dev / .env.prod."
+                )
             admin = User(
                 username="admin",
                 full_name="Администратор",
@@ -43,7 +46,7 @@ def register_commands(app: Flask) -> None:
                 company_id=company.id,
                 must_change_password=False,
             )
-            admin.set_password(DEFAULT_ADMIN_PASSWORD)
+            admin.set_password(password)
             db.session.add(admin)
 
         db.session.commit()
