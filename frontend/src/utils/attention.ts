@@ -14,7 +14,7 @@ export function attentionItemKey(item: BackendAttentionItem): string {
 
 export function resolveAttentionRoute(item: BackendAttentionItem): string {
   if (item.category === 'events') {
-    return `/events?highlight=${item.id}`
+    return `/events?event=${item.id}`
   }
   return item.route ?? `/${item.category}`
 }

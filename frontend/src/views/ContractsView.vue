@@ -115,7 +115,7 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
         <template #cell-report_link="{ row }">
           <RouterLink
             v-if="row.renewal_report_event"
-            :to="{ name: 'events', query: { highlight: String(row.renewal_report_event.id) } }"
+            :to="{ name: 'events', query: { event: String(row.renewal_report_event.id) } }"
             class="btn secondary"
           >
             Мероприятие

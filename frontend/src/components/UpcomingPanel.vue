@@ -22,7 +22,7 @@ withDefaults(
     <div v-else-if="!events.length" class="empty">Нет ближайших событий</div>
     <TransitionGroup v-else name="slide-up" tag="ul" class="list">
       <li v-for="event in events" :key="event.id">
-        <RouterLink :to="`/events?highlight=${event.id}`" class="item">
+        <RouterLink :to="`/events?event=${event.id}`" class="item">
           <div>
             <strong>{{ event.title }}</strong>
             <p>{{ event.employee_name ?? 'Без сотрудника' }}</p>
