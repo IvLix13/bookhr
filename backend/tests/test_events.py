@@ -68,6 +68,22 @@ def test_complete_event_viewer_forbidden(viewer_client, seed_company):
     assert response.status_code == 403
 
 
+def test_reopen_event_hr(hr_client, seed_company):
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Reopen me",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+    )
+    transition_event_status(event, EventStatus.COMPLETED, "done")
+    db.session.commit()
+
+    response = hr_client.post(f"/api/events/{event.id}/reopen", json={})
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["status"] == EventStatus.PLANNED.value
+
+
 def test_create_event_hr(admin_client, seed_company):
     response = admin_client.post(
         "/api/events",

@@ -62,7 +62,7 @@ onMounted(async () => {
 })
 
 async function toggleActive(grade: Grade) {
-  if (!auth.isAdmin()) return
+  if (!auth.canEdit()) return
   saving.value = true
   error.value = ''
   try {
@@ -87,7 +87,7 @@ async function toggleActive(grade: Grade) {
     </header>
 
     <GradeCatalogForm
-      v-if="auth.isAdmin()"
+      v-if="auth.canEdit()"
       :mode="editing ? 'edit' : 'create'"
       :grade="editing"
       @saved="onSaved"
@@ -108,7 +108,7 @@ async function toggleActive(grade: Grade) {
         </span>
       </template>
       <template #cell-actions="{ row }">
-        <div v-if="auth.isAdmin()" class="row-actions">
+        <div v-if="auth.canEdit()" class="row-actions">
           <button class="btn secondary" type="button" @click="startEdit(row)">Изменить</button>
           <button class="btn ghost" type="button" :disabled="saving" @click="toggleActive(row)">
             {{ row.is_active === false ? 'Активировать' : 'Деактивировать' }}

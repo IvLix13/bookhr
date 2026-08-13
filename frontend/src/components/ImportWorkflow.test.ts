@@ -104,10 +104,10 @@ describe('ImportWorkflow unknown grades', () => {
     expect(confirmButton?.attributes('disabled')).toBeUndefined()
   })
 
-  it('hides create action for hr', async () => {
+  it('shows create action for hr', async () => {
     const wrapper = await mountWorkflow('hr')
     expect(wrapper.text()).toContain('Неизвестные грейды')
-    expect(wrapper.text()).not.toContain('Завести в справочнике')
-    expect(wrapper.text()).toContain('Завести грейд может только администратор')
+    expect(wrapper.text()).toContain('Завести в справочнике')
+    expect(wrapper.text()).not.toContain('Завести грейд может только администратор')
   })
 })

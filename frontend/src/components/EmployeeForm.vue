@@ -176,7 +176,7 @@ async function submit() {
           </select>
         </label>
         <button
-          v-if="auth.isAdmin()"
+          v-if="auth.canEdit()"
           class="btn ghost"
           type="button"
           @click="openGradeModal('position')"
@@ -195,7 +195,7 @@ async function submit() {
           </select>
         </label>
         <button
-          v-if="auth.isAdmin()"
+          v-if="auth.canEdit()"
           class="btn ghost"
           type="button"
           @click="openGradeModal('actual')"

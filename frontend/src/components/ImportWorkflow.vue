@@ -255,10 +255,10 @@ async function onGradeCreated() {
 }
 
 function unknownGradeHint(): string {
-  if (auth.isAdmin()) {
+  if (auth.canEdit()) {
     return 'Грейды из файла, которых нет в справочнике. Заведите их или пропустите — иначе импорт нельзя подтвердить.'
   }
-  return 'Грейды из файла, которых нет в справочнике. Завести грейд может только администратор. Пропустите грейд, чтобы импортировать сотрудников без него.'
+  return 'Грейды из файла, которых нет в справочнике. Завести грейд может администратор или HR. Пропустите грейд, чтобы импортировать сотрудников без него.'
 }
 
 function gradeStatus(name: string): string {
@@ -340,7 +340,7 @@ function rowsLabel(count: number): string {
             </div>
             <div class="unknown-actions">
               <button
-                v-if="auth.isAdmin()"
+                v-if="auth.canEdit()"
                 class="btn"
                 type="button"
                 :disabled="revalidating"

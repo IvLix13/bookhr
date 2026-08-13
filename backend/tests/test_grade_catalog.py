@@ -82,12 +82,21 @@ def test_create_grade_catalog_forbidden_for_viewer(viewer_client):
     assert response.status_code == 403
 
 
-def test_create_grade_catalog_forbidden_for_hr(hr_client):
+def test_create_grade_catalog_as_hr(hr_client, app):
+    with app.app_context():
+        before = GradeCatalog.query.count()
+
     response = hr_client.post(
         "/api/grade-catalog",
         json={"name": "Lead", "rank": 1, "min_years": 2},
     )
-    assert response.status_code == 403
+    assert response.status_code == 201
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["data"]["name"] == "Lead"
+
+    with app.app_context():
+        assert GradeCatalog.query.count() == before + 1
 
 
 def test_assign_grade_creates_history_and_closes_previous(hr_client, seed_company, app):

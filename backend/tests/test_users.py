@@ -24,6 +24,24 @@ def test_list_users_requires_admin(viewer_client):
     assert response.status_code == 403
 
 
+def test_list_users_forbidden_for_hr(hr_client):
+    response = hr_client.get("/api/users")
+    assert response.status_code == 403
+
+
+def test_create_user_forbidden_for_hr(hr_client):
+    response = hr_client.post(
+        "/api/users",
+        json={
+            "username": "new.user",
+            "password": "StrongPass1",
+            "full_name": "Новый Пользователь",
+            "role": "viewer",
+        },
+    )
+    assert response.status_code == 403
+
+
 def test_create_local_user_as_admin(admin_client, app):
     with app.app_context():
         _ensure_roles()
