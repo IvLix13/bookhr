@@ -25,6 +25,7 @@ const props = withDefaults(
     highlightRowKey?: string | number | null
     rowClass?: (row: T) => string | Record<string, boolean> | undefined
     rowAttrs?: (row: T) => Record<string, string | number | undefined>
+    rowClickable?: boolean
   }>(),
   {
     mode: 'client',
@@ -40,11 +41,13 @@ const props = withDefaults(
     search: '',
     columnFilters: () => ({}),
     perPageOptions: () => [10, 25, 50, 100],
+    rowClickable: false,
   },
 )
 
 const emit = defineEmits<{
   'update:query': [query: Partial<TableQueryState>]
+  'row-click': [row: T]
 }>()
 
 const rowsRef = computed(() => props.rows)
@@ -132,6 +135,11 @@ function ariaSortValue(key: string): 'ascending' | 'descending' | 'none' {
 
 function emitQuery(patch: Partial<TableQueryState>) {
   emit('update:query', patch)
+}
+
+function onRowClick(row: T) {
+  if (!props.rowClickable) return
+  emit('row-click', row)
 }
 
 function onSearchInput(value: string) {
@@ -310,11 +318,16 @@ watch(
           <tr
             v-for="(row, index) in displayRows"
             :key="resolveRowKey(row, index)"
+            class="data-table-row"
             :class="[
               rowClass?.(row),
-              { 'data-table-row-highlight': isHighlighted(row, index) },
+              {
+                'data-table-row-highlight': isHighlighted(row, index),
+                'data-table-row-clickable': rowClickable,
+              },
             ]"
             v-bind="rowAttrs?.(row)"
+            @click="onRowClick(row)"
           >
             <td v-for="column in columns" :key="column.key">
               <slot
@@ -519,6 +532,14 @@ watch(
   border-radius: var(--radius-sm);
   padding: 0.35rem 0.55rem;
   background: var(--surface);
+}
+
+.data-table-row-clickable {
+  cursor: pointer;
+}
+
+.data-table-row-clickable:hover {
+  background: var(--bg);
 }
 
 .data-table-row-highlight {
