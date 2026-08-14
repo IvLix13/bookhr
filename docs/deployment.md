@@ -13,6 +13,62 @@
    - `bookuchet-rules.timer`
    - `bookuchet-notifications.timer`
 
+## Обновление из GitHub
+
+Репозиторий: `https://github.com/IvLix13/bookhr` (ветка `main`).
+
+Перед обновлением сохраните локальные файлы, которые не лежат в git: `.env.dev`, `.env.prod`, `backend/uploads/`, `backups/`.
+
+### 1. Машина с git-клоном (сборка, export, dev)
+
+```bash
+cd /path/to/bookuchet
+git fetch origin
+git checkout main
+git pull origin main
+```
+
+После pull:
+
+- **dev:** `./scripts/dev.sh` (или перезапустите уже запущенный процесс)
+- **повторный offline-export:** `./scripts/export-for-offline.sh $(date +%Y%m%d.%H%M%S)`
+- **prod на этой же машине:** см. шаг 2
+
+Если каталог ставили копированием без `.git`, один раз привяжите его к GitHub:
+
+```bash
+cd /opt/bookuchet
+git init
+git remote add origin https://github.com/IvLix13/bookhr.git
+git fetch origin
+git checkout -B main origin/main
+```
+
+Либо скачайте ZIP с `main` и распакуйте поверх проекта, не затирая `.env*` и `uploads/`.
+
+### 2. Prod после обновления файлов
+
+```bash
+cd /opt/bookuchet
+./scripts/migrate.sh prod
+./scripts/build.sh production
+sudo systemctl restart bookuchet
+sudo systemctl restart bookuchet-rules.timer bookuchet-notifications.timer
+```
+
+`migrate.sh prod` сам делает `pg_dump` в `backups/` до применения миграций.
+
+### 3. Офлайн-контур
+
+На офлайн-машине GitHub недоступен. Обновление только новым bundle:
+
+1. На онлайн-машине: `git pull origin main`, затем `./scripts/export-for-offline.sh <version>`
+2. Перенести архив на офлайн-хост
+3. Установить поверх `/opt/bookuchet` и выполнить `OFFLINE_MODE=1 ./scripts/migrate.sh prod`
+4. `sudo systemctl restart bookuchet`
+
+Подробности: [offline-deployment.md](offline-deployment.md#обновление-версии)
+
 ## Секреты Nextcloud
 
 Токен бота хранится только в EnvironmentFile, не в БД.

@@ -31,6 +31,17 @@ cp .env.example .env.prod   # или используйте scripts/setup-databa
 ./scripts/run-prod.sh
 ```
 
+## Обновление из GitHub
+
+На машине с клоном репозитория:
+
+```bash
+git fetch origin && git checkout main && git pull origin main
+```
+
+Дальше — миграции, сборка frontend и рестарт: [docs/deployment.md](docs/deployment.md#обновление-из-github).
+Офлайн-контур обновляется только новым bundle, не `git pull`.
+
 ## Офлайн-комплект
 
 Подробная инструкция: [docs/offline-deployment.md](docs/offline-deployment.md)
