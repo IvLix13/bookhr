@@ -174,30 +174,100 @@ def test_assign_grade_rejects_inactive_grade(hr_client, seed_company, app):
     assert response.get_json()["message"] == "Grade is inactive"
 
 
+def _employment_with_grades(
+    seed_company,
+    *,
+    actual: GradeCatalog,
+    position: GradeCatalog | None,
+    assigned_date: date = date(2024, 1, 15),
+):
+    _, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Грейд Тест",
+        hire_date=date(2020, 1, 1),
+        title="Инженер",
+        position_grade_id=position.id if position else None,
+    )
+    db.session.add(
+        EmployeeGradeHistory(
+            employment_id=employment.id,
+            grade_id=actual.id,
+            assigned_date=assigned_date,
+        )
+    )
+    db.session.commit()
+    return employment
+
+
 def test_compute_grade_eligibility_uses_min_years(app, seed_company):
     with app.app_context():
         grade_a = GradeCatalog(name="Junior", rank=1, min_years=1.5, is_active=True)
         grade_b = GradeCatalog(name="Middle", rank=2, min_years=2, is_active=True)
         db.session.add_all([grade_a, grade_b])
         db.session.flush()
-        _, employment = create_person_with_employment(
-            company_id=seed_company.id,
-            full_name="Грейд Тест",
-            hire_date=date(2020, 1, 1),
-            title="Инженер",
+        employment = _employment_with_grades(
+            seed_company,
+            actual=grade_a,
+            position=grade_b,
         )
-        db.session.add(
-            EmployeeGradeHistory(
-                employment_id=employment.id,
-                grade_id=grade_a.id,
-                assigned_date=date(2024, 1, 15),
-            )
-        )
-        db.session.commit()
 
         eligibility = compute_grade_eligibility(employment, date(2024, 6, 1))
         assert eligibility["next_grade"].name == "Middle"
         assert eligibility["eligible_date"] == date(2025, 7, 15)
+        assert eligibility["is_available"] is False
+
+
+def test_compute_grade_eligibility_available_once_term_passed(app, seed_company):
+    with app.app_context():
+        grade_a = GradeCatalog(name="Junior", rank=1, min_years=1.5, is_active=True)
+        grade_b = GradeCatalog(name="Middle", rank=2, min_years=2, is_active=True)
+        db.session.add_all([grade_a, grade_b])
+        db.session.flush()
+        employment = _employment_with_grades(
+            seed_company,
+            actual=grade_a,
+            position=grade_b,
+        )
+
+        eligibility = compute_grade_eligibility(employment, date(2025, 8, 1))
+        assert eligibility["eligible_date"] == date(2025, 7, 15)
+        assert eligibility["is_available"] is True
+
+
+def test_compute_grade_eligibility_requires_grade_below_position(app, seed_company):
+    """Reaching the grade required by the position stops the promotion chain."""
+    with app.app_context():
+        grade_a = GradeCatalog(name="Junior", rank=1, min_years=1.5, is_active=True)
+        grade_b = GradeCatalog(name="Middle", rank=2, min_years=2, is_active=True)
+        db.session.add_all([grade_a, grade_b])
+        db.session.flush()
+        employment = _employment_with_grades(
+            seed_company,
+            actual=grade_b,
+            position=grade_b,
+        )
+
+        eligibility = compute_grade_eligibility(employment, date(2030, 1, 1))
+        assert eligibility["next_grade"] is None
+        assert eligibility["eligible_date"] is None
+        assert eligibility["is_available"] is False
+
+
+def test_compute_grade_eligibility_without_position_grade(app, seed_company):
+    with app.app_context():
+        grade_a = GradeCatalog(name="Junior", rank=1, min_years=1.5, is_active=True)
+        grade_b = GradeCatalog(name="Middle", rank=2, min_years=2, is_active=True)
+        db.session.add_all([grade_a, grade_b])
+        db.session.flush()
+        employment = _employment_with_grades(
+            seed_company,
+            actual=grade_a,
+            position=None,
+        )
+
+        eligibility = compute_grade_eligibility(employment, date(2030, 1, 1))
+        assert eligibility["next_grade"] is None
+        assert eligibility["eligible_date"] is None
 
 
 def test_compute_grade_eligibility_max_rank_has_no_next_grade(app, seed_company):
@@ -205,20 +275,12 @@ def test_compute_grade_eligibility_max_rank_has_no_next_grade(app, seed_company)
         grade = GradeCatalog(name="Lead", rank=1, min_years=2, is_active=True)
         db.session.add(grade)
         db.session.flush()
-        _, employment = create_person_with_employment(
-            company_id=seed_company.id,
-            full_name="Грейд Тест",
-            hire_date=date(2020, 1, 1),
-            title="Инженер",
+        employment = _employment_with_grades(
+            seed_company,
+            actual=grade,
+            position=grade,
+            assigned_date=date(2024, 1, 1),
         )
-        db.session.add(
-            EmployeeGradeHistory(
-                employment_id=employment.id,
-                grade_id=grade.id,
-                assigned_date=date(2024, 1, 1),
-            )
-        )
-        db.session.commit()
 
         eligibility = compute_grade_eligibility(employment, date(2024, 6, 1))
         assert eligibility["next_grade"] is None

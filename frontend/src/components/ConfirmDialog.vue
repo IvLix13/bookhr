@@ -46,8 +46,33 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 1100;
+}
+
 .confirm-dialog {
   width: min(28rem, 92vw);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: start;
+  margin-bottom: 0.75rem;
+}
+
+.modal-header h3 {
+  margin: 0;
 }
 
 .confirm-message {

@@ -6,12 +6,13 @@ from app.services.employees import create_person_with_employment
 from app.utils.dates import today_moscow
 
 
-def _create_employment(company_id: int):
+def _create_employment(company_id: int, position_grade_id: int | None = None):
     _, employment = create_person_with_employment(
         company_id=company_id,
         full_name="Иван Иванов",
         hire_date=date(2020, 1, 1),
         title="Инженер",
+        position_grade_id=position_grade_id,
     )
     db.session.commit()
     return employment
@@ -137,7 +138,7 @@ def test_employee_list_includes_eligible_date(admin_client, seed_company, app):
         db.session.add_all([grade_a, grade_b])
         db.session.flush()
 
-        employment = _create_employment(seed_company.id)
+        employment = _create_employment(seed_company.id, position_grade_id=grade_b.id)
         db.session.add(
             EmployeeGradeHistory(
                 employment_id=employment.id,

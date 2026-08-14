@@ -141,6 +141,9 @@ def contract_to_dict(contract: Contract) -> dict:
         "renewal_report_event": {
             "id": renewal_event.id,
             "event_date": renewal_event.event_date.isoformat(),
+            "completed_date": renewal_event.completed_at.date().isoformat()
+            if renewal_event.completed_at
+            else None,
             "status": renewal_event.status,
             "effective_status": effective_event_status(renewal_event, today),
         }
@@ -165,6 +168,7 @@ def grade_row_to_dict(employment: Employment) -> dict:
         if eligibility["eligible_date"]
         else None,
         "days_left": eligibility["days_left"],
+        "is_available": eligibility["is_available"],
     }
 
 

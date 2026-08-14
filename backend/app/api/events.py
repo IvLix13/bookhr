@@ -20,10 +20,12 @@ from app.api.schemas import CreateEventSchema, EventActionSchema, parse_query_da
 from app.api.serializers import event_to_dict
 from app.extensions import db
 from app.models import Event, EventStatus, RoleName
+from app.services.event_completion import apply_completion_effects
 from app.services.events import (
     InvalidEventTransition,
     apply_status_filter,
     create_manual_event,
+    refresh_overdue_events,
     transition_event_status,
 )
 from app.tenant import get_request_company_id
@@ -123,6 +125,8 @@ def register_routes(bp):
             )
         except InvalidEventTransition as exc:
             return api_response(message=str(exc), status=409)
+        apply_completion_effects(event)
+        refresh_overdue_events(event.company_id)
         db.session.commit()
         return api_response(event_to_dict(event))
 

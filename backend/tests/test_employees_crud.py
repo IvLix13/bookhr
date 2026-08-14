@@ -25,6 +25,7 @@ def test_create_employee_creates_rule_events(hr_client, seed_company):
     with hr_client.application.app_context():
         _seed_grades()
         middle_id = GradeCatalog.query.filter_by(name="Мидл").first().id
+        senior_id = GradeCatalog.query.filter_by(name="Сеньор").first().id
 
     response = hr_client.post(
         "/api/employees",
@@ -34,7 +35,7 @@ def test_create_employee_creates_rule_events(hr_client, seed_company):
             "title": "Инженер",
             "hire_date": "2021-01-10",
             "has_university": True,
-            "position_grade_id": middle_id,
+            "position_grade_id": senior_id,
             "actual_grade_id": middle_id,
             "grade_date": "2024-03-01",
             "contract_end": "2026-12-01",

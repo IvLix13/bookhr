@@ -29,7 +29,6 @@ from app.api.serializers import (
 from app.extensions import db
 from app.models import (
     Contract,
-    EmployeeGradeHistory,
     Employment,
     EmploymentStatus,
     GradeCatalog,
@@ -48,6 +47,7 @@ from app.services.grade_catalog import (
     validate_rank,
     validate_rank_continuity,
 )
+from app.services.grades import assign_grade_to_employment
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards
 from app.tenant import get_request_company_id
@@ -218,24 +218,13 @@ def register_routes(bp):
         except ValueError:
             return api_response(message="assigned_date must be ISO date", status=400)
 
-        current = (
-            EmployeeGradeHistory.query.filter_by(
-                employment_id=employment.id,
-                valid_to=None,
-            ).first()
-        )
-        if current:
-            current.valid_to = assigned_date
-
-        history = EmployeeGradeHistory(
-            employment_id=employment.id,
-            grade_id=grade.id,
-            assigned_date=assigned_date,
-            assigned_by_id=current_user.id if current_user.is_authenticated else None,
+        assign_grade_to_employment(
+            employment,
+            grade,
+            assigned_date,
             basis=payload.get("basis"),
+            assigned_by_id=current_user.id if current_user.is_authenticated else None,
         )
-        db.session.add(history)
-        db.session.flush()
         recalculate_employment_events(employment)
         refresh_overdue_events(employment.company_id)
         db.session.commit()

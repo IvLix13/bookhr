@@ -43,6 +43,7 @@ def _attention_item(
     due_date: str | None = None,
     severity: str = "warning",
     route: str | None = None,
+    event_id: int | None = None,
 ) -> dict:
     return {
         "category": category,
@@ -52,6 +53,7 @@ def _attention_item(
         "due_date": due_date,
         "severity": severity,
         "route": route,
+        "event_id": event_id,
     }
 
 
@@ -75,6 +77,7 @@ def _collect_event_items(company_id: int, limit: int) -> list[dict]:
                 due_date=event.event_date.isoformat(),
                 severity="danger",
                 route=f"/?event={event.id}",
+                event_id=event.id,
             )
         )
     return items
@@ -94,6 +97,11 @@ def _collect_contract_items(company_id: int, limit: int, today) -> list[dict]:
         if days_left > 120:
             continue
         severity = "danger" if days_left < 0 else "warning"
+        related_event = _open_event_for(
+            company_id=company_id,
+            employment_id=employment.id,
+            event_type=EventType.REPORT,
+        )
         candidates.append(
             (
                 days_left,
@@ -105,6 +113,7 @@ def _collect_contract_items(company_id: int, limit: int, today) -> list[dict]:
                     due_date=contract.end_date.isoformat(),
                     severity=severity,
                     route="/contracts",
+                    event_id=related_event.id if related_event else None,
                 ),
             )
         )
@@ -141,6 +150,11 @@ def _collect_passport_items(company_id: int, limit: int, today) -> list[dict]:
         if status not in ("requires_preparation", "expired"):
             continue
         severity = "danger" if status == "expired" else "warning"
+        related_event = _open_event_for(
+            company_id=company_id,
+            employment_id=employment.id,
+            event_type=EventType.PASSPORT,
+        )
         candidates.append(
             (
                 days_left,
@@ -152,6 +166,7 @@ def _collect_passport_items(company_id: int, limit: int, today) -> list[dict]:
                     due_date=passport.valid_until.isoformat(),
                     severity=severity,
                     route="/passports",
+                    event_id=related_event.id if related_event else None,
                 ),
             )
         )
@@ -191,7 +206,8 @@ def _collect_grade_items(company_id: int, limit: int, today) -> list[dict]:
                     subtitle=f"Грейд {grade.grade.name}, eligible {eligible_date.isoformat()}",
                     due_date=eligible_date.isoformat(),
                     severity="warning" if days_left > 0 else "danger",
-                    route=f"/?event={related_event.id}" if related_event else None,
+                    route=f"/?event={related_event.id}" if related_event else "/grades",
+                    event_id=related_event.id if related_event else None,
                 ),
             )
         )

@@ -103,14 +103,27 @@ def _upsert_rule_event(
 
 
 def find_contract_renewal_event(contract_id: int) -> Event | None:
+    """Renewal report of a contract: the open one, otherwise the completed one.
+
+    A completed report still has to be visible on the contracts screen so the
+    date it was prepared on does not disappear once the work is done.
+    """
+    query = Event.query.filter_by(
+        reference_type="contract",
+        reference_id=contract_id,
+        event_type=EventType.REPORT.value,
+    ).filter(Event.rule_key.like(f"{CONTRACT_RULE_PREFIX}:%"))
+
+    open_event = (
+        query.filter(Event.status.in_(list(OPEN_EVENT_STATUSES)))
+        .order_by(Event.event_date.desc())
+        .first()
+    )
+    if open_event:
+        return open_event
+
     return (
-        Event.query.filter_by(
-            reference_type="contract",
-            reference_id=contract_id,
-            event_type=EventType.REPORT.value,
-        )
-        .filter(Event.rule_key.like(f"{CONTRACT_RULE_PREFIX}:%"))
-        .filter(Event.status.in_(list(OPEN_EVENT_STATUSES)))
+        query.filter(Event.status == EventStatus.COMPLETED.value)
         .order_by(Event.event_date.desc())
         .first()
     )

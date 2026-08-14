@@ -118,7 +118,11 @@ def test_completed_renewal_report_is_not_reopened(app):
         completed = db.session.get(Event, completed_id)
         assert completed is not None
         assert completed.status == EventStatus.COMPLETED.value
-        assert find_contract_renewal_event(contract.id) is None
+        # No open report left, so the completed one is surfaced to keep its date
+        # visible on the contracts screen.
+        still_found = find_contract_renewal_event(contract.id)
+        assert still_found is not None
+        assert still_found.id == completed_id
 
         contract.end_date = date(2028, 6, 1)
         db.session.commit()
@@ -147,6 +151,7 @@ def test_rule_key_invariant_matches_generated_events(app):
             full_name="Инвариант Тестов",
             hire_date=date(2020, 1, 1),
             title="Инженер",
+            position_grade_id=next_grade.id,
         )
         contract = Contract(
             employment_id=employment.id,

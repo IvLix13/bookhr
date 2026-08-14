@@ -29,7 +29,13 @@ from app.services.import_excel import (
 from app.utils.dates import parse_flexible_date
 
 
-def _write_workbook(path: Path, *, russian_dates: bool = False, as_datetime_cells: bool = False) -> None:
+def _write_workbook(
+    path: Path,
+    *,
+    russian_dates: bool = False,
+    as_datetime_cells: bool = False,
+    position_grade: str = "Мидл",
+) -> None:
     wb = Workbook()
     ws = wb.active
     ws.append(
@@ -45,43 +51,24 @@ def _write_workbook(path: Path, *, russian_dates: bool = False, as_datetime_cell
             "Срок окончания паспорта",
         ]
     )
+    head = ["Тестов Тест Тестович", "Инженер", position_grade, "Мидл", "Да"]
     if as_datetime_cells:
-        row = [
-            "Тестов Тест Тестович",
-            "Инженер",
-            "Мидл",
-            "Мидл",
-            "Да",
+        dates = [
             datetime(2026, 12, 1),
             datetime(2024, 3, 1),
             datetime(2021, 1, 10),
             datetime(2029, 8, 20),
         ]
     elif russian_dates:
-        row = [
-            "Тестов Тест Тестович",
-            "Инженер",
-            "Мидл",
-            "Мидл",
-            "Да",
+        dates = [
             "1 декабря 2026 г.",
             "1 марта 2024 г.",
             "10 января 2021 г.",
             "20 августа 2029 г.",
         ]
     else:
-        row = [
-            "Тестов Тест Тестович",
-            "Инженер",
-            "Мидл",
-            "Мидл",
-            "Да",
-            "01.12.2026",
-            "01.03.2024",
-            "10.01.2021",
-            "20.08.2029",
-        ]
-    ws.append(row)
+        dates = ["01.12.2026", "01.03.2024", "10.01.2021", "20.08.2029"]
+    ws.append([*head, *dates])
     wb.save(path)
 
 
@@ -118,7 +105,8 @@ def test_confirm_import_runs_rule_engine(app, tmp_path):
         company, user = _seed_import_company()
 
         path = tmp_path / "employees.xlsx"
-        _write_workbook(path)
+        # Actual grade below the position grade, so a grade review is expected.
+        _write_workbook(path, position_grade="Сеньор")
 
         job = ImportJob(
             company_id=company.id,
