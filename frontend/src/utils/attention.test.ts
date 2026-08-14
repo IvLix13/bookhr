@@ -3,9 +3,9 @@ import {
   attentionCategoryRoute,
   attentionEventId,
   attentionItemKey,
+  canOpenAttentionEvent,
   eventDetailLocation,
   resolveAttentionRoute,
-  staysOnCalendar,
 } from '@/utils/attention'
 
 describe('attention utils', () => {
@@ -27,7 +27,7 @@ describe('attention utils', () => {
     expect(eventDetailLocation(12)).toEqual({ name: 'calendar', query: { event: '12' } })
   })
 
-  it('opens grade-related items on the calendar via linked event', () => {
+  it('opens grade-related items via their linked event', () => {
     const item = {
       category: 'grades',
       id: 88,
@@ -35,12 +35,26 @@ describe('attention utils', () => {
       severity: 'warning' as const,
       route: '/?event=88',
     }
-    expect(staysOnCalendar(item)).toBe(true)
+    expect(canOpenAttentionEvent(item)).toBe(true)
     expect(attentionEventId(item)).toBe(88)
     expect(resolveAttentionRoute(item)).toEqual({ name: 'calendar', query: { event: '88' } })
   })
 
-  it('keeps grade items on the calendar even without a linked event', () => {
+  it('prefers the event id reported by the backend', () => {
+    const item = {
+      category: 'contracts',
+      id: 4,
+      title: 'Иван Иванов',
+      severity: 'warning' as const,
+      route: '/contracts',
+      event_id: 71,
+    }
+    expect(canOpenAttentionEvent(item)).toBe(true)
+    expect(attentionEventId(item)).toBe(71)
+    expect(resolveAttentionRoute(item)).toEqual({ name: 'calendar', query: { event: '71' } })
+  })
+
+  it('navigates to the module when no event backs the item', () => {
     const item = {
       category: 'grades',
       id: 3,
@@ -48,29 +62,20 @@ describe('attention utils', () => {
       severity: 'warning' as const,
       route: '/grades',
     }
-    expect(staysOnCalendar(item)).toBe(true)
-    expect(resolveAttentionRoute(item)).toEqual({ name: 'calendar' })
+    expect(canOpenAttentionEvent(item)).toBe(false)
+    expect(resolveAttentionRoute(item)).toBe('/grades')
   })
 
-  it('treats backend /events route as a calendar event even without category', () => {
-    expect(
-      staysOnCalendar({
-        category: 'other',
-        id: 9,
-        title: 'Legacy',
-        severity: 'danger',
-        route: '/events',
-      }),
-    ).toBe(true)
-    expect(
-      resolveAttentionRoute({
-        category: 'other',
-        id: 9,
-        title: 'Legacy',
-        severity: 'danger',
-        route: '/events',
-      }),
-    ).toEqual({ name: 'calendar', query: { event: '9' } })
+  it('treats a backend /events route as an event even without category', () => {
+    const item = {
+      category: 'other',
+      id: 9,
+      title: 'Legacy',
+      severity: 'danger' as const,
+      route: '/events',
+    }
+    expect(canOpenAttentionEvent(item)).toBe(true)
+    expect(resolveAttentionRoute(item)).toEqual({ name: 'calendar', query: { event: '9' } })
   })
 
   it('keeps the events and grades category chips on the calendar', () => {

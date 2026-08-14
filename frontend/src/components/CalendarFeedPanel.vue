@@ -9,9 +9,25 @@ defineProps<{
   loading?: boolean
 }>()
 
+const emit = defineEmits<{
+  changed: []
+}>()
+
 type FeedTab = 'attention' | 'upcoming'
 
 const activeTab = ref<FeedTab>('attention')
+const attentionPanel = ref<InstanceType<typeof AttentionPanel> | null>(null)
+
+function onChanged() {
+  emit('changed')
+}
+
+/** Both feeds share the same events, so a change in one has to refresh both. */
+async function reloadAttention() {
+  await attentionPanel.value?.reload()
+}
+
+defineExpose({ reloadAttention })
 
 function selectTab(tab: FeedTab) {
   activeTab.value = tab
@@ -58,7 +74,7 @@ function tabLabel(tab: FeedTab): string {
       aria-labelledby="feed-tab-attention"
       :hidden="activeTab !== 'attention'"
     >
-      <AttentionPanel embedded />
+      <AttentionPanel ref="attentionPanel" embedded @changed="onChanged" />
     </div>
 
     <div
@@ -68,7 +84,7 @@ function tabLabel(tab: FeedTab): string {
       aria-labelledby="feed-tab-upcoming"
       :hidden="activeTab !== 'upcoming'"
     >
-      <UpcomingPanel embedded :events="events" :loading="loading" />
+      <UpcomingPanel embedded :events="events" :loading="loading" @changed="onChanged" />
     </div>
   </section>
 </template>

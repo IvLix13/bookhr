@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref } from 'vue'
+import EventDetailModal from '@/components/EventDetailModal.vue'
 import type { EventItem } from '@/types'
 import { formatShortDate } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
@@ -11,6 +13,24 @@ withDefaults(
   }>(),
   { embedded: false },
 )
+
+const emit = defineEmits<{
+  changed: []
+}>()
+
+const openEventId = ref<number | null>(null)
+
+function openEvent(id: number) {
+  openEventId.value = id
+}
+
+function closeEvent() {
+  openEventId.value = null
+}
+
+function onEventChanged() {
+  emit('changed')
+}
 </script>
 
 <template>
@@ -22,7 +42,7 @@ withDefaults(
     <div v-else-if="!events.length" class="empty">Нет ближайших событий</div>
     <TransitionGroup v-else name="slide-up" tag="ul" class="list">
       <li v-for="event in events" :key="event.id">
-        <RouterLink :to="{ name: 'calendar', query: { event: String(event.id) } }" class="item">
+        <button type="button" class="item" @click="openEvent(event.id)">
           <div>
             <strong>{{ event.title }}</strong>
             <p>{{ event.employee_name ?? 'Без сотрудника' }}</p>
@@ -31,9 +51,16 @@ withDefaults(
             <span class="badge">{{ labelEventType(event.event_type) }}</span>
             <time>{{ formatShortDate(event.event_date) }}</time>
           </div>
-        </RouterLink>
+        </button>
       </li>
     </TransitionGroup>
+
+    <EventDetailModal
+      :open="openEventId != null"
+      :event-id="openEventId"
+      @close="closeEvent"
+      @changed="onEventChanged"
+    />
   </section>
 </template>
 
@@ -62,10 +89,16 @@ header h3 {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
+  width: 100%;
   padding: 0.75rem 0;
+  border: none;
   border-bottom: 1px solid var(--border);
+  background: transparent;
   color: inherit;
+  font: inherit;
+  text-align: left;
   text-decoration: none;
+  cursor: pointer;
   transition: background var(--transition);
 }
 

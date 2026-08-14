@@ -8,9 +8,8 @@ export interface BackendAttentionItem {
   due_date?: string | null
   severity: 'info' | 'warning' | 'danger'
   route?: string | null
+  event_id?: number | null
 }
-
-const CALENDAR_STAY_CATEGORIES = new Set(['events', 'grades'])
 
 export function attentionItemKey(item: BackendAttentionItem): string {
   return `${item.category}-${item.id}`
@@ -25,6 +24,7 @@ export function eventIdFromAttentionRoute(route: string | null | undefined): num
 }
 
 export function attentionEventId(item: BackendAttentionItem): number | null {
+  if (item.event_id != null && Number.isFinite(item.event_id)) return item.event_id
   const fromRoute = eventIdFromAttentionRoute(item.route)
   if (fromRoute != null) return fromRoute
   const route = item.route ?? ''
@@ -35,20 +35,9 @@ export function attentionEventId(item: BackendAttentionItem): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-export function staysOnCalendar(item: BackendAttentionItem): boolean {
-  if (CALENDAR_STAY_CATEGORIES.has(item.category)) return true
-  const route = item.route ?? ''
-  return (
-    route === '/events' ||
-    route.startsWith('/events?') ||
-    route.startsWith('/?event=') ||
-    route === '/grades' ||
-    route.startsWith('/grades?')
-  )
-}
-
-export function isAttentionEvent(item: BackendAttentionItem): boolean {
-  return staysOnCalendar(item)
+/** Items backed by an event are handled in a modal instead of navigating away. */
+export function canOpenAttentionEvent(item: BackendAttentionItem): boolean {
+  return attentionEventId(item) != null
 }
 
 export function eventDetailLocation(eventId: number | string): RouteLocationRaw {
@@ -59,9 +48,6 @@ export function resolveAttentionRoute(item: BackendAttentionItem): RouteLocation
   const eventId = attentionEventId(item)
   if (eventId != null) {
     return eventDetailLocation(eventId)
-  }
-  if (staysOnCalendar(item)) {
-    return { name: 'calendar' }
   }
   return item.route ?? `/${item.category}`
 }

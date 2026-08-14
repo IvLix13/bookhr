@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { RouterLink } from 'vue-router'
+import { ref } from 'vue'
 import DataTable from '@/components/DataTable.vue'
+import EventDetailModal from '@/components/EventDetailModal.vue'
 import PageState from '@/components/PageState.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
@@ -35,7 +36,7 @@ const columns: ColumnDef<ContractRow>[] = [
   {
     key: 'report_date',
     label: 'Дата рапорта',
-    getValue: (row) => row.renewal_report_event?.event_date ?? null,
+    getValue: (row) => reportDate(row),
     format: (value) => formatShortDate(value as string | null),
   },
   {
@@ -60,6 +61,27 @@ const columns: ColumnDef<ContractRow>[] = [
 
 function onQueryUpdate(patch: Partial<TableQueryState>) {
   table.setQuery(patch)
+}
+
+/** Once the report is done its completion date is the date of the report. */
+function reportDate(row: ContractRow): string | null {
+  const event = row.renewal_report_event
+  if (!event) return null
+  return event.completed_date ?? event.event_date
+}
+
+const openEventId = ref<number | null>(null)
+
+function openReportEvent(id: number) {
+  openEventId.value = id
+}
+
+function closeReportEvent() {
+  openEventId.value = null
+}
+
+async function onReportChanged() {
+  await table.reload()
 }
 </script>
 
@@ -113,16 +135,24 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
           <span v-else>—</span>
         </template>
         <template #cell-report_link="{ row }">
-          <RouterLink
+          <button
             v-if="row.renewal_report_event"
-            :to="{ name: 'events', query: { event: String(row.renewal_report_event.id) } }"
+            type="button"
             class="btn secondary"
+            @click="openReportEvent(row.renewal_report_event.id)"
           >
             Мероприятие
-          </RouterLink>
+          </button>
         </template>
       </DataTable>
     </PageState>
+
+    <EventDetailModal
+      :open="openEventId != null"
+      :event-id="openEventId"
+      @close="closeReportEvent"
+      @changed="onReportChanged"
+    />
   </section>
 </template>
 

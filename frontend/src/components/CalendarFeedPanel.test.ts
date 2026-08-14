@@ -54,6 +54,7 @@ describe('CalendarFeedPanel', () => {
           RouterLink: {
             template: '<a><slot /></a>',
           },
+          EventDetailModal: true,
         },
       },
     })

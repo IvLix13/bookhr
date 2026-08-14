@@ -19,6 +19,7 @@ const events = ref<EventItem[]>([])
 const upcoming = ref<EventItem[]>([])
 const selectedDate = ref<string | null>(null)
 const dayModalOpen = ref(false)
+const feedPanel = ref<InstanceType<typeof CalendarFeedPanel> | null>(null)
 
 const calendarResource = useAsyncResource<{ events: EventItem[]; upcoming: EventItem[] }>()
 
@@ -64,9 +65,15 @@ function closeEventModal() {
 
 async function onDayChanged() {
   await loadEvents()
+  await feedPanel.value?.reloadAttention()
 }
 
 async function onEventChanged() {
+  await loadEvents()
+  await feedPanel.value?.reloadAttention()
+}
+
+async function onFeedChanged() {
   await loadEvents()
 }
 
@@ -89,7 +96,12 @@ onMounted(loadEvents)
         @select-day="openDay"
       />
     </PageState>
-    <CalendarFeedPanel :events="upcoming" :loading="calendarResource.isBusy()" />
+    <CalendarFeedPanel
+      ref="feedPanel"
+      :events="upcoming"
+      :loading="calendarResource.isBusy()"
+      @changed="onFeedChanged"
+    />
     <DayEventsModal
       :open="dayModalOpen"
       :date="selectedDate ?? formatLocalDate(new Date())"

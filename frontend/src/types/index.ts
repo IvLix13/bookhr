@@ -99,6 +99,7 @@ export interface ContractRow {
   renewal_report_event: {
     id: number
     event_date: string
+    completed_date?: string | null
     status: string
     effective_status?: string
   } | null
@@ -126,6 +127,7 @@ export interface GradeRow {
   next_grade: Grade | null
   eligible_date: string | null
   days_left: number | null
+  is_available?: boolean
 }
 
 export interface PassportRow {

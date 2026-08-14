@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { computed, onMounted, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import EventDetailModal from '@/components/EventDetailModal.vue'
 import PageState from '@/components/PageState.vue'
 import { api } from '@/api/client'
 import { useAsyncResource } from '@/composables/useAsyncResource'
@@ -8,8 +9,7 @@ import {
   attentionCategoryRoute,
   attentionEventId,
   attentionItemKey,
-  eventDetailLocation,
-  staysOnCalendar,
+  canOpenAttentionEvent,
   resolveAttentionRoute,
   type BackendAttentionItem,
 } from '@/utils/attention'
@@ -21,7 +21,11 @@ withDefaults(
   { embedded: false },
 )
 
-const router = useRouter()
+const emit = defineEmits<{
+  changed: []
+}>()
+
+const openEventId = ref<number | null>(null)
 
 interface AttentionPayload {
   total: number
@@ -70,15 +74,26 @@ function staysOnCalendarChip(category: string): boolean {
   return category === 'events' || category === 'grades'
 }
 
-function onCalendarItemClick(item: BackendAttentionItem) {
+function openItemEvent(item: BackendAttentionItem) {
   const eventId = attentionEventId(item)
   if (eventId == null) return
-  void router.replace(eventDetailLocation(eventId))
+  openEventId.value = eventId
+}
+
+function closeEventModal() {
+  openEventId.value = null
+}
+
+async function onEventChanged() {
+  await loadAttention()
+  emit('changed')
 }
 
 onMounted(() => {
   void loadAttention()
 })
+
+defineExpose({ reload: loadAttention })
 </script>
 
 <template>
@@ -128,11 +143,11 @@ onMounted(() => {
       <TransitionGroup tag="ul" name="list" class="attention-list">
         <li v-for="item in items" :key="attentionItemKey(item)" class="attention-item">
           <button
-            v-if="staysOnCalendar(item)"
+            v-if="canOpenAttentionEvent(item)"
             type="button"
             class="attention-link"
             :class="severityClass(item.severity)"
-            @click="onCalendarItemClick(item)"
+            @click="openItemEvent(item)"
           >
             <div class="attention-main">
               <strong>{{ item.title }}</strong>
@@ -165,6 +180,13 @@ onMounted(() => {
         </li>
       </TransitionGroup>
     </PageState>
+
+    <EventDetailModal
+      :open="openEventId != null"
+      :event-id="openEventId"
+      @close="closeEventModal"
+      @changed="onEventChanged"
+    />
   </section>
 </template>
 
