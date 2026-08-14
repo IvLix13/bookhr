@@ -46,6 +46,7 @@ def _promote_after_grade_review(event: Event) -> EmployeeGradeHistory | None:
     # The grade may not start before the employee is actually eligible, even
     # when the review is completed ahead of the due date.
     assigned_date: date = max(today_moscow(), eligible_date)
+    reviewed_grade_id = current.id
     history = assign_grade_to_employment(
         employment,
         next_grade,
@@ -53,6 +54,10 @@ def _promote_after_grade_review(event: Event) -> EmployeeGradeHistory | None:
         basis=f"Мероприятие «{event.title}» выполнено",
         assigned_by_id=_current_user_id(),
     )
+    # Record which grade record was reviewed so reopening and completing the
+    # event again cannot promote the employee twice.
+    event.reference_type = "employee_grade_history"
+    event.reference_id = reviewed_grade_id
     log_audit(
         "grade_assign",
         "employee_grade_history",

@@ -122,6 +122,13 @@ async function handleSaved() {
         search-placeholder="Поиск по ФИО..."
         @update:query="onQueryUpdate"
       >
+        <template #cell-eligible_date="{ row, display }">
+          <span v-if="!row.eligible_date">—</span>
+          <span v-else class="eligible-cell">
+            {{ display }}
+            <span v-if="row.is_available" class="badge success">Доступен</span>
+          </span>
+        </template>
         <template #cell-actions="{ row }">
           <button
             v-if="auth.canEdit()"
@@ -160,5 +167,12 @@ async function handleSaved() {
   margin: 0.35rem 0 0;
   color: var(--muted);
   max-width: 52rem;
+}
+
+.eligible-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
 }
 </style>

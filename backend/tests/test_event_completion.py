@@ -144,6 +144,50 @@ def test_completing_grade_event_starts_no_earlier_than_eligible_date(
         assert current.assigned_date == date(2100, 1, 1)
 
 
+def test_reopened_grade_event_does_not_promote_twice(hr_client, seed_company, app):
+    with app.app_context():
+        junior, middle = _grade_pair()
+        senior = GradeCatalog(name="Senior", rank=3, min_years=3, is_active=True)
+        db.session.add(senior)
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Грейд Дважды",
+            hire_date=date(2010, 1, 1),
+            title="Инженер",
+            position_grade_id=senior.id,
+        )
+        db.session.add(
+            EmployeeGradeHistory(
+                employment_id=employment.id,
+                grade_id=junior.id,
+                assigned_date=date(2012, 1, 1),
+            )
+        )
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Рассмотреть повышение грейда",
+            event_type=EventType.GRADE,
+            event_date=date(2013, 1, 1),
+            employment_id=employment.id,
+        )
+        db.session.commit()
+        event_id = event.id
+        employment_id = employment.id
+        middle_id = middle.id
+
+    assert hr_client.post(f"/api/events/{event_id}/complete", json={}).status_code == 200
+    assert hr_client.post(f"/api/events/{event_id}/reopen", json={}).status_code == 200
+    assert hr_client.post(f"/api/events/{event_id}/complete", json={}).status_code == 200
+
+    with app.app_context():
+        employment = db.session.get(Employment, employment_id)
+        current = get_current_grade(employment)
+        assert current is not None
+        assert current.grade_id == middle_id
+        assert EmployeeGradeHistory.query.filter_by(employment_id=employment_id).count() == 2
+
+
 def test_completing_report_event_keeps_contract_report_date(hr_client, seed_company, app):
     with app.app_context():
         _, employment = create_person_with_employment(
