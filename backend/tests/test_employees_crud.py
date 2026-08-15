@@ -188,3 +188,37 @@ def test_viewer_cannot_mutate_employees(viewer_client, seed_company):
         json={"full_name": "Y"},
     ).status_code == 403
     assert viewer_client.delete(f"/api/employees/{employment_id}").status_code == 403
+
+
+def test_create_employee_with_contract_term_years(hr_client, seed_company):
+    response = hr_client.post(
+        "/api/employees",
+        json={
+            "company_id": seed_company.id,
+            "full_name": "Контрактов Срок Срокович",
+            "title": "Менеджер",
+            "hire_date": "2024-09-01",
+            "contract_term_years": 2,
+        },
+    )
+    assert response.status_code == 201
+    data = response.get_json()["data"]
+    assert data["contract_term_years"] == 2
+    assert data["contract_end"] == "2026-09-01"
+
+    employment_id = data["id"]
+    with hr_client.application.app_context():
+        report = Event.query.filter_by(
+            employment_id=employment_id,
+            event_type=EventType.REPORT.value,
+        ).one()
+        assert report.event_date == date(2026, 5, 1)
+
+    updated = hr_client.patch(
+        f"/api/employees/{employment_id}",
+        json={"contract_term_years": 3},
+    )
+    assert updated.status_code == 200
+    assert updated.get_json()["data"]["contract_term_years"] == 3
+    assert updated.get_json()["data"]["contract_end"] == "2027-09-01"
+

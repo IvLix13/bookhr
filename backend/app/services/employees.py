@@ -22,7 +22,7 @@ from app.models import (
     TenureAward,
 )
 from app.services.audit import log_audit
-from app.utils.dates import today_moscow
+from app.utils.dates import calculate_contract_end, today_moscow
 
 
 def get_current_name(person: Person) -> str | None:
@@ -171,31 +171,39 @@ def dismiss_employment(
 
 def sync_active_contract(
     employment: Employment,
-    end_date: date | None,
+    end_date: date | None = None,
     start_date: date | None = None,
-) -> None:
+    term_years: float | None = None,
+) -> Contract | None:
     contract = get_active_contract(employment)
+    contract_start = start_date or (contract.start_date if contract else employment.hire_date)
+
+    if end_date is None and term_years is not None:
+        end_date = calculate_contract_end(contract_start, term_years)
+
     if end_date is None:
         if contract:
             contract.is_active = False
-        return
+        return None
 
-    contract_start = start_date or employment.hire_date
     if contract:
         contract.end_date = end_date
         if start_date:
             contract.start_date = start_date
+        if term_years is not None:
+            contract.term_years = term_years
         contract.is_active = True
-        return
+        return contract
 
-    db.session.add(
-        Contract(
-            employment_id=employment.id,
-            start_date=contract_start,
-            end_date=end_date,
-            is_active=True,
-        )
+    new_contract = Contract(
+        employment_id=employment.id,
+        start_date=contract_start,
+        end_date=end_date,
+        term_years=term_years,
+        is_active=True,
     )
+    db.session.add(new_contract)
+    return new_contract
 
 
 def sync_actual_grade(

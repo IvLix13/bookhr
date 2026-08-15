@@ -54,6 +54,7 @@ export interface Employee {
   hire_date: string
   status: string
   contract_end: string | null
+  contract_term_years: number | null
   contract_days_left: number | null
   passport_until: string | null
   passport_status: string | null
@@ -82,6 +83,8 @@ export interface EventItem {
   source: string
   employment_id: number | null
   employee_name: string | null
+  reference_type?: string | null
+  reference_id?: number | null
   created_by: string | null
   created_at: string | null
   completed_at: string | null
@@ -94,6 +97,7 @@ export interface ContractRow {
   full_name: string | null
   start_date: string
   end_date: string
+  term_years: number | null
   days_left: number
   is_active: boolean
   renewal_report_event: {

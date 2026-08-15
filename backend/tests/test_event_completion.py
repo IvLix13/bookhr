@@ -231,6 +231,62 @@ def test_completing_report_event_keeps_contract_report_date(hr_client, seed_comp
     assert report["completed_date"] is not None
 
 
+def test_completing_report_event_with_extension_term_extends_contract_and_generates_next_report(
+    hr_client, seed_company, app
+):
+    with app.app_context():
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Продление Договора",
+            hire_date=date(2024, 9, 1),
+            title="Инженер",
+        )
+        contract = Contract(
+            employment_id=employment.id,
+            start_date=date(2024, 9, 1),
+            end_date=date(2026, 9, 1),
+            term_years=2,
+            is_active=True,
+        )
+        db.session.add(contract)
+        db.session.commit()
+        process_contract_rules(employment)
+        db.session.commit()
+
+        event = Event.query.filter_by(
+            employment_id=employment.id,
+            event_type=EventType.REPORT.value,
+        ).first()
+        assert event is not None
+        assert event.event_date == date(2026, 5, 1)
+        event_id = event.id
+        contract_id = contract.id
+
+    response = hr_client.post(
+        f"/api/events/{event_id}/complete",
+        json={"extension_term_years": 3, "comment": "Руководство подписало продление на 3 года"},
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        updated_contract = db.session.get(Contract, contract_id)
+        assert updated_contract.end_date == date(2029, 9, 1)
+        assert updated_contract.term_years == 3
+
+        old_event = db.session.get(Event, event_id)
+        assert old_event.status == EventStatus.COMPLETED.value
+        assert old_event.completion_comment == "Руководство подписало продление на 3 года"
+
+        new_event = Event.query.filter_by(
+            employment_id=updated_contract.employment_id,
+            event_type=EventType.REPORT.value,
+            status=EventStatus.PLANNED.value,
+        ).first()
+        assert new_event is not None
+        assert new_event.event_date == date(2029, 5, 1)
+
+
+
 def test_completed_grade_event_clears_grade_attention_item(hr_client, seed_company, app):
     with app.app_context():
         junior, middle = _grade_pair()

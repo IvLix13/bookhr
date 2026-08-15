@@ -4,6 +4,7 @@ import GradeCreateModal from '@/components/GradeCreateModal.vue'
 import { api } from '@/api/client'
 import type { Employee, Grade } from '@/types'
 import { useAuthStore } from '@/stores/auth'
+import { addYearsToIsoDate } from '@/utils/dates'
 
 type GradeField = 'position' | 'actual'
 
@@ -25,6 +26,7 @@ const form = ref({
   position_grade_id: '',
   actual_grade_id: '',
   grade_date: '',
+  contract_term_years: '',
   contract_end: '',
   passport_until: '',
 })
@@ -43,6 +45,7 @@ function resetForm() {
     position_grade_id: '',
     actual_grade_id: '',
     grade_date: '',
+    contract_term_years: '',
     contract_end: '',
     passport_until: '',
   }
@@ -63,12 +66,30 @@ watch(
       position_grade_id: value.position_grade ? String(value.position_grade.id) : '',
       actual_grade_id: value.actual_grade ? String(value.actual_grade.id) : '',
       grade_date: value.grade_date ?? '',
+      contract_term_years:
+        value.contract_term_years !== null && value.contract_term_years !== undefined
+          ? String(value.contract_term_years)
+          : '',
       contract_end: value.contract_end ?? '',
       passport_until: value.passport_until ?? '',
     }
   },
   { immediate: true },
 )
+
+function onTermYearsChange() {
+  if (!form.value.contract_term_years || !form.value.hire_date) return
+  const years = Number(form.value.contract_term_years)
+  if (years > 0) {
+    form.value.contract_end = addYearsToIsoDate(form.value.hire_date, years)
+  }
+}
+
+function onHireDateChange() {
+  if (form.value.contract_term_years && form.value.hire_date) {
+    onTermYearsChange()
+  }
+}
 
 async function loadGrades() {
   grades.value = (await api.gradeCatalog()) as Grade[]
@@ -126,6 +147,9 @@ async function submit() {
         ? Number(form.value.actual_grade_id)
         : null,
       grade_date: form.value.grade_date || null,
+      contract_term_years: form.value.contract_term_years
+        ? Number(form.value.contract_term_years)
+        : null,
       contract_end: form.value.contract_end || null,
       passport_until: form.value.passport_until || null,
     }
@@ -159,7 +183,7 @@ async function submit() {
       </label>
       <label>
         Начало работы
-        <input v-model="form.hire_date" type="date" required />
+        <input v-model="form.hire_date" type="date" required @change="onHireDateChange" />
       </label>
       <label class="checkbox">
         <input v-model="form.has_university" type="checkbox" />
@@ -206,6 +230,16 @@ async function submit() {
       <label>
         Дата текущего грейда
         <input v-model="form.grade_date" type="date" :required="Boolean(form.actual_grade_id)" />
+      </label>
+      <label>
+        Срок договора (лет)
+        <select v-model="form.contract_term_years" @change="onTermYearsChange">
+          <option value="">Не указан</option>
+          <option value="1">1 год</option>
+          <option value="2">2 года</option>
+          <option value="3">3 года</option>
+          <option value="5">5 лет</option>
+        </select>
       </label>
       <label>
         Окончание договора

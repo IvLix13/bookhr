@@ -108,6 +108,7 @@ def employment_to_dict(employment: Employment) -> dict:
         "hire_date": employment.hire_date.isoformat(),
         "status": employment.status,
         "contract_end": contract.end_date.isoformat() if contract else None,
+        "contract_term_years": contract.term_years if contract else None,
         "contract_days_left": (contract.end_date - today).days if contract else None,
         "passport_until": passport.valid_until.isoformat() if passport else None,
         "passport_status": compute_passport_status(passport.valid_until)
@@ -136,6 +137,7 @@ def contract_to_dict(contract: Contract) -> dict:
         "full_name": get_current_name(employment.person),
         "start_date": contract.start_date.isoformat(),
         "end_date": contract.end_date.isoformat(),
+        "term_years": contract.term_years,
         "days_left": (contract.end_date - today).days,
         "is_active": contract.is_active,
         "renewal_report_event": {

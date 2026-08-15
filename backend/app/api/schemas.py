@@ -48,6 +48,8 @@ class CreateEventSchema(BaseSchema):
 
 class EventActionSchema(BaseSchema):
     comment = fields.Str(allow_none=True)
+    extension_term_years = fields.Float(allow_none=True)
+    new_end_date = DateField(allow_none=True)
 
 
 class CreateEmployeeSchema(BaseSchema):
@@ -58,6 +60,7 @@ class CreateEmployeeSchema(BaseSchema):
     actual_grade_id = fields.Int(allow_none=True)
     grade_date = DateField(allow_none=True)
     contract_end = DateField(allow_none=True)
+    contract_term_years = fields.Float(allow_none=True)
     passport_until = DateField(allow_none=True)
     has_university = fields.Bool(load_default=False)
 
@@ -70,6 +73,7 @@ class UpdateEmployeeSchema(BaseSchema):
     actual_grade_id = fields.Int(allow_none=True)
     grade_date = DateField(allow_none=True)
     contract_end = DateField(allow_none=True)
+    contract_term_years = fields.Float(allow_none=True)
     passport_until = DateField(allow_none=True)
     has_university = fields.Bool(allow_none=True)
     effective_date = DateField(allow_none=True)
@@ -87,6 +91,7 @@ class RehireEmployeeSchema(BaseSchema):
     actual_grade_id = fields.Int(allow_none=True)
     grade_date = DateField(allow_none=True)
     contract_end = DateField(allow_none=True)
+    contract_term_years = fields.Float(allow_none=True)
     passport_until = DateField(allow_none=True)
 
 
@@ -132,7 +137,8 @@ class CreateGradeCatalogSchema(BaseSchema):
 class CreateContractSchema(BaseSchema):
     employment_id = fields.Int(required=True)
     start_date = DateField(required=True)
-    end_date = DateField(required=True)
+    end_date = DateField(allow_none=True)
+    term_years = fields.Float(allow_none=True)
     notes = fields.Str(allow_none=True)
 
 

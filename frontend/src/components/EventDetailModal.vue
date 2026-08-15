@@ -27,6 +27,16 @@ const loading = ref(false)
 const error = ref('')
 const actionBusy = ref(false)
 const comment = ref('')
+const extensionTermYears = ref('1')
+
+const isContractReport = computed(() => {
+  if (!event.value) return false
+  return (
+    event.value.event_type === 'report' &&
+    (event.value.reference_type === 'contract' ||
+      event.value.title.toLowerCase().includes('договор'))
+  )
+})
 
 const { activate, deactivate } = useFocusTrap(modalRef, () => props.open)
 
@@ -72,11 +82,13 @@ watch(
   ([open]) => {
     if (open) {
       comment.value = ''
+      extensionTermYears.value = '1'
       void loadEvent()
     } else {
       event.value = null
       error.value = ''
       comment.value = ''
+      extensionTermYears.value = '1'
     }
   },
   { immediate: true },
@@ -129,9 +141,17 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
     const id = event.value.id
     const note = comment.value.trim() || undefined
     switch (action) {
-      case 'complete':
-        event.value = (await api.completeEvent(id, note)) as EventItem
+      case 'complete': {
+        const termYears =
+          isContractReport.value && extensionTermYears.value
+            ? Number(extensionTermYears.value)
+            : undefined
+        const options = termYears !== undefined ? { extension_term_years: termYears } : undefined
+        event.value = (
+          options ? await api.completeEvent(id, note, options) : await api.completeEvent(id, note)
+        ) as EventItem
         break
+      }
       case 'cancel':
         event.value = (await api.cancelEvent(id, note)) as EventItem
         break
@@ -225,6 +245,19 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
 
             <footer v-if="canAct" class="actions">
               <template v-if="isOpenStatus">
+                <div v-if="isContractReport" class="extension-row">
+                  <label for="extension-term-select">Срок продления договора:</label>
+                  <select
+                    id="extension-term-select"
+                    v-model="extensionTermYears"
+                    :disabled="actionBusy"
+                  >
+                    <option value="1">1 год</option>
+                    <option value="2">2 года</option>
+                    <option value="3">3 года</option>
+                    <option value="5">5 лет</option>
+                  </select>
+                </div>
                 <input
                   v-model="comment"
                   type="text"
@@ -336,6 +369,21 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
   gap: 0.75rem;
   padding-top: 0.25rem;
   border-top: 1px solid var(--border);
+}
+
+.extension-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.extension-row select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
 .actions input {

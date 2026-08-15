@@ -77,3 +77,12 @@ export function parseIsoDate(iso: string | null | undefined): number | null {
   if (!year || !month || !day) return null
   return year * 10000 + month * 100 + day
 }
+
+export function addYearsToIsoDate(iso: string, years: number): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  if (!year || !month || !day) return iso
+  const wholeYears = Math.floor(years)
+  const remainingMonths = Math.round((years - wholeYears) * 12)
+  const target = new Date(year + wholeYears, month - 1 + remainingMonths, day)
+  return formatLocalDate(target)
+}

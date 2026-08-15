@@ -23,6 +23,12 @@ const todayIso = formatLocalDate(new Date())
 const columns: ColumnDef<ContractRow>[] = [
   { key: 'full_name', label: 'ФИО' },
   {
+    key: 'term_years',
+    label: 'Срок (лет)',
+    getValue: (row) => row.term_years,
+    format: (value) => (value ? `${value} г.` : '—'),
+  },
+  {
     key: 'end_date',
     label: 'Окончание',
     getValue: (row) => row.end_date,
