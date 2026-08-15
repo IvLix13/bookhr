@@ -38,6 +38,7 @@ from app.services.rule_engine import run_rule_engine
 from app.services.tenure import auto_mark_reached_awards, ensure_tenure_awards
 from app.utils.dates import (
     calculate_contract_end,
+    calculate_term_years,
     format_display_date_ru,
     normalize_full_name,
     parse_flexible_date,
@@ -341,6 +342,7 @@ def _mark_row_result(row: ImportRow, result: str, message: str | None = None) ->
 
 
 def _upsert_contract(employment: Employment, hire_date: date, contract_end: date) -> None:
+    term_years = calculate_term_years(hire_date, contract_end) if contract_end > hire_date else None
     existing_contract = Contract.query.filter_by(
         employment_id=employment.id,
         end_date=contract_end,
@@ -351,6 +353,7 @@ def _upsert_contract(employment: Employment, hire_date: date, contract_end: date
                 employment_id=employment.id,
                 start_date=hire_date,
                 end_date=contract_end,
+                term_years=term_years,
                 is_active=True,
             )
         )

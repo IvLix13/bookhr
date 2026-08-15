@@ -22,7 +22,7 @@ from app.models import (
     TenureAward,
 )
 from app.services.audit import log_audit
-from app.utils.dates import calculate_contract_end, today_moscow
+from app.utils.dates import calculate_contract_end, calculate_term_years, today_moscow
 
 
 def get_current_name(person: Person) -> str | None:
@@ -186,12 +186,17 @@ def sync_active_contract(
             contract.is_active = False
         return None
 
+    if end_date <= contract_start:
+        raise ValueError("Дата окончания договора должна быть позже даты начала")
+
+    if term_years is None:
+        term_years = calculate_term_years(contract_start, end_date)
+
     if contract:
         contract.end_date = end_date
         if start_date:
             contract.start_date = start_date
-        if term_years is not None:
-            contract.term_years = term_years
+        contract.term_years = term_years
         contract.is_active = True
         return contract
 

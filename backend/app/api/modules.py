@@ -20,7 +20,7 @@ from app.api.helpers import (
     parse_sort_args,
     require_roles,
 )
-from app.api.schemas import CreateContractSchema
+from app.api.schemas import CreateContractSchema, UpdateContractSchema
 from app.api.serializers import (
     contract_to_dict,
     grade_row_to_dict,
@@ -53,7 +53,7 @@ from app.services.grades import assign_grade_to_employment
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards
 from app.tenant import get_request_company_id
-from app.utils.dates import calculate_contract_end
+from app.utils.dates import calculate_contract_end, calculate_term_years
 
 
 CONTRACT_SORT_FIELDS = {
@@ -116,8 +116,12 @@ def register_routes(bp):
         term_years = payload.get("term_years")
         if end_date is None and term_years is not None:
             end_date = calculate_contract_end(start_date, term_years)
+        elif end_date is not None and term_years is None:
+            term_years = calculate_term_years(start_date, end_date)
         if end_date is None:
             return api_response(message="Either end_date or term_years is required", status=400)
+        if end_date <= start_date:
+            return api_response(message="Дата окончания договора должна быть позже даты начала", status=400)
         contract = Contract(
             employment_id=payload["employment_id"],
             start_date=start_date,
@@ -133,6 +137,38 @@ def register_routes(bp):
             refresh_overdue_events(employment.company_id)
         db.session.commit()
         return api_response(contract_to_dict(contract), status=201)
+
+    @bp.patch("/contracts/<int:contract_id>")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def update_contract(contract_id: int):
+        contract = db.session.get(Contract, contract_id)
+        if not contract or contract.employment.company_id != get_request_company_id():
+            return api_response(message="Not found", status=404)
+
+        payload = load_schema(UpdateContractSchema)
+        if "start_date" in payload and payload["start_date"] is not None:
+            contract.start_date = payload["start_date"]
+        if "end_date" in payload and payload["end_date"] is not None:
+            contract.end_date = payload["end_date"]
+            if "term_years" in payload and payload["term_years"] is not None:
+                contract.term_years = payload["term_years"]
+            else:
+                contract.term_years = calculate_term_years(contract.start_date, contract.end_date)
+        elif "term_years" in payload and payload["term_years"] is not None:
+            contract.term_years = payload["term_years"]
+            contract.end_date = calculate_contract_end(contract.start_date, contract.term_years)
+
+        if "notes" in payload:
+            contract.notes = payload.get("notes")
+
+        if contract.end_date <= contract.start_date:
+            return api_response(message="Дата окончания договора должна быть позже даты начала", status=400)
+
+        db.session.flush()
+        recalculate_employment_events(contract.employment)
+        refresh_overdue_events(contract.employment.company_id)
+        db.session.commit()
+        return api_response(contract_to_dict(contract))
 
     @bp.get("/grades")
     @login_required

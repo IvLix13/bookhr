@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from marshmallow import Schema, ValidationError, fields, validate, EXCLUDE
+from marshmallow import Schema, ValidationError, fields, validate, validates_schema, EXCLUDE
 
 from app.models import EventType, RoleName
 
@@ -64,6 +64,13 @@ class CreateEmployeeSchema(BaseSchema):
     passport_until = DateField(allow_none=True)
     has_university = fields.Bool(load_default=False)
 
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        hire_date = data.get("hire_date")
+        contract_end = data.get("contract_end")
+        if hire_date and contract_end and contract_end <= hire_date:
+            raise ValidationError({"contract_end": ["Дата окончания договора должна быть позже даты начала работы"]})
+
 
 class UpdateEmployeeSchema(BaseSchema):
     full_name = fields.Str(validate=validate.Length(min=1, max=256))
@@ -77,6 +84,13 @@ class UpdateEmployeeSchema(BaseSchema):
     passport_until = DateField(allow_none=True)
     has_university = fields.Bool(allow_none=True)
     effective_date = DateField(allow_none=True)
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        hire_date = data.get("hire_date")
+        contract_end = data.get("contract_end")
+        if hire_date and contract_end and contract_end <= hire_date:
+            raise ValidationError({"contract_end": ["Дата окончания договора должна быть позже даты начала работы"]})
 
 
 class DismissEmployeeSchema(BaseSchema):
@@ -93,6 +107,13 @@ class RehireEmployeeSchema(BaseSchema):
     contract_end = DateField(allow_none=True)
     contract_term_years = fields.Float(allow_none=True)
     passport_until = DateField(allow_none=True)
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        hire_date = data.get("hire_date")
+        contract_end = data.get("contract_end")
+        if hire_date and contract_end and contract_end <= hire_date:
+            raise ValidationError({"contract_end": ["Дата окончания договора должна быть позже даты начала работы"]})
 
 
 class CreateUserSchema(BaseSchema):
@@ -140,6 +161,27 @@ class CreateContractSchema(BaseSchema):
     end_date = DateField(allow_none=True)
     term_years = fields.Float(allow_none=True)
     notes = fields.Str(allow_none=True)
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        start_date = data.get("start_date")
+        end_date = data.get("end_date")
+        if start_date and end_date and end_date <= start_date:
+            raise ValidationError({"end_date": ["Дата окончания договора должна быть позже даты начала"]})
+
+
+class UpdateContractSchema(BaseSchema):
+    start_date = DateField(allow_none=True)
+    end_date = DateField(allow_none=True)
+    term_years = fields.Float(allow_none=True)
+    notes = fields.Str(allow_none=True)
+
+    @validates_schema
+    def validate_dates(self, data, **kwargs):
+        start_date = data.get("start_date")
+        end_date = data.get("end_date")
+        if start_date and end_date and end_date <= start_date:
+            raise ValidationError({"end_date": ["Дата окончания договора должна быть позже даты начала"]})
 
 
 class CreatePassportSchema(BaseSchema):

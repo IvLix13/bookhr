@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  addYearsToIsoDate,
+  calculateTermYears,
   defaultStatsPeriod,
   formatDisplayDate,
   formatLocalDate,
@@ -49,5 +51,20 @@ describe('dates utils', () => {
 
   it('compares local dates', () => {
     expect(isSameLocalDate(new Date(2026, 6, 24), new Date(2026, 6, 24))).toBe(true)
+  })
+
+  it('adds years to iso date', () => {
+    expect(addYearsToIsoDate('2024-09-01', 1)).toBe('2025-09-01')
+    expect(addYearsToIsoDate('2024-09-01', 2)).toBe('2026-09-01')
+  })
+
+  it('calculates term years between dates', () => {
+    expect(calculateTermYears('2024-09-01', '2025-09-01')).toBe(1)
+    expect(calculateTermYears('2024-09-01', '2026-09-01')).toBe(2)
+    expect(calculateTermYears('2024-09-01', '2026-03-01')).toBe(1.5)
+    expect(calculateTermYears('2024-09-01', '2027-09-01')).toBe(3)
+    expect(calculateTermYears('2024-09-01', '2029-09-01')).toBe(5)
+    expect(calculateTermYears('2024-09-01', '2024-09-01')).toBeNull()
+    expect(calculateTermYears('2024-09-01', '2023-09-01')).toBeNull()
   })
 })

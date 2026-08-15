@@ -4,7 +4,7 @@ import GradeCreateModal from '@/components/GradeCreateModal.vue'
 import { api } from '@/api/client'
 import type { Employee, Grade } from '@/types'
 import { useAuthStore } from '@/stores/auth'
-import { addYearsToIsoDate } from '@/utils/dates'
+import { addYearsToIsoDate, calculateTermYears } from '@/utils/dates'
 
 type GradeField = 'position' | 'actual'
 
@@ -85,9 +85,19 @@ function onTermYearsChange() {
   }
 }
 
+function onContractEndChange() {
+  if (!form.value.contract_end || !form.value.hire_date) return
+  const calculated = calculateTermYears(form.value.hire_date, form.value.contract_end)
+  if (calculated !== null && calculated > 0) {
+    form.value.contract_term_years = String(calculated)
+  }
+}
+
 function onHireDateChange() {
   if (form.value.contract_term_years && form.value.hire_date) {
     onTermYearsChange()
+  } else if (form.value.contract_end && form.value.hire_date) {
+    onContractEndChange()
   }
 }
 
@@ -133,6 +143,13 @@ async function submit() {
   try {
     if (form.value.actual_grade_id && !form.value.grade_date) {
       throw new Error('Укажите дату текущего грейда')
+    }
+    if (
+      form.value.hire_date &&
+      form.value.contract_end &&
+      form.value.contract_end <= form.value.hire_date
+    ) {
+      throw new Error('Дата окончания договора должна быть позже даты начала работы')
     }
 
     const body = {
@@ -239,11 +256,20 @@ async function submit() {
           <option value="2">2 года</option>
           <option value="3">3 года</option>
           <option value="5">5 лет</option>
+          <option
+            v-if="
+              form.contract_term_years &&
+              !['1', '2', '3', '5'].includes(form.contract_term_years)
+            "
+            :value="form.contract_term_years"
+          >
+            {{ form.contract_term_years }} г.
+          </option>
         </select>
       </label>
       <label>
         Окончание договора
-        <input v-model="form.contract_end" type="date" />
+        <input v-model="form.contract_end" type="date" @change="onContractEndChange" />
       </label>
       <label>
         Срок паспорта

@@ -68,4 +68,58 @@ describe('EmployeeForm', () => {
     )
     expect(wrapper.emitted('saved')).toBeTruthy()
   })
+
+  it('calculates term_years when contract_end is changed manually', async () => {
+    const wrapper = mount(EmployeeForm)
+    await flushPromises()
+
+    const inputs = wrapper.findAll('input')
+    const fullNameInput = inputs[0]
+    const hireDateInput = inputs[2]
+    const contractEndInput = inputs[5]
+
+    const selects = wrapper.findAll('select')
+    const termSelect = selects[2]
+
+    await fullNameInput.setValue('Петров Петр')
+    await hireDateInput.setValue('2024-09-01')
+    await hireDateInput.trigger('change')
+    await contractEndInput.setValue('2027-09-01')
+    await contractEndInput.trigger('change')
+    await flushPromises()
+
+    expect(termSelect.element.value).toBe('3')
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createEmployee).toHaveBeenCalledWith(
+      expect.objectContaining({
+        full_name: 'Петров Петр',
+        hire_date: '2024-09-01',
+        contract_term_years: 3,
+        contract_end: '2027-09-01',
+      }),
+    )
+  })
+
+  it('shows error when contract_end is before or equal to hire_date', async () => {
+    const wrapper = mount(EmployeeForm)
+    await flushPromises()
+
+    const inputs = wrapper.findAll('input')
+    const fullNameInput = inputs[0]
+    const hireDateInput = inputs[2]
+    const contractEndInput = inputs[5]
+
+    await fullNameInput.setValue('Ошибкин Ошибка')
+    await hireDateInput.setValue('2024-09-01')
+    await contractEndInput.setValue('2024-08-01')
+
+    await wrapper.find('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createEmployee).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('Дата окончания договора должна быть позже даты начала работы')
+  })
 })
