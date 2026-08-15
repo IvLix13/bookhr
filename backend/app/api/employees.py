@@ -117,6 +117,7 @@ def register_routes(bp):
             employment,
             payload.get("contract_end"),
             start_date=hire_date,
+            term_years=payload.get("contract_term_years"),
         )
         sync_actual_grade(
             employment,
@@ -174,10 +175,11 @@ def register_routes(bp):
                 ensure_tenure_awards(employment.id, hire_date)
                 needs_recalc = True
 
-        if _payload_has(payload, "contract_end"):
+        if _payload_has(payload, "contract_end") or _payload_has(payload, "contract_term_years"):
             sync_active_contract(
                 employment,
                 payload.get("contract_end"),
+                term_years=payload.get("contract_term_years"),
             )
             needs_recalc = True
 
@@ -263,6 +265,7 @@ def register_routes(bp):
             employment,
             payload.get("contract_end"),
             start_date=hire_date,
+            term_years=payload.get("contract_term_years"),
         )
         sync_actual_grade(
             employment,

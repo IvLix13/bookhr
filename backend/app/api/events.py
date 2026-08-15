@@ -125,7 +125,11 @@ def register_routes(bp):
             )
         except InvalidEventTransition as exc:
             return api_response(message=str(exc), status=409)
-        apply_completion_effects(event)
+        apply_completion_effects(
+            event,
+            term_years=payload.get("extension_term_years"),
+            new_end_date=payload.get("new_end_date"),
+        )
         refresh_overdue_events(event.company_id)
         db.session.commit()
         return api_response(event_to_dict(event))

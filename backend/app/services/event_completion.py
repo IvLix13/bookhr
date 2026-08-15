@@ -9,12 +9,13 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.models import EmployeeGradeHistory, Event, EventType
+from app.extensions import db
+from app.models import Contract, EmployeeGradeHistory, Event, EventType
 from app.services.audit import _current_user_id, log_audit
-from app.services.employees import get_current_grade
+from app.services.employees import get_active_contract, get_current_grade
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.rule_engine import recalculate_employment_events
-from app.utils.dates import today_moscow
+from app.utils.dates import calculate_contract_end, today_moscow
 
 
 def _promote_after_grade_review(event: Event) -> EmployeeGradeHistory | None:
@@ -72,13 +73,77 @@ def _promote_after_grade_review(event: Event) -> EmployeeGradeHistory | None:
     return history
 
 
-def apply_completion_effects(event: Event) -> dict:
+def _extend_contract_after_report_completion(
+    event: Event,
+    term_years: float | None = None,
+    new_end_date: date | None = None,
+) -> Contract | None:
+    """Extend the contract when the renewal report event is completed with an extension term."""
+    if term_years is None and new_end_date is None:
+        return None
+
+    employment = event.employment
+    if not employment:
+        return None
+
+    contract = None
+    if event.reference_type == "contract" and event.reference_id:
+        contract = db.session.get(Contract, event.reference_id)
+    if not contract:
+        contract = get_active_contract(employment)
+    if not contract:
+        return None
+
+    old_end_date = contract.end_date
+    if new_end_date is not None:
+        target_end_date = new_end_date
+    elif term_years is not None:
+        target_end_date = calculate_contract_end(contract.end_date, term_years)
+        contract.term_years = term_years
+    else:
+        return None
+
+    contract.end_date = target_end_date
+    contract.is_active = True
+
+    log_audit(
+        "contract_extend",
+        "contract",
+        contract.id,
+        {"end_date": old_end_date.isoformat()},
+        {
+            "end_date": target_end_date.isoformat(),
+            "term_years": contract.term_years,
+            "event_id": event.id,
+        },
+    )
+    return contract
+
+
+def apply_completion_effects(
+    event: Event,
+    term_years: float | None = None,
+    new_end_date: date | None = None,
+) -> dict:
     """Apply the domain side effects implied by completing ``event``."""
     assigned_grade = None
+    extended_contract = None
     if event.event_type == EventType.GRADE.value:
         assigned_grade = _promote_after_grade_review(event)
+    elif (
+        event.event_type == EventType.REPORT.value
+        and event.reference_type == "contract"
+    ):
+        extended_contract = _extend_contract_after_report_completion(
+            event,
+            term_years=term_years,
+            new_end_date=new_end_date,
+        )
 
     if event.employment:
         recalculate_employment_events(event.employment)
 
-    return {"assigned_grade": assigned_grade}
+    return {
+        "assigned_grade": assigned_grade,
+        "extended_contract": extended_contract,
+    }

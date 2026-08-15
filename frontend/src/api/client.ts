@@ -154,10 +154,20 @@ export const api = {
   upcomingEvents: (limit = 10) => request(`/api/events/upcoming?limit=${limit}`),
   createEvent: (body: Record<string, unknown>) =>
     request('/api/events', { method: 'POST', body: JSON.stringify(body) }),
-  completeEvent: (id: number, comment?: string) =>
+  completeEvent: (
+    id: number,
+    comment?: string,
+    options?: { extension_term_years?: number | null; new_end_date?: string | null },
+  ) =>
     request(`/api/events/${id}/complete`, {
       method: 'POST',
-      body: JSON.stringify({ comment }),
+      body: JSON.stringify({
+        comment,
+        ...(options?.extension_term_years !== undefined
+          ? { extension_term_years: options.extension_term_years }
+          : {}),
+        ...(options?.new_end_date !== undefined ? { new_end_date: options.new_end_date } : {}),
+      }),
     }),
   cancelEvent: (id: number, comment?: string) =>
     request(`/api/events/${id}/cancel`, {

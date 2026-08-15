@@ -13,12 +13,14 @@ from app.api.helpers import (
     apply_sort,
     get_json,
     join_current_person_name,
+    load_schema,
     paginate_query,
     parse_pagination_args,
     parse_search_q,
     parse_sort_args,
     require_roles,
 )
+from app.api.schemas import CreateContractSchema
 from app.api.serializers import (
     contract_to_dict,
     grade_row_to_dict,
@@ -51,6 +53,7 @@ from app.services.grades import assign_grade_to_employment
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards
 from app.tenant import get_request_company_id
+from app.utils.dates import calculate_contract_end
 
 
 CONTRACT_SORT_FIELDS = {
@@ -107,11 +110,19 @@ def register_routes(bp):
     @bp.post("/contracts")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def create_contract():
-        payload = get_json()
+        payload = load_schema(CreateContractSchema)
+        start_date = payload["start_date"]
+        end_date = payload.get("end_date")
+        term_years = payload.get("term_years")
+        if end_date is None and term_years is not None:
+            end_date = calculate_contract_end(start_date, term_years)
+        if end_date is None:
+            return api_response(message="Either end_date or term_years is required", status=400)
         contract = Contract(
             employment_id=payload["employment_id"],
-            start_date=date.fromisoformat(payload["start_date"]),
-            end_date=date.fromisoformat(payload["end_date"]),
+            start_date=start_date,
+            end_date=end_date,
+            term_years=term_years,
             notes=payload.get("notes"),
         )
         db.session.add(contract)

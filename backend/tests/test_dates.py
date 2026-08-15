@@ -2,7 +2,7 @@ from datetime import date
 
 from dateutil.relativedelta import relativedelta
 
-from app.utils.dates import add_months, subtract_months, today_moscow
+from app.utils.dates import add_months, add_years, calculate_contract_end, subtract_months, today_moscow
 from app.services.passports import compute_passport_status
 from app.models import PassportStatus
 
@@ -31,3 +31,11 @@ def test_grade_eligibility_date():
     eligible = assigned + relativedelta(months=18)
     reminder = subtract_months(eligible, 1)
     assert reminder == date(2025, 6, 15)
+
+
+def test_calculate_contract_end():
+    start = date(2024, 9, 1)
+    assert calculate_contract_end(start, 1) == date(2025, 9, 1)
+    assert calculate_contract_end(start, 2) == date(2026, 9, 1)
+    assert calculate_contract_end(start, 3.5) == date(2028, 3, 1)
+

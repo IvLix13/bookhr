@@ -36,7 +36,12 @@ from app.services.employees import (
 )
 from app.services.rule_engine import run_rule_engine
 from app.services.tenure import auto_mark_reached_awards, ensure_tenure_awards
-from app.utils.dates import format_display_date_ru, normalize_full_name, parse_flexible_date
+from app.utils.dates import (
+    calculate_contract_end,
+    format_display_date_ru,
+    normalize_full_name,
+    parse_flexible_date,
+)
 
 COLUMN_MAP = {
     "фио": "full_name",
@@ -51,6 +56,12 @@ COLUMN_MAP = {
     "actual_grade": "actual_grade",
     "вуз": "has_university",
     "has_university": "has_university",
+    "срок договора": "contract_term_years",
+    "срок договора (лет)": "contract_term_years",
+    "срок договора, лет": "contract_term_years",
+    "срок контракта": "contract_term_years",
+    "срок контракта (лет)": "contract_term_years",
+    "contract_term_years": "contract_term_years",
     "окончание договора": "contract_end",
     "contract_end": "contract_end",
     "дата получения текущего грейда": "grade_date",
@@ -498,8 +509,21 @@ def confirm_import(
                         )
 
             contract_end = _parse_date(data.get("contract_end"))
-            if contract_end:
-                sync_active_contract(employment, contract_end, start_date=hire_date)
+            term_years_raw = data.get("contract_term_years")
+            term_years: float | None = None
+            if term_years_raw is not None and str(term_years_raw).strip():
+                try:
+                    term_years = float(str(term_years_raw).replace(",", ".").strip())
+                except ValueError:
+                    term_years = None
+
+            if contract_end or term_years is not None:
+                sync_active_contract(
+                    employment,
+                    contract_end,
+                    start_date=hire_date,
+                    term_years=term_years,
+                )
 
             grade_date = _parse_date(data.get("grade_date"))
             grade_id = _resolve_grade_id(data.get("actual_grade"))
@@ -550,6 +574,7 @@ def export_template(company_id: int, path: Path) -> None:
         "Грейд по должности",
         "Фактический грейд",
         "ВУЗ",
+        "Срок договора (лет)",
         "Окончание договора",
         "Дата получения текущего грейда",
         "Начало работы",
@@ -573,6 +598,7 @@ def export_template(company_id: int, path: Path) -> None:
                 position.position_grade.name if position and position.position_grade else "",
                 grade.grade.name if grade else "",
                 "Да" if person.has_university else "Нет",
+                contract.term_years if contract and contract.term_years is not None else "",
                 format_display_date_ru(contract.end_date) if contract else "",
                 format_display_date_ru(grade.assigned_date) if grade else "",
                 format_display_date_ru(employment.hire_date),

@@ -44,6 +44,16 @@ def subtract_months(value: date, months: int) -> date:
     return value - relativedelta(months=months)
 
 
+def add_years(value: date, years: float | int) -> date:
+    whole_years = int(years)
+    remaining_months = round((years - whole_years) * 12)
+    return value + relativedelta(years=whole_years, months=remaining_months)
+
+
+def calculate_contract_end(start_date: date, term_years: float | int) -> date:
+    return add_years(start_date, term_years)
+
+
 def days_until(target: date, reference: date | None = None) -> int:
     ref = reference or today_moscow()
     return (target - ref).days

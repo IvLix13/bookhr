@@ -135,4 +135,29 @@ describe('EventDetailModal', () => {
     await flushPromises()
     expect(reopenEvent).toHaveBeenCalledWith(7)
   })
+
+  it('completes contract renewal event with extension term', async () => {
+    const contractEvent: EventItem = {
+      ...plannedEvent,
+      title: 'Подготовить рапорт на продление Договора: Иванов',
+      reference_type: 'contract',
+      reference_id: 10,
+    }
+    getEvent.mockResolvedValueOnce(contractEvent)
+    const wrapper = await mountModal('hr')
+    expect(document.body.textContent).toContain('Срок продления договора:')
+
+    const select = document.body.querySelector('#extension-term-select') as HTMLSelectElement
+    expect(select).toBeTruthy()
+    select.value = '3'
+    await select.dispatchEvent(new Event('change'))
+
+    const buttons = Array.from(document.body.querySelectorAll('button'))
+    const completeBtn = buttons.find((button) => button.textContent?.includes('Выполнить'))
+    await completeBtn!.click()
+    await flushPromises()
+
+    expect(completeEvent).toHaveBeenCalledWith(7, undefined, { extension_term_years: 3 })
+    expect(wrapper.emitted('changed')).toBeTruthy()
+  })
 })

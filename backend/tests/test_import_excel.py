@@ -675,3 +675,65 @@ def test_revalidate_api_clears_unknown_grades(admin_client, seed_company, app, t
         grade = GradeCatalog.query.filter_by(name="Лид").one()
         history = EmployeeGradeHistory.query.one()
         assert history.grade_id == grade.id
+
+
+def test_import_with_contract_term_years(admin_client, seed_company, app, tmp_path):
+    with app.app_context():
+        db.session.add(GradeCatalog(name="Мидл", rank=1, min_years=1.5))
+        db.session.commit()
+        company_id = seed_company.id
+
+    path = tmp_path / "contract_term.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(
+        [
+            "ФИО",
+            "Должность",
+            "Грейд по должности",
+            "Фактический грейд",
+            "ВУЗ",
+            "Срок договора (лет)",
+            "Дата получения текущего грейда",
+            "Начало работы",
+            "Срок окончания паспорта",
+        ]
+    )
+    ws.append(
+        [
+            "Сроков Срок Срокович",
+            "Инженер",
+            "Мидл",
+            "Мидл",
+            "Да",
+            "3",
+            "01.03.2024",
+            "10.01.2024",
+            "20.08.2029",
+        ]
+    )
+    wb.save(path)
+
+    with path.open("rb") as handle:
+        upload = admin_client.post(
+            "/api/import/upload",
+            data={
+                "file": (handle, path.name),
+                "company_id": str(company_id),
+                "import_type": "employees",
+            },
+            content_type="multipart/form-data",
+        )
+    assert upload.status_code == 201
+    job_id = upload.get_json()["data"]["id"]
+
+    confirm = admin_client.post(f"/api/import/{job_id}/confirm", json={"row_actions": {}})
+    assert confirm.status_code == 200
+
+    with app.app_context():
+        from app.models import Contract
+        contract = Contract.query.first()
+        assert contract is not None
+        assert contract.term_years == 3.0
+        assert contract.end_date == date(2027, 1, 10)
+

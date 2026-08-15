@@ -13,6 +13,7 @@ class Contract(db.Model, TimestampMixin):
     employment_id = db.Column(db.Integer, db.ForeignKey("employments.id"), nullable=False)
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)
+    term_years = db.Column(db.Float, nullable=True)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     notes = db.Column(db.Text, nullable=True)
 
