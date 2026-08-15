@@ -54,6 +54,18 @@ def calculate_contract_end(start_date: date, term_years: float | int) -> date:
     return add_years(start_date, term_years)
 
 
+def calculate_term_years(start_date: date, end_date: date) -> float:
+    if end_date <= start_date:
+        raise ValueError("Дата окончания договора должна быть позже даты начала")
+    delta = relativedelta(end_date, start_date)
+    approx_months = delta.years * 12 + delta.months + (delta.days / 30.4375)
+    years = approx_months / 12.0
+    rounded = round(years, 1)
+    if abs(rounded - round(rounded)) < 0.05:
+        return float(round(rounded))
+    return float(rounded)
+
+
 def days_until(target: date, reference: date | None = None) -> int:
     ref = reference or today_moscow()
     return (target - ref).days

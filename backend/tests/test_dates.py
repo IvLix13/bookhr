@@ -1,8 +1,16 @@
+import pytest
 from datetime import date
 
 from dateutil.relativedelta import relativedelta
 
-from app.utils.dates import add_months, add_years, calculate_contract_end, subtract_months, today_moscow
+from app.utils.dates import (
+    add_months,
+    add_years,
+    calculate_contract_end,
+    calculate_term_years,
+    subtract_months,
+    today_moscow,
+)
 from app.services.passports import compute_passport_status
 from app.models import PassportStatus
 
@@ -38,4 +46,20 @@ def test_calculate_contract_end():
     assert calculate_contract_end(start, 1) == date(2025, 9, 1)
     assert calculate_contract_end(start, 2) == date(2026, 9, 1)
     assert calculate_contract_end(start, 3.5) == date(2028, 3, 1)
+
+
+def test_calculate_term_years():
+    start = date(2024, 9, 1)
+    assert calculate_term_years(start, date(2025, 9, 1)) == 1.0
+    assert calculate_term_years(start, date(2026, 9, 1)) == 2.0
+    assert calculate_term_years(start, date(2026, 3, 1)) == 1.5
+    assert calculate_term_years(start, date(2027, 9, 1)) == 3.0
+    assert calculate_term_years(start, date(2029, 9, 1)) == 5.0
+
+    with pytest.raises(ValueError, match="позже даты начала"):
+        calculate_term_years(start, start)
+
+    with pytest.raises(ValueError, match="позже даты начала"):
+        calculate_term_years(start, date(2024, 8, 1))
+
 

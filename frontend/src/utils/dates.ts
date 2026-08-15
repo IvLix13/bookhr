@@ -86,3 +86,36 @@ export function addYearsToIsoDate(iso: string, years: number): string {
   const target = new Date(year + wholeYears, month - 1 + remainingMonths, day)
   return formatLocalDate(target)
 }
+
+export function calculateTermYears(
+  startDateIso: string | null | undefined,
+  endDateIso: string | null | undefined,
+): number | null {
+  if (!startDateIso || !endDateIso) return null
+  const [startYear, startMonth, startDay] = startDateIso.split('-').map(Number)
+  const [endYear, endMonth, endDay] = endDateIso.split('-').map(Number)
+  if (!startYear || !startMonth || !startDay || !endYear || !endMonth || !endDay) return null
+
+  const startDate = new Date(startYear, startMonth - 1, startDay)
+  const endDate = new Date(endYear, endMonth - 1, endDay)
+  if (endDate <= startDate) return null
+
+  let years = endYear - startYear
+  let months = endMonth - startMonth
+  let days = endDay - startDay
+  if (days < 0) {
+    months -= 1
+    days += 30
+  }
+  if (months < 0) {
+    years -= 1
+    months += 12
+  }
+  const approxMonths = years * 12 + months + days / 30.4375
+  const totalYears = approxMonths / 12
+  const rounded = Math.round(totalYears * 10) / 10
+  if (Math.abs(rounded - Math.round(rounded)) < 0.05) {
+    return Math.round(rounded)
+  }
+  return rounded
+}

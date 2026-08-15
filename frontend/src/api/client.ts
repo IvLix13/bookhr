@@ -120,6 +120,22 @@ export const api = {
   deleteEmployee: (id: number) => request(`/api/employees/${id}`, { method: 'DELETE' }),
   contracts: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/contracts${buildQuery(params)}`),
+  createContract: (body: {
+    employment_id: number
+    start_date: string
+    end_date?: string | null
+    term_years?: number | null
+    notes?: string | null
+  }) => request('/api/contracts', { method: 'POST', body: JSON.stringify(body) }),
+  updateContract: (
+    id: number,
+    body: Partial<{
+      start_date: string
+      end_date: string
+      term_years: number
+      notes: string
+    }>,
+  ) => request(`/api/contracts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   grades: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/grades${buildQuery(params)}`),
   gradeCatalog: () => request('/api/grade-catalog'),
