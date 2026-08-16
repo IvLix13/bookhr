@@ -45,6 +45,7 @@ describe('GradeCatalogForm', () => {
       name: 'Лид',
       rank: 2,
       min_years: 1,
+      extra_year_without_university: false,
     })
     expect(wrapper.emitted('saved')?.[0]?.[0]).toMatchObject({
       id: 3,

@@ -34,7 +34,7 @@ def test_create_employee_creates_rule_events(hr_client, seed_company):
             "full_name": "Новиков Иван Иванович",
             "title": "Инженер",
             "hire_date": "2021-01-10",
-            "has_university": True,
+            "education_status": "yes",
             "position_grade_id": senior_id,
             "actual_grade_id": middle_id,
             "grade_date": "2024-03-01",
@@ -58,6 +58,28 @@ def test_create_employee_creates_rule_events(hr_client, seed_company):
         }
 
 
+def test_create_employee_requires_explicit_education_status(hr_client, seed_company):
+    missing = hr_client.post(
+        "/api/employees",
+        json={
+            "company_id": seed_company.id,
+            "full_name": "Без Статуса",
+            "hire_date": "2024-01-01",
+        },
+    )
+    unknown = hr_client.post(
+        "/api/employees",
+        json={
+            "company_id": seed_company.id,
+            "full_name": "Неизвестный Статус",
+            "hire_date": "2024-01-01",
+            "education_status": "unknown",
+        },
+    )
+    assert missing.status_code == 400
+    assert unknown.status_code == 400
+
+
 def test_update_contract_end_recalculates_events(hr_client, seed_company):
     with hr_client.application.app_context():
         _seed_grades()
@@ -70,6 +92,7 @@ def test_update_contract_end_recalculates_events(hr_client, seed_company):
             "full_name": "Петров Пётр Петрович",
             "title": "Аналитик",
             "hire_date": "2020-05-01",
+            "education_status": "no",
             "actual_grade_id": middle_id,
             "grade_date": "2023-01-01",
             "contract_end": "2026-12-01",
@@ -119,6 +142,7 @@ def test_update_name_updates_event_titles(hr_client, seed_company):
             "full_name": "Сидоров Сидор Сидорович",
             "title": "Инженер",
             "hire_date": "2022-01-01",
+            "education_status": "no",
             "contract_end": "2026-12-01",
             "passport_until": "2028-01-01",
         },
@@ -151,6 +175,7 @@ def test_delete_employee_removes_events(hr_client, seed_company):
             "full_name": "Удаляев Удал Удалович",
             "title": "Инженер",
             "hire_date": "2021-01-01",
+            "education_status": "no",
             "contract_end": "2026-12-01",
             "passport_until": "2029-01-01",
         },
@@ -198,6 +223,7 @@ def test_create_employee_with_contract_term_years(hr_client, seed_company):
             "full_name": "Контрактов Срок Срокович",
             "title": "Менеджер",
             "hire_date": "2024-09-01",
+            "education_status": "no",
             "contract_term_years": 2,
         },
     )
@@ -246,6 +272,7 @@ def test_create_employee_invalid_contract_end_rejected(hr_client, seed_company):
             "company_id": seed_company.id,
             "full_name": "Невалидов Дата",
             "hire_date": "2024-09-01",
+            "education_status": "no",
             "contract_end": "2024-08-01",
         },
     )
@@ -259,6 +286,7 @@ def test_update_contract_directly(hr_client, seed_company):
             "company_id": seed_company.id,
             "full_name": "Прямов Контракт",
             "hire_date": "2024-01-01",
+            "education_status": "no",
             "contract_end": "2025-01-01",
         },
     )

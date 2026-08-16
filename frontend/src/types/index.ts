@@ -70,7 +70,7 @@ export interface Grade {
   name: string
   rank: number
   min_years: number
-  extra_year_without_university: boolean
+  extra_year_without_university?: boolean
   is_active?: boolean
   in_use_count?: number
 }
@@ -92,7 +92,7 @@ export interface EventItem {
   created_at: string | null
   completed_at: string | null
   completion_comment: string | null
-  grade_completion: {
+  grade_completion?: {
     next_rank: number | null
     candidates: Grade[]
     requires_selection: boolean
@@ -139,10 +139,10 @@ export interface GradeRow {
   grade: Grade | null
   grade_date: string | null
   next_grade: Grade | null
-  next_rank: number | null
-  next_grade_candidates: Grade[]
-  requires_grade_choice: boolean
-  blocked_reason: string | null
+  next_rank?: number | null
+  next_grade_candidates?: Grade[]
+  requires_grade_choice?: boolean
+  blocked_reason?: string | null
   eligible_date: string | null
   days_left: number | null
   is_available?: boolean

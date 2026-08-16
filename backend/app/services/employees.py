@@ -75,7 +75,7 @@ def create_person_with_employment(
     hire_date: date,
     title: str,
     position_grade_id: int | None = None,
-    education_status: str = EducationStatus.UNKNOWN.value,
+    education_status: str = EducationStatus.NO.value,
     person_uuid: uuid.UUID | None = None,
 ) -> tuple[Person, Employment]:
     person = Person(
@@ -229,8 +229,9 @@ def sync_actual_grade(
         return
 
     if current and current.grade_id == grade_id:
+        was_rank_entry = current.rank_started_at == current.assigned_date
         current.assigned_date = grade_date
-        if current.rank_started_at > grade_date:
+        if was_rank_entry:
             current.rank_started_at = grade_date
         return
 

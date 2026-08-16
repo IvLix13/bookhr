@@ -188,6 +188,56 @@ def test_reopened_grade_event_does_not_promote_twice(hr_client, seed_company, ap
         assert EmployeeGradeHistory.query.filter_by(employment_id=employment_id).count() == 2
 
 
+def test_multiple_next_grades_require_hr_selection(hr_client, seed_company, app):
+    with app.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=1, is_active=True)
+        middle_a = GradeCatalog(name="Middle A", rank=2, min_years=1, is_active=True)
+        middle_b = GradeCatalog(name="Middle B", rank=2, min_years=1, is_active=True)
+        db.session.add_all([junior, middle_a, middle_b])
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Выбор Грейда",
+            hire_date=date(2018, 1, 1),
+            title="Инженер",
+            position_grade_id=middle_a.id,
+        )
+        db.session.add(
+            EmployeeGradeHistory(
+                employment_id=employment.id,
+                grade_id=junior.id,
+                assigned_date=date(2020, 1, 1),
+            )
+        )
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Рассмотреть повышение грейда",
+            event_type=EventType.GRADE,
+            event_date=date(2021, 1, 1),
+            employment_id=employment.id,
+        )
+        db.session.commit()
+        event_id = event.id
+        employment_id = employment.id
+        middle_b_id = middle_b.id
+
+    missing = hr_client.post(f"/api/events/{event_id}/complete", json={})
+    assert missing.status_code == 400
+    assert missing.get_json()["message"] == "Выберите следующий грейд"
+
+    selected = hr_client.post(
+        f"/api/events/{event_id}/complete",
+        json={"target_grade_id": middle_b_id},
+    )
+    assert selected.status_code == 200
+
+    with app.app_context():
+        event = db.session.get(Event, event_id)
+        employment = db.session.get(Employment, employment_id)
+        assert event.status == EventStatus.COMPLETED.value
+        assert get_current_grade(employment).grade_id == middle_b_id
+
+
 def test_completing_report_event_keeps_contract_report_date(hr_client, seed_company, app):
     with app.app_context():
         _, employment = create_person_with_employment(

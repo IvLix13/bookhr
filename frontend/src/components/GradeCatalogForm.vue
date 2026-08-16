@@ -58,7 +58,7 @@ function applyFormFromProps() {
           rank: props.grade.rank,
           min_years: props.grade.min_years,
           extra_year_without_university:
-            props.grade.extra_year_without_university,
+            props.grade.extra_year_without_university ?? false,
         }
         return
       }

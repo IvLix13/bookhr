@@ -31,19 +31,6 @@ def validate_rank(rank: int) -> int:
     return rank
 
 
-def validate_rank_continuity(*, rank: int, exclude_id: int | None = None) -> None:
-    """Ensure ranks 1..rank-1 exist so promotion chains stay intact."""
-    if rank <= 1:
-        return
-    query = GradeCatalog.query.filter(GradeCatalog.rank < rank)
-    if exclude_id is not None:
-        query = query.filter(GradeCatalog.id != exclude_id)
-    existing = {item.rank for item in query.all()}
-    missing = [value for value in range(1, rank) if value not in existing]
-    if missing:
-        raise ValueError(f"missing prerequisite ranks: {', '.join(map(str, missing))}")
-
-
 def apply_grade_catalog_payload(grade: GradeCatalog, payload: dict) -> None:
     if "name" in payload:
         name = str(payload["name"]).strip()

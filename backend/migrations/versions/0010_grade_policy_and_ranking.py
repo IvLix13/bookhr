@@ -23,12 +23,22 @@ def upgrade():
         )
     )
 
+    unique_constraints = sa.inspect(op.get_bind()).get_unique_constraints(
+        "grade_catalog"
+    )
+    rank_constraint = next(
+        constraint
+        for constraint in unique_constraints
+        if constraint["column_names"] == ["rank"]
+    )
+    rank_constraint_name = rank_constraint["name"] or "uq_grade_catalog_rank"
+
     with op.batch_alter_table(
         "grade_catalog",
         schema=None,
         naming_convention=NAMING_CONVENTION,
     ) as batch_op:
-        batch_op.drop_constraint("uq_grade_catalog_rank", type_="unique")
+        batch_op.drop_constraint(rank_constraint_name, type_="unique")
         batch_op.add_column(
             sa.Column(
                 "extra_year_without_university",
