@@ -11,8 +11,9 @@ class GradeCatalog(db.Model, TimestampMixin):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(64), unique=True, nullable=False)
-    rank = db.Column(db.Integer, unique=True, nullable=False)
+    rank = db.Column(db.Integer, nullable=False)
     min_years = db.Column(db.Numeric(5, 2), default=1, nullable=False)
+    extra_year_without_university = db.Column(db.Boolean, default=False, nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
     grade_history = db.relationship("EmployeeGradeHistory", back_populates="grade")
@@ -25,6 +26,10 @@ class EmployeeGradeHistory(db.Model, TimestampMixin):
     employment_id = db.Column(db.Integer, db.ForeignKey("employments.id"), nullable=False)
     grade_id = db.Column(db.Integer, db.ForeignKey("grade_catalog.id"), nullable=False)
     assigned_date = db.Column(db.Date, nullable=False)
+    rank_at_assignment = db.Column(db.Integer, nullable=False)
+    rank_started_at = db.Column(db.Date, nullable=False)
+    required_months = db.Column(db.Integer, nullable=False)
+    education_status_at_rank_entry = db.Column(db.String(16), nullable=False)
     assigned_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
     basis = db.Column(db.Text, nullable=True)
     valid_to = db.Column(db.Date, nullable=True)

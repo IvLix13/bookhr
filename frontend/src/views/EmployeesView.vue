@@ -44,9 +44,13 @@ const columns: ColumnDef<Employee>[] = [
   { key: 'full_name', label: 'ФИО' },
   { key: 'title', label: 'Должность' },
   {
-    key: 'has_university',
+    key: 'education_status',
     label: 'ВУЗ',
-    getValue: (row) => (row.has_university ? 'Да' : 'Нет'),
+    getValue: (row) => {
+      if (row.education_status === 'yes') return 'Да'
+      if (row.education_status === 'no') return 'Нет'
+      return 'Неизвестно'
+    },
   },
   {
     key: 'contract_end',

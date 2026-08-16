@@ -35,9 +35,12 @@ const columns: ColumnDef<GradeRow>[] = [
     format: (value) => formatShortDate(value as string | null),
   },
   {
-    key: 'next_grade',
+    key: 'next_grade_candidates',
     label: 'Следующий грейд',
-    getValue: (row) => row.next_grade?.name ?? '—',
+    getValue: (row) => {
+      const candidates = row.next_grade_candidates ?? []
+      return candidates.length ? candidates.map((grade) => grade.name).join(', ') : '—'
+    },
   },
   {
     key: 'eligible_date',

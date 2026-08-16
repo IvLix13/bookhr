@@ -29,6 +29,7 @@ const form = ref({
   name: '',
   rank: 1,
   min_years: 1,
+  extra_year_without_university: false,
 })
 
 const formTitle = computed(() =>
@@ -56,6 +57,8 @@ function applyFormFromProps() {
           name: props.grade.name,
           rank: props.grade.rank,
           min_years: props.grade.min_years,
+          extra_year_without_university:
+            props.grade.extra_year_without_university,
         }
         return
       }
@@ -72,6 +75,7 @@ function applyFormFromProps() {
     name: props.initialName.trim(),
     rank: nextRank(),
     min_years: 1,
+    extra_year_without_university: false,
   }
 }
 
@@ -95,6 +99,7 @@ async function saveGrade() {
       name: form.value.name.trim(),
       rank: form.value.rank,
       min_years: form.value.min_years,
+      extra_year_without_university: form.value.extra_year_without_university,
     }
     let saved: Grade
     switch (props.mode) {
@@ -146,6 +151,10 @@ function cancel() {
       Мин. лет до следующего грейда
       <input v-model.number="form.min_years" type="number" min="0.5" step="0.5" required />
     </label>
+    <label class="checkbox">
+      <input v-model="form.extra_year_without_university" type="checkbox" />
+      Добавлять один год сотрудникам без ВУЗа
+    </label>
     <div class="actions">
       <button class="btn" type="submit" :disabled="saving">
         {{ submitLabel }}
@@ -172,6 +181,12 @@ function cancel() {
 label {
   display: grid;
   gap: 0.35rem;
+}
+
+label.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 input {

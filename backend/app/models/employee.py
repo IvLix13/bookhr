@@ -14,12 +14,22 @@ class EmploymentStatus(str, Enum):
     DISMISSED = "dismissed"
 
 
+class EducationStatus(str, Enum):
+    YES = "yes"
+    NO = "no"
+    UNKNOWN = "unknown"
+
+
 class Person(db.Model, TimestampMixin):
     __tablename__ = "persons"
 
     id = db.Column(db.Integer, primary_key=True)
     uuid = db.Column(db.Uuid, default=uuid.uuid4, unique=True, nullable=False)
-    has_university = db.Column(db.Boolean, default=False, nullable=False)
+    education_status = db.Column(
+        db.String(16),
+        default=EducationStatus.UNKNOWN.value,
+        nullable=False,
+    )
 
     employments = db.relationship("Employment", back_populates="person")
     name_history = db.relationship("PersonNameHistory", back_populates="person")

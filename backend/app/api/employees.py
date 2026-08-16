@@ -109,7 +109,7 @@ def register_routes(bp):
             hire_date=hire_date,
             title=(payload.get("title") or "Не указана").strip() or "Не указана",
             position_grade_id=payload.get("position_grade_id"),
-            has_university=bool(payload.get("has_university", False)),
+            education_status=payload["education_status"],
         )
         ensure_tenure_awards(employment.id, hire_date)
 
@@ -165,8 +165,8 @@ def register_routes(bp):
                 effective_date,
             )
 
-        if _payload_has(payload, "has_university"):
-            employment.person.has_university = bool(payload.get("has_university"))
+        if _payload_has(payload, "education_status"):
+            employment.person.education_status = payload["education_status"]
 
         if _payload_has(payload, "hire_date"):
             hire_date = payload.get("hire_date")

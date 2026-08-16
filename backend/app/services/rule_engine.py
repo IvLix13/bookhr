@@ -147,9 +147,9 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
     current = get_current_grade(employment)
     if current:
         eligibility = compute_grade_eligibility(employment)
-        next_grade = eligibility["next_grade"]
+        candidates = eligibility["next_grade_candidates"]
         eligible_date = eligibility["eligible_date"]
-        if next_grade and eligible_date:
+        if candidates and eligible_date:
             keys.add(grade_rule_key(current.id, eligible_date))
 
     passport = _active_passport(employment)
@@ -208,9 +208,9 @@ def process_grade_rules(employment: Employment) -> int:
         return 0
 
     eligibility = compute_grade_eligibility(employment)
-    next_grade = eligibility["next_grade"]
+    candidates = eligibility["next_grade_candidates"]
     eligible_date = eligibility["eligible_date"]
-    if not next_grade or not eligible_date:
+    if not candidates or not eligible_date:
         return 0
 
     event_date = subtract_months(eligible_date, 1)
@@ -223,7 +223,8 @@ def process_grade_rules(employment: Employment) -> int:
         event_type=EventType.GRADE,
         event_date=event_date,
         description=(
-            f"Доступен грейдов «{next_grade.name}» с {eligible_date.isoformat()}"
+            f"Доступны грейды «{', '.join(grade.name for grade in candidates)}» "
+            f"с {eligible_date.isoformat()}"
         ),
         reference_type="employee_grade_history",
         reference_id=current.id,

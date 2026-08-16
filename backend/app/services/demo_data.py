@@ -11,7 +11,7 @@ from app.extensions import db
 from app.models import (
     Company,
     Contract,
-    EmployeeGradeHistory,
+    EducationStatus,
     Employment,
     Event,
     EventType,
@@ -22,6 +22,7 @@ from app.models import (
 )
 from app.services.employees import create_person_with_employment
 from app.services.events import create_manual_event
+from app.services.grades import assign_grade_to_employment
 from app.services.rule_engine import run_rule_engine
 from app.services.tenure import ensure_tenure_awards
 from app.utils.dates import today_moscow
@@ -123,7 +124,7 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
             "actual_grade": "Мидл",
             "grade_date": date(2024, 3, 15),
             "hire_date": date(2020, 1, 10),
-            "has_university": True,
+            "education_status": EducationStatus.YES.value,
             "contract_end": today + relativedelta(months=8),
             "passport_until": today + relativedelta(years=4),
         },
@@ -135,7 +136,7 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
             "actual_grade": "Сеньор",
             "grade_date": date(2022, 6, 1),
             "hire_date": date(2016, 5, 20),
-            "has_university": True,
+            "education_status": EducationStatus.YES.value,
             "contract_end": today + relativedelta(months=4),
             "passport_until": today + relativedelta(months=2),
         },
@@ -147,7 +148,7 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
             "actual_grade": "Джун",
             "grade_date": date(2025, 1, 20),
             "hire_date": date(2023, 9, 1),
-            "has_university": True,
+            "education_status": EducationStatus.YES.value,
             "contract_end": today + relativedelta(months=10),
             "passport_until": today + relativedelta(months=3),
         },
@@ -159,7 +160,7 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
             "actual_grade": "Тимлид",
             "grade_date": date(2020, 2, 1),
             "hire_date": date(2010, 4, 12),
-            "has_university": True,
+            "education_status": EducationStatus.YES.value,
             "contract_end": today + relativedelta(years=1),
             "passport_until": today + relativedelta(years=2),
         },
@@ -171,7 +172,7 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
             "actual_grade": "Стажер",
             "grade_date": date(2026, 2, 1),
             "hire_date": date(2026, 2, 1),
-            "has_university": False,
+            "education_status": EducationStatus.NO.value,
             "contract_end": today + relativedelta(months=6),
             "passport_until": today + relativedelta(years=5),
         },
@@ -185,7 +186,7 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
             hire_date=row["hire_date"],
             title=row["title"],
             position_grade_id=_grade_id(row["position_grade"]),
-            has_university=row["has_university"],
+            education_status=row["education_status"],
             person_uuid=row["uuid"],
         )
 
@@ -198,13 +199,12 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
             )
         )
 
-        db.session.add(
-            EmployeeGradeHistory(
-                employment_id=employment.id,
-                grade_id=_grade_id(row["actual_grade"]),
-                assigned_date=row["grade_date"],
-                basis="Демо-данные",
-            )
+        grade = db.session.get(GradeCatalog, _grade_id(row["actual_grade"]))
+        assign_grade_to_employment(
+            employment,
+            grade,
+            row["grade_date"],
+            basis="Демо-данные",
         )
 
         db.session.add(

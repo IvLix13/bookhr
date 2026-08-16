@@ -185,7 +185,7 @@ def _collect_grade_items(company_id: int, limit: int, today) -> list[dict]:
         if not grade:
             continue
         eligibility = compute_grade_eligibility(employment, today)
-        if not eligibility["next_grade"] or eligibility["eligible_date"] is None:
+        if not eligibility["next_grade_candidates"] or eligibility["eligible_date"] is None:
             continue
         days_left = eligibility["days_left"]
         if days_left is None or days_left > 30:

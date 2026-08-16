@@ -54,7 +54,6 @@ def apply_grade_catalog_payload(grade: GradeCatalog, payload: dict) -> None:
     next_rank = grade.rank
     if "rank" in payload:
         next_rank = validate_rank(payload["rank"])
-        validate_rank_continuity(rank=next_rank, exclude_id=grade.id)
         grade.rank = next_rank
 
     if "min_years" in payload:
@@ -63,13 +62,18 @@ def apply_grade_catalog_payload(grade: GradeCatalog, payload: dict) -> None:
     if "is_active" in payload:
         grade.is_active = bool(payload["is_active"])
 
+    if "extra_year_without_university" in payload:
+        grade.extra_year_without_university = bool(
+            payload["extra_year_without_university"]
+        )
+
 
 def commit_grade_catalog() -> None:
     try:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise ValueError("grade name or rank must be unique") from exc
+        raise ValueError("grade name must be unique") from exc
 
 
 def grade_usage_employment_ids(grade_id: int) -> set[int]:

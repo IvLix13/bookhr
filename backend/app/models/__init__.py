@@ -4,6 +4,7 @@ from app.models.audit import AuditLog
 from app.models.company import Company
 from app.models.contract import Contract
 from app.models.employee import (
+    EducationStatus,
     Employment,
     EmploymentStatus,
     Person,
@@ -25,6 +26,7 @@ __all__ = [
     "Contract",
     "DeliveryStatus",
     "EmployeeGradeHistory",
+    "EducationStatus",
     "Employment",
     "EmploymentStatus",
     "Event",

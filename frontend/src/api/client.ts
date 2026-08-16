@@ -139,11 +139,22 @@ export const api = {
   grades: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/grades${buildQuery(params)}`),
   gradeCatalog: () => request('/api/grade-catalog'),
-  createGradeCatalog: (body: { name: string; rank: number; min_years?: number }) =>
+  createGradeCatalog: (body: {
+    name: string
+    rank: number
+    min_years?: number
+    extra_year_without_university?: boolean
+  }) =>
     request('/api/grade-catalog', { method: 'POST', body: JSON.stringify(body) }),
   updateGradeCatalog: (
     id: number,
-    body: Partial<{ name: string; rank: number; min_years: number; is_active: boolean }>,
+    body: Partial<{
+      name: string
+      rank: number
+      min_years: number
+      extra_year_without_university: boolean
+      is_active: boolean
+    }>,
   ) =>
     request(`/api/grade-catalog/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   deleteGradeCatalog: (id: number) =>
@@ -173,7 +184,11 @@ export const api = {
   completeEvent: (
     id: number,
     comment?: string,
-    options?: { extension_term_years?: number | null; new_end_date?: string | null },
+    options?: {
+      extension_term_years?: number | null
+      new_end_date?: string | null
+      target_grade_id?: number | null
+    },
   ) =>
     request(`/api/events/${id}/complete`, {
       method: 'POST',
@@ -183,6 +198,9 @@ export const api = {
           ? { extension_term_years: options.extension_term_years }
           : {}),
         ...(options?.new_end_date !== undefined ? { new_end_date: options.new_end_date } : {}),
+        ...(options?.target_grade_id !== undefined
+          ? { target_grade_id: options.target_grade_id }
+          : {}),
       }),
     }),
   cancelEvent: (id: number, comment?: string) =>
