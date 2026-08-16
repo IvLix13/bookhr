@@ -120,6 +120,7 @@ def test_assign_grade_creates_history_and_closes_previous(hr_client, seed_compan
             full_name="Грейд Тест",
             hire_date=date(2020, 1, 1),
             title="Инженер",
+            education_status="yes",
         )
         db.session.add(
             EmployeeGradeHistory(
@@ -197,6 +198,7 @@ def _employment_with_grades(
         hire_date=date(2020, 1, 1),
         title="Инженер",
         position_grade_id=position.id if position else None,
+        education_status="yes",
     )
     db.session.add(
         EmployeeGradeHistory(
@@ -384,6 +386,44 @@ def test_eligibility_returns_all_candidates_on_nearest_higher_rank(app, seed_com
         ]
         assert eligibility["next_grade"] is None
         assert eligibility["requires_grade_choice"] is True
+
+
+def test_eligibility_uses_rank_snapshot_after_catalog_edit(app, seed_company):
+    with app.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=1, is_active=True)
+        middle = GradeCatalog(name="Middle", rank=2, min_years=1, is_active=True)
+        senior = GradeCatalog(name="Senior", rank=3, min_years=1, is_active=True)
+        db.session.add_all([junior, middle, senior])
+        db.session.flush()
+        employment = _employment_with_grades(
+            seed_company,
+            actual=junior,
+            position=senior,
+            assigned_date=date(2024, 1, 1),
+        )
+
+        junior.rank = 4
+        db.session.commit()
+
+        eligibility = compute_grade_eligibility(employment)
+        assert eligibility["next_rank"] == 2
+        assert [grade.name for grade in eligibility["next_grade_candidates"]] == [
+            "Middle"
+        ]
+
+
+def test_catalog_rejects_non_boolean_university_policy(admin_client):
+    created = admin_client.post(
+        "/api/grade-catalog",
+        json={
+            "name": "Middle",
+            "rank": 2,
+            "min_years": 1,
+            "extra_year_without_university": "false",
+        },
+    )
+    assert created.status_code == 400
+    assert "must be boolean" in created.get_json()["message"]
 
 
 def test_delete_unused_grade_catalog(admin_client, app):

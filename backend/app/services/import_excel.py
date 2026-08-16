@@ -34,6 +34,7 @@ from app.services.employees import (
     sync_passport,
     update_position,
 )
+from app.services.grades import resolve_unknown_education_snapshot
 from app.services.rule_engine import run_rule_engine
 from app.services.tenure import auto_mark_reached_awards, ensure_tenure_awards
 from app.utils.dates import (
@@ -511,6 +512,7 @@ def confirm_import(
             education_status = _parse_education_status(data.get("education_status"))
             if education_status is not None:
                 person.education_status = education_status
+                resolve_unknown_education_snapshot(employment, education_status)
 
             if not created:
                 if hire_date != employment.hire_date:

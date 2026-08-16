@@ -134,6 +134,33 @@ describe('EventsView event modal', () => {
     expect(replace).not.toHaveBeenCalled()
   })
 
+  it('opens details instead of quick-completing a blocked grade event', async () => {
+    events.mockResolvedValueOnce({
+      items: [
+        {
+          ...sampleEvent,
+          event_type: 'grade',
+          grade_completion: {
+            next_rank: 2,
+            candidates: [],
+            requires_selection: false,
+            eligible_date: null,
+            blocked_reason: 'Укажите наличие высшего образования у сотрудника',
+          },
+        },
+      ],
+      total: 1,
+      page: 1,
+      per_page: 25,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+    await wrapper.get('.data-table-row .btn.secondary').trigger('click')
+
+    expect(completeEvent).not.toHaveBeenCalled()
+    expect(replace).toHaveBeenCalledWith({ query: { event: '42' } })
+  })
+
   it('shows create button for editors and opens create query', async () => {
     const wrapper = await mountView('hr')
     const button = wrapper.get('header .btn')

@@ -42,6 +42,8 @@ def _promote_after_grade_review(
         return None
 
     eligibility = compute_grade_eligibility(employment)
+    if eligibility["blocked_reason"]:
+        raise ValueError(eligibility["blocked_reason"])
     candidates = eligibility["next_grade_candidates"]
     eligible_date = eligibility["eligible_date"]
     if not candidates or not eligible_date:

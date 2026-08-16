@@ -35,12 +35,7 @@ def _current_position(employment: Employment) -> PositionHistory | None:
     )
 
 
-def _new_rank_snapshot(
-    employment: Employment,
-    grade: GradeCatalog,
-    assigned_date: date,
-) -> dict:
-    education_status = employment.person.education_status
+def _required_months(grade: GradeCatalog, education_status: str) -> int:
     if education_status not in {EducationStatus.YES.value, EducationStatus.NO.value}:
         raise ValueError("Укажите наличие высшего образования у сотрудника")
 
@@ -50,13 +45,38 @@ def _new_rank_snapshot(
         and grade.extra_year_without_university
     ):
         required_months += 12
+    return required_months
+
+
+def _new_rank_snapshot(
+    employment: Employment,
+    grade: GradeCatalog,
+    assigned_date: date,
+) -> dict:
+    education_status = employment.person.education_status
 
     return {
         "rank_at_assignment": grade.rank,
         "rank_started_at": assigned_date,
-        "required_months": required_months,
+        "required_months": _required_months(grade, education_status),
         "education_status_at_rank_entry": education_status,
     }
+
+
+def resolve_unknown_education_snapshot(
+    employment: Employment,
+    education_status: str,
+) -> bool:
+    """Resolve a defensive unknown snapshot without changing established policy."""
+    current = _current_grade(employment)
+    if (
+        not current
+        or current.education_status_at_rank_entry != EducationStatus.UNKNOWN.value
+    ):
+        return False
+    current.required_months = _required_months(current.grade, education_status)
+    current.education_status_at_rank_entry = education_status
+    return True
 
 
 def compute_grade_eligibility(
@@ -82,12 +102,14 @@ def compute_grade_eligibility(
     days_left = None
     blocked_reason = None
 
-    if grade and position_grade and grade.grade.rank < position_grade.rank:
+    current_rank = grade.rank_at_assignment if grade else None
+    if grade and position_grade and current_rank < position_grade.rank:
         next_rank = (
             db.session.query(func.min(GradeCatalog.rank))
             .filter(
-                GradeCatalog.rank > grade.grade.rank,
+                GradeCatalog.rank > current_rank,
                 GradeCatalog.rank <= position_grade.rank,
+                GradeCatalog.id != grade.grade_id,
                 GradeCatalog.is_active.is_(True),
             )
             .scalar()
@@ -96,6 +118,7 @@ def compute_grade_eligibility(
             next_grade_candidates = (
                 GradeCatalog.query.filter(
                     GradeCatalog.rank == next_rank,
+                    GradeCatalog.id != grade.grade_id,
                     GradeCatalog.is_active.is_(True),
                 )
                 .order_by(GradeCatalog.name.asc(), GradeCatalog.id.asc())

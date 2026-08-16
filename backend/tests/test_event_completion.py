@@ -32,6 +32,7 @@ def test_completing_grade_event_promotes_employee(hr_client, seed_company, app):
             hire_date=date(2018, 1, 1),
             title="Инженер",
             position_grade_id=middle.id,
+            education_status="yes",
         )
         db.session.add(
             EmployeeGradeHistory(
@@ -72,6 +73,7 @@ def test_completing_grade_event_without_next_grade_keeps_grade(hr_client, seed_c
             hire_date=date(2018, 1, 1),
             title="Инженер",
             position_grade_id=middle.id,
+            education_status="yes",
         )
         db.session.add(
             EmployeeGradeHistory(
@@ -114,6 +116,7 @@ def test_completing_grade_event_starts_no_earlier_than_eligible_date(
             hire_date=date(2018, 1, 1),
             title="Инженер",
             position_grade_id=middle.id,
+            education_status="yes",
         )
         # min_years=1 for Junior, so eligibility starts far in the future.
         db.session.add(
@@ -156,6 +159,7 @@ def test_reopened_grade_event_does_not_promote_twice(hr_client, seed_company, ap
             hire_date=date(2010, 1, 1),
             title="Инженер",
             position_grade_id=senior.id,
+            education_status="yes",
         )
         db.session.add(
             EmployeeGradeHistory(
@@ -201,6 +205,7 @@ def test_multiple_next_grades_require_hr_selection(hr_client, seed_company, app)
             hire_date=date(2018, 1, 1),
             title="Инженер",
             position_grade_id=middle_a.id,
+            education_status="yes",
         )
         db.session.add(
             EmployeeGradeHistory(
@@ -238,6 +243,45 @@ def test_multiple_next_grades_require_hr_selection(hr_client, seed_company, app)
         assert get_current_grade(employment).grade_id == middle_b_id
 
 
+def test_unknown_education_blocks_grade_event_completion(
+    hr_client,
+    seed_company,
+    app,
+):
+    with app.app_context():
+        junior, middle = _grade_pair()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Неизвестное Образование",
+            hire_date=date(2018, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+        )
+        db.session.add(
+            EmployeeGradeHistory(
+                employment_id=employment.id,
+                grade_id=junior.id,
+                assigned_date=date(2020, 1, 1),
+            )
+        )
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Рассмотреть повышение грейда",
+            event_type=EventType.GRADE,
+            event_date=date(2021, 1, 1),
+            employment_id=employment.id,
+        )
+        db.session.commit()
+        event_id = event.id
+
+    response = hr_client.post(f"/api/events/{event_id}/complete", json={})
+    assert response.status_code == 400
+    assert "образования" in response.get_json()["message"]
+
+    with app.app_context():
+        assert db.session.get(Event, event_id).status == EventStatus.PLANNED.value
+
+
 def test_completing_report_event_keeps_contract_report_date(hr_client, seed_company, app):
     with app.app_context():
         _, employment = create_person_with_employment(
@@ -245,6 +289,7 @@ def test_completing_report_event_keeps_contract_report_date(hr_client, seed_comp
             full_name="Договор Рапорт",
             hire_date=date(2020, 1, 1),
             title="Инженер",
+            education_status="yes",
         )
         contract = Contract(
             employment_id=employment.id,
@@ -290,6 +335,7 @@ def test_completing_report_event_with_extension_term_extends_contract_and_genera
             full_name="Продление Договора",
             hire_date=date(2024, 9, 1),
             title="Инженер",
+            education_status="yes",
         )
         contract = Contract(
             employment_id=employment.id,
@@ -346,6 +392,7 @@ def test_completed_grade_event_clears_grade_attention_item(hr_client, seed_compa
             hire_date=date(2018, 1, 1),
             title="Инженер",
             position_grade_id=middle.id,
+            education_status="yes",
         )
         db.session.add(
             EmployeeGradeHistory(
@@ -385,6 +432,7 @@ def test_attention_contract_item_carries_related_event(hr_client, seed_company, 
             full_name="Договор Внимание",
             hire_date=date(2020, 1, 1),
             title="Инженер",
+            education_status="yes",
         )
         contract = Contract(
             employment_id=employment.id,

@@ -75,7 +75,7 @@ def create_person_with_employment(
     hire_date: date,
     title: str,
     position_grade_id: int | None = None,
-    education_status: str = EducationStatus.NO.value,
+    education_status: str = EducationStatus.UNKNOWN.value,
     person_uuid: uuid.UUID | None = None,
 ) -> tuple[Person, Employment]:
     person = Person(

@@ -2,6 +2,7 @@ from datetime import date
 
 from app.extensions import db
 from app.models import (
+    EmployeeGradeHistory,
     Event,
     EventStatus,
     EventType,
@@ -78,6 +79,56 @@ def test_create_employee_requires_explicit_education_status(hr_client, seed_comp
     )
     assert missing.status_code == 400
     assert unknown.status_code == 400
+
+
+def test_resolving_unknown_education_initializes_current_rank_policy(
+    hr_client,
+    seed_company,
+):
+    with hr_client.application.app_context():
+        junior = GradeCatalog(
+            name="Джун",
+            rank=1,
+            min_years=1,
+            extra_year_without_university=True,
+        )
+        middle = GradeCatalog(name="Мидл", rank=2, min_years=1)
+        db.session.add_all([junior, middle])
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Уточняемый Сотрудник",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+        )
+        history = EmployeeGradeHistory(
+            employment_id=employment.id,
+            grade_id=junior.id,
+            assigned_date=date(2024, 1, 1),
+        )
+        db.session.add(history)
+        db.session.commit()
+        employment_id = employment.id
+
+    response = hr_client.patch(
+        f"/api/employees/{employment_id}",
+        json={"education_status": "yes"},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["data"]["eligible_date"] == "2025-01-01"
+
+    with hr_client.application.app_context():
+        history = EmployeeGradeHistory.query.filter_by(
+            employment_id=employment_id,
+            valid_to=None,
+        ).one()
+        assert history.education_status_at_rank_entry == "yes"
+        assert history.required_months == 12
+        assert Event.query.filter_by(
+            employment_id=employment_id,
+            event_type=EventType.GRADE.value,
+        ).count() == 1
 
 
 def test_update_contract_end_recalculates_events(hr_client, seed_company):

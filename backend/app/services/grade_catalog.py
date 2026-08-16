@@ -31,6 +31,12 @@ def validate_rank(rank: int) -> int:
     return rank
 
 
+def validate_extra_year_without_university(value) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError("extra_year_without_university must be boolean")
+    return value
+
+
 def apply_grade_catalog_payload(grade: GradeCatalog, payload: dict) -> None:
     if "name" in payload:
         name = str(payload["name"]).strip()
@@ -50,7 +56,7 @@ def apply_grade_catalog_payload(grade: GradeCatalog, payload: dict) -> None:
         grade.is_active = bool(payload["is_active"])
 
     if "extra_year_without_university" in payload:
-        grade.extra_year_without_university = bool(
+        grade.extra_year_without_university = validate_extra_year_without_university(
             payload["extra_year_without_university"]
         )
 

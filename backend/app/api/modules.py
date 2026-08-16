@@ -45,6 +45,7 @@ from app.services.grade_catalog import (
     apply_grade_catalog_payload,
     commit_grade_catalog,
     delete_grade_catalog,
+    validate_extra_year_without_university,
     validate_min_years,
     validate_rank,
 )
@@ -216,7 +217,7 @@ def register_routes(bp):
                 name=name,
                 rank=rank,
                 min_years=min_years,
-                extra_year_without_university=bool(
+                extra_year_without_university=validate_extra_year_without_university(
                     payload.get("extra_year_without_university", False)
                 ),
             )
