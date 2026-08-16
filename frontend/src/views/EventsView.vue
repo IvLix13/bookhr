@@ -163,6 +163,17 @@ async function complete(id: number) {
   }
 }
 
+function completeOrChoose(row: EventItem) {
+  if (
+    row.grade_completion?.requires_selection ||
+    row.grade_completion?.blocked_reason
+  ) {
+    openEvent(row.id)
+    return
+  }
+  void complete(row.id)
+}
+
 async function onEventChanged() {
   await table.reload()
 }
@@ -224,7 +235,7 @@ async function onCreated() {
             class="btn secondary"
             type="button"
             :disabled="completingId === row.id"
-            @click.stop="complete(row.id)"
+            @click.stop="completeOrChoose(row)"
           >
             {{ completingId === row.id ? 'Сохранение...' : 'Выполнить' }}
           </button>

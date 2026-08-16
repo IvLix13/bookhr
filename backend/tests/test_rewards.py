@@ -13,6 +13,7 @@ def _create_employment(company_id: int, position_grade_id: int | None = None):
         hire_date=date(2020, 1, 1),
         title="Инженер",
         position_grade_id=position_grade_id,
+        education_status="yes",
     )
     db.session.commit()
     return employment

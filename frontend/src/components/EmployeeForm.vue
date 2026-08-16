@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import GradeCreateModal from '@/components/GradeCreateModal.vue'
 import { api } from '@/api/client'
-import type { Employee, Grade } from '@/types'
+import type { EducationStatus, Employee, Grade } from '@/types'
 import { useAuthStore } from '@/stores/auth'
 import { addYearsToIsoDate, calculateTermYears } from '@/utils/dates'
 
@@ -18,11 +18,22 @@ const emit = defineEmits<{
 }>()
 
 const auth = useAuthStore()
-const form = ref({
+const form = ref<{
+  full_name: string
+  title: string
+  hire_date: string
+  education_status: EducationStatus | ''
+  position_grade_id: string
+  actual_grade_id: string
+  grade_date: string
+  contract_term_years: string
+  contract_end: string
+  passport_until: string
+}>({
   full_name: '',
   title: '',
   hire_date: '',
-  has_university: false,
+  education_status: '',
   position_grade_id: '',
   actual_grade_id: '',
   grade_date: '',
@@ -41,7 +52,7 @@ function resetForm() {
     full_name: '',
     title: '',
     hire_date: '',
-    has_university: false,
+    education_status: '',
     position_grade_id: '',
     actual_grade_id: '',
     grade_date: '',
@@ -62,7 +73,8 @@ watch(
       full_name: value.full_name ?? '',
       title: value.title ?? '',
       hire_date: value.hire_date ?? '',
-      has_university: value.has_university,
+      education_status:
+        value.education_status === 'unknown' ? '' : value.education_status,
       position_grade_id: value.position_grade ? String(value.position_grade.id) : '',
       actual_grade_id: value.actual_grade ? String(value.actual_grade.id) : '',
       grade_date: value.grade_date ?? '',
@@ -144,6 +156,9 @@ async function submit() {
     if (form.value.actual_grade_id && !form.value.grade_date) {
       throw new Error('Укажите дату текущего грейда')
     }
+    if (!form.value.education_status) {
+      throw new Error('Укажите наличие высшего образования')
+    }
     if (
       form.value.hire_date &&
       form.value.contract_end &&
@@ -156,7 +171,7 @@ async function submit() {
       full_name: form.value.full_name.trim(),
       title: form.value.title.trim() || 'Не указана',
       hire_date: form.value.hire_date,
-      has_university: form.value.has_university,
+      education_status: form.value.education_status,
       position_grade_id: form.value.position_grade_id
         ? Number(form.value.position_grade_id)
         : null,
@@ -202,9 +217,13 @@ async function submit() {
         Начало работы
         <input v-model="form.hire_date" type="date" required @change="onHireDateChange" />
       </label>
-      <label class="checkbox">
-        <input v-model="form.has_university" type="checkbox" />
-        Есть ВУЗ
+      <label>
+        Высшее образование
+        <select v-model="form.education_status" required>
+          <option value="" disabled>Выберите значение</option>
+          <option value="yes">Есть</option>
+          <option value="no">Нет</option>
+        </select>
       </label>
       <div class="field-with-action">
         <label>

@@ -28,6 +28,7 @@ const error = ref('')
 const actionBusy = ref(false)
 const comment = ref('')
 const extensionTermYears = ref('1')
+const targetGradeId = ref('')
 
 const isContractReport = computed(() => {
   if (!event.value) return false
@@ -37,6 +38,11 @@ const isContractReport = computed(() => {
       event.value.title.toLowerCase().includes('договор'))
   )
 })
+
+const gradeCompletion = computed(() => event.value?.grade_completion ?? null)
+const requiresGradeChoice = computed(
+  () => gradeCompletion.value?.requires_selection === true,
+)
 
 const { activate, deactivate } = useFocusTrap(modalRef, () => props.open)
 
@@ -69,6 +75,8 @@ async function loadEvent() {
   error.value = ''
   try {
     event.value = (await api.getEvent(props.eventId)) as EventItem
+    const candidates = event.value.grade_completion?.candidates ?? []
+    targetGradeId.value = candidates.length === 1 ? String(candidates[0].id) : ''
   } catch (err) {
     error.value = normalizeError(err)
     event.value = null
@@ -83,12 +91,14 @@ watch(
     if (open) {
       comment.value = ''
       extensionTermYears.value = '1'
+      targetGradeId.value = ''
       void loadEvent()
     } else {
       event.value = null
       error.value = ''
       comment.value = ''
       extensionTermYears.value = '1'
+      targetGradeId.value = ''
     }
   },
   { immediate: true },
@@ -142,13 +152,23 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
     const note = comment.value.trim() || undefined
     switch (action) {
       case 'complete': {
+        if (requiresGradeChoice.value && !targetGradeId.value) {
+          throw new Error('Выберите следующий грейд')
+        }
         const termYears =
           isContractReport.value && extensionTermYears.value
             ? Number(extensionTermYears.value)
             : undefined
-        const options = termYears !== undefined ? { extension_term_years: termYears } : undefined
+        const options = {
+          ...(termYears !== undefined ? { extension_term_years: termYears } : {}),
+          ...(targetGradeId.value
+            ? { target_grade_id: Number(targetGradeId.value) }
+            : {}),
+        }
         event.value = (
-          options ? await api.completeEvent(id, note, options) : await api.completeEvent(id, note)
+          Object.keys(options).length
+            ? await api.completeEvent(id, note, options)
+            : await api.completeEvent(id, note)
         ) as EventItem
         break
       }
@@ -258,6 +278,27 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
                     <option value="5">5 лет</option>
                   </select>
                 </div>
+                <div v-if="gradeCompletion?.candidates.length" class="extension-row">
+                  <label for="target-grade-select">Следующий грейд:</label>
+                  <select
+                    id="target-grade-select"
+                    v-model="targetGradeId"
+                    :disabled="actionBusy || gradeCompletion.candidates.length === 1"
+                    :required="requiresGradeChoice"
+                  >
+                    <option v-if="requiresGradeChoice" value="" disabled>Выберите грейд</option>
+                    <option
+                      v-for="candidate in gradeCompletion.candidates"
+                      :key="candidate.id"
+                      :value="String(candidate.id)"
+                    >
+                      {{ candidate.name }} (ранг {{ candidate.rank }})
+                    </option>
+                  </select>
+                </div>
+                <p v-if="gradeCompletion?.blocked_reason" class="state error inline">
+                  {{ gradeCompletion.blocked_reason }}
+                </p>
                 <input
                   v-model="comment"
                   type="text"
@@ -269,7 +310,11 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
                   <button
                     class="btn"
                     type="button"
-                    :disabled="actionBusy"
+                    :disabled="
+                      actionBusy ||
+                      Boolean(gradeCompletion?.blocked_reason) ||
+                      (requiresGradeChoice && !targetGradeId)
+                    "
                     @click="runAction('complete')"
                   >
                     {{ actionBusy ? '...' : 'Выполнить' }}

@@ -7,6 +7,7 @@ from app.models import (
     EmployeeGradeHistory,
     Employment,
     Event,
+    EventType,
     GradeCatalog,
     ImportJob,
     NotificationRule,
@@ -25,6 +26,7 @@ from app.services.employees import (
     get_current_position,
 )
 from app.services.events import effective_event_status
+from app.services.grade_catalog import grade_usage_employment_ids
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status, passport_days_left
 from app.services.rule_engine import find_contract_renewal_event
@@ -72,11 +74,10 @@ def grade_to_dict(grade: GradeCatalog, *, include_usage: bool = False) -> dict:
         "name": grade.name,
         "rank": grade.rank,
         "min_years": float(grade.min_years),
+        "extra_year_without_university": grade.extra_year_without_university,
         "is_active": grade.is_active,
     }
     if include_usage:
-        from app.services.grade_catalog import grade_usage_employment_ids
-
         payload["in_use_count"] = len(grade_usage_employment_ids(grade.id))
     return payload
 
@@ -104,7 +105,7 @@ def employment_to_dict(employment: Employment) -> dict:
         "eligible_date": eligibility["eligible_date"].isoformat()
         if eligibility["eligible_date"]
         else None,
-        "has_university": person.has_university,
+        "education_status": person.education_status,
         "hire_date": employment.hire_date.isoformat(),
         "status": employment.status,
         "contract_end": contract.end_date.isoformat() if contract else None,
@@ -166,6 +167,13 @@ def grade_row_to_dict(employment: Employment) -> dict:
         "next_grade": grade_to_dict(eligibility["next_grade"])
         if eligibility["next_grade"]
         else None,
+        "next_rank": eligibility["next_rank"],
+        "next_grade_candidates": [
+            grade_to_dict(candidate)
+            for candidate in eligibility["next_grade_candidates"]
+        ],
+        "requires_grade_choice": eligibility["requires_grade_choice"],
+        "blocked_reason": eligibility["blocked_reason"],
         "eligible_date": eligibility["eligible_date"].isoformat()
         if eligibility["eligible_date"]
         else None,
@@ -222,6 +230,22 @@ def reward_to_dict(reward: Reward) -> dict:
 
 
 def event_to_dict(event: Event) -> dict:
+    grade_completion = None
+    if event.event_type == EventType.GRADE.value and event.employment:
+        eligibility = compute_grade_eligibility(event.employment)
+        grade_completion = {
+            "next_rank": eligibility["next_rank"],
+            "candidates": [
+                grade_to_dict(candidate)
+                for candidate in eligibility["next_grade_candidates"]
+            ],
+            "requires_selection": eligibility["requires_grade_choice"],
+            "eligible_date": eligibility["eligible_date"].isoformat()
+            if eligibility["eligible_date"]
+            else None,
+            "blocked_reason": eligibility["blocked_reason"],
+        }
+
     return {
         "id": event.id,
         "title": event.title,
@@ -241,6 +265,7 @@ def event_to_dict(event: Event) -> dict:
         "created_at": event.created_at.isoformat() if event.created_at else None,
         "completed_at": event.completed_at.isoformat() if event.completed_at else None,
         "completion_comment": event.completion_comment,
+        "grade_completion": grade_completion,
     }
 
 

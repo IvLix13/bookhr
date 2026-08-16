@@ -13,7 +13,7 @@ from openpyxl import Workbook, load_workbook
 from app.extensions import db
 from app.models import (
     Contract,
-    EmployeeGradeHistory,
+    EducationStatus,
     Employment,
     GradeCatalog,
     ImportJob,
@@ -34,6 +34,7 @@ from app.services.employees import (
     sync_passport,
     update_position,
 )
+from app.services.grades import resolve_unknown_education_snapshot
 from app.services.rule_engine import run_rule_engine
 from app.services.tenure import auto_mark_reached_awards, ensure_tenure_awards
 from app.utils.dates import (
@@ -55,8 +56,9 @@ COLUMN_MAP = {
     "фактический грейдов": "actual_grade",
     "фактический грейд": "actual_grade",
     "actual_grade": "actual_grade",
-    "вуз": "has_university",
-    "has_university": "has_university",
+    "вуз": "education_status",
+    "has_university": "education_status",
+    "education_status": "education_status",
     "срок договора": "contract_term_years",
     "срок договора (лет)": "contract_term_years",
     "срок договора, лет": "contract_term_years",
@@ -103,6 +105,15 @@ def _parse_bool_optional(value: Any) -> bool | None:
         return True
     if text in {"нет", "no", "0", "false", "-"}:
         return False
+    return None
+
+
+def _parse_education_status(value: Any) -> str | None:
+    parsed = _parse_bool_optional(value)
+    if parsed is True:
+        return EducationStatus.YES.value
+    if parsed is False:
+        return EducationStatus.NO.value
     return None
 
 
@@ -170,12 +181,14 @@ def _serialize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
             parsed = _parse_date(value)
             serialized[key] = parsed.isoformat() if parsed else None
             continue
-        if key == "has_university":
-            optional = _parse_bool_optional(value)
-            if optional is None:
+        if key == "education_status":
+            status = _parse_education_status(value)
+            if status is None:
                 serialized[key] = None
             else:
-                serialized[key] = "Да" if optional else "Нет"
+                serialized[key] = (
+                    "Да" if status == EducationStatus.YES.value else "Нет"
+                )
             continue
         serialized[key] = None if value is None else str(value)
     return serialized
@@ -229,6 +242,14 @@ def validate_row(data: dict[str, Any]) -> tuple[list[str], list[str]]:
     if not _parse_date(data.get("hire_date")):
         errors.append("Не указана или некорректна дата начала работы")
 
+    education_raw = data.get("education_status")
+    if (
+        education_raw is not None
+        and str(education_raw).strip()
+        and _parse_education_status(education_raw) is None
+    ):
+        errors.append("Поле ВУЗ должно содержать «Да» или «Нет»")
+
     return errors, warnings
 
 
@@ -267,7 +288,12 @@ def dry_run_import(job: ImportJob, rows: list[dict[str, Any]]) -> None:
                 warnings.append("Найдено несколько кандидатов — выберите действие")
             else:
                 action = "create"
-                summary["create"] += 1
+                if _parse_education_status(data.get("education_status")) is None:
+                    errors.append("Для нового сотрудника укажите ВУЗ: «Да» или «Нет»")
+                    action = "error"
+                    summary["error"] += 1
+                else:
+                    summary["create"] += 1
 
         db.session.add(
             ImportRow(
@@ -359,23 +385,6 @@ def _upsert_contract(employment: Employment, hire_date: date, contract_end: date
         )
 
 
-def _upsert_grade(employment: Employment, grade_id: int, grade_date: date) -> None:
-    existing = EmployeeGradeHistory.query.filter_by(
-        employment_id=employment.id,
-        grade_id=grade_id,
-        assigned_date=grade_date,
-    ).first()
-    if existing:
-        return
-    db.session.add(
-        EmployeeGradeHistory(
-            employment_id=employment.id,
-            grade_id=grade_id,
-            assigned_date=grade_date,
-        )
-    )
-
-
 def _upsert_passport(person: Person, passport_until: date) -> None:
     existing = Passport.query.filter_by(
         person_id=person.id,
@@ -464,14 +473,22 @@ def confirm_import(
                     .first()
                 )
             elif action == "create":
-                has_university = _parse_bool_optional(data.get("has_university"))
+                education_status = _parse_education_status(data.get("education_status"))
+                if education_status is None:
+                    bump_skip("missing_education_status")
+                    _mark_row_result(
+                        row,
+                        "skipped",
+                        "Для нового сотрудника укажите ВУЗ: «Да» или «Нет»",
+                    )
+                    continue
                 person, employment = create_person_with_employment(
                     company_id=job.company_id,
                     full_name=str(data.get("full_name", "")),
                     hire_date=hire_date,
                     title=str(data.get("title") or "Не указана"),
                     position_grade_id=_resolve_grade_id(data.get("position_grade")),
-                    has_university=bool(has_university) if has_university is not None else False,
+                    education_status=education_status,
                 )
                 row.person_uuid = person.uuid
                 created = True
@@ -492,9 +509,10 @@ def confirm_import(
                 _mark_row_result(row, "skipped", "Не найдено трудоустройство")
                 continue
 
-            university = _parse_bool_optional(data.get("has_university"))
-            if university is not None:
-                person.has_university = university
+            education_status = _parse_education_status(data.get("education_status"))
+            if education_status is not None:
+                person.education_status = education_status
+                resolve_unknown_education_snapshot(employment, education_status)
 
             if not created:
                 if hire_date != employment.hire_date:
@@ -600,7 +618,13 @@ def export_template(company_id: int, path: Path) -> None:
                 position.title if position else "",
                 position.position_grade.name if position and position.position_grade else "",
                 grade.grade.name if grade else "",
-                "Да" if person.has_university else "Нет",
+                (
+                    "Да"
+                    if person.education_status == EducationStatus.YES.value
+                    else "Нет"
+                    if person.education_status == EducationStatus.NO.value
+                    else "Неизвестно"
+                ),
                 contract.term_years if contract and contract.term_years is not None else "",
                 format_display_date_ru(contract.end_date) if contract else "",
                 format_display_date_ru(grade.assigned_date) if grade else "",

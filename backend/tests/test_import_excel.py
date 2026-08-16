@@ -6,6 +6,7 @@ from openpyxl import Workbook
 from app.extensions import db
 from app.models import (
     Company,
+    EducationStatus,
     EmployeeGradeHistory,
     Event,
     EventSource,
@@ -252,7 +253,7 @@ def test_empty_university_does_not_overwrite(app, tmp_path):
             full_name="Тестов Тест Тестович",
             hire_date=date(2021, 1, 10),
             title="Инженер",
-            has_university=True,
+            education_status=EducationStatus.YES.value,
         )
         db.session.commit()
 
@@ -271,15 +272,35 @@ def test_empty_university_does_not_overwrite(app, tmp_path):
         confirm_import(job)
 
         db.session.refresh(person)
-        assert person.has_university is True
+        assert person.education_status == EducationStatus.YES.value
 
 
 def _write_minimal_workbook(path: Path, full_name: str, hire_date: str) -> None:
     wb = Workbook()
     ws = wb.active
-    ws.append(["ФИО", "Начало работы"])
-    ws.append([full_name, hire_date])
+    ws.append(["ФИО", "Начало работы", "ВУЗ"])
+    ws.append([full_name, hire_date, "Нет"])
     wb.save(path)
+
+
+def test_new_employee_import_requires_university_value(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "missing-university.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.append(["ФИО", "Начало работы", "ВУЗ"])
+        ws.append(["Нет Данных", "01.01.2024", ""])
+        wb.save(path)
+
+        job = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
+        db.session.add(job)
+        db.session.flush()
+        dry_run_import(job, parse_workbook(path))
+        db.session.commit()
+
+        assert job.summary["error"] == 1
+        assert "укажите ВУЗ" in job.rows[0].errors[0]
 
 
 def _tenure_map(employment_id: int) -> dict[int, TenureAward]:

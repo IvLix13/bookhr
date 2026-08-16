@@ -112,6 +112,7 @@ def test_attention_grade_items_link_to_related_event(admin_client, seed_company,
         hire_date=date(2020, 1, 1),
         title="Инженер",
         position_grade_id=middle.id,
+        education_status="yes",
     )
     db.session.add(
         EmployeeGradeHistory(

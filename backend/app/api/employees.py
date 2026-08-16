@@ -44,6 +44,7 @@ from app.services.employees import (
     update_position,
 )
 from app.services.events import refresh_overdue_events
+from app.services.grades import resolve_unknown_education_snapshot
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards
 from app.tenant import get_request_company_id
@@ -109,7 +110,7 @@ def register_routes(bp):
             hire_date=hire_date,
             title=(payload.get("title") or "Не указана").strip() or "Не указана",
             position_grade_id=payload.get("position_grade_id"),
-            has_university=bool(payload.get("has_university", False)),
+            education_status=payload["education_status"],
         )
         ensure_tenure_awards(employment.id, hire_date)
 
@@ -165,8 +166,11 @@ def register_routes(bp):
                 effective_date,
             )
 
-        if _payload_has(payload, "has_university"):
-            employment.person.has_university = bool(payload.get("has_university"))
+        if _payload_has(payload, "education_status"):
+            education_status = payload["education_status"]
+            employment.person.education_status = education_status
+            if resolve_unknown_education_snapshot(employment, education_status):
+                needs_recalc = True
 
         if _payload_has(payload, "hire_date"):
             hire_date = payload.get("hire_date")

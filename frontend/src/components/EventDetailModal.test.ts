@@ -160,4 +160,39 @@ describe('EventDetailModal', () => {
     expect(completeEvent).toHaveBeenCalledWith(7, undefined, { extension_term_years: 3 })
     expect(wrapper.emitted('changed')).toBeTruthy()
   })
+
+  it('requires a grade choice when several candidates share the next rank', async () => {
+    const gradeEvent: EventItem = {
+      ...plannedEvent,
+      event_type: 'grade',
+      grade_completion: {
+        next_rank: 2,
+        candidates: [
+          { id: 2, name: 'Middle A', rank: 2, min_years: 1 },
+          { id: 3, name: 'Middle B', rank: 2, min_years: 1 },
+        ],
+        requires_selection: true,
+        eligible_date: '2025-01-01',
+        blocked_reason: null,
+      },
+    }
+    getEvent.mockResolvedValueOnce(gradeEvent)
+    await mountModal('hr')
+
+    const select = document.body.querySelector('#target-grade-select') as HTMLSelectElement
+    const completeBtn = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Выполнить'),
+    )!
+    expect(select).toBeTruthy()
+    expect(completeBtn.disabled).toBe(true)
+
+    select.value = '3'
+    select.dispatchEvent(new Event('change'))
+    await flushPromises()
+    expect(completeBtn.disabled).toBe(false)
+
+    await completeBtn.click()
+    await flushPromises()
+    expect(completeEvent).toHaveBeenCalledWith(7, undefined, { target_grade_id: 3 })
+  })
 })

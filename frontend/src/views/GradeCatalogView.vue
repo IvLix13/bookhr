@@ -27,6 +27,11 @@ const columns: ColumnDef<Grade>[] = [
     format: (value) => String(value),
   },
   {
+    key: 'extra_year_without_university',
+    label: 'Без ВУЗа',
+    getValue: (row) => (row.extra_year_without_university ? '+1 год' : 'Без надбавки'),
+  },
+  {
     key: 'is_active',
     label: 'Статус',
     sortable: false,

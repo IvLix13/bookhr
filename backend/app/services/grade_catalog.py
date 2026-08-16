@@ -31,17 +31,10 @@ def validate_rank(rank: int) -> int:
     return rank
 
 
-def validate_rank_continuity(*, rank: int, exclude_id: int | None = None) -> None:
-    """Ensure ranks 1..rank-1 exist so promotion chains stay intact."""
-    if rank <= 1:
-        return
-    query = GradeCatalog.query.filter(GradeCatalog.rank < rank)
-    if exclude_id is not None:
-        query = query.filter(GradeCatalog.id != exclude_id)
-    existing = {item.rank for item in query.all()}
-    missing = [value for value in range(1, rank) if value not in existing]
-    if missing:
-        raise ValueError(f"missing prerequisite ranks: {', '.join(map(str, missing))}")
+def validate_extra_year_without_university(value) -> bool:
+    if not isinstance(value, bool):
+        raise ValueError("extra_year_without_university must be boolean")
+    return value
 
 
 def apply_grade_catalog_payload(grade: GradeCatalog, payload: dict) -> None:
@@ -54,7 +47,6 @@ def apply_grade_catalog_payload(grade: GradeCatalog, payload: dict) -> None:
     next_rank = grade.rank
     if "rank" in payload:
         next_rank = validate_rank(payload["rank"])
-        validate_rank_continuity(rank=next_rank, exclude_id=grade.id)
         grade.rank = next_rank
 
     if "min_years" in payload:
@@ -63,13 +55,18 @@ def apply_grade_catalog_payload(grade: GradeCatalog, payload: dict) -> None:
     if "is_active" in payload:
         grade.is_active = bool(payload["is_active"])
 
+    if "extra_year_without_university" in payload:
+        grade.extra_year_without_university = validate_extra_year_without_university(
+            payload["extra_year_without_university"]
+        )
+
 
 def commit_grade_catalog() -> None:
     try:
         db.session.commit()
     except IntegrityError as exc:
         db.session.rollback()
-        raise ValueError("grade name or rank must be unique") from exc
+        raise ValueError("grade name must be unique") from exc
 
 
 def grade_usage_employment_ids(grade_id: int) -> set[int]:

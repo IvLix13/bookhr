@@ -45,9 +45,9 @@ from app.services.grade_catalog import (
     apply_grade_catalog_payload,
     commit_grade_catalog,
     delete_grade_catalog,
+    validate_extra_year_without_university,
     validate_min_years,
     validate_rank,
-    validate_rank_continuity,
 )
 from app.services.grades import assign_grade_to_employment
 from app.services.rule_engine import recalculate_employment_events
@@ -196,7 +196,11 @@ def register_routes(bp):
     @bp.get("/grade-catalog")
     @login_required
     def list_grade_catalog():
-        grades = GradeCatalog.query.order_by(GradeCatalog.rank.asc()).all()
+        grades = GradeCatalog.query.order_by(
+            GradeCatalog.rank.asc(),
+            GradeCatalog.name.asc(),
+            GradeCatalog.id.asc(),
+        ).all()
         return api_response([grade_to_dict(g, include_usage=True) for g in grades])
 
     @bp.post("/grade-catalog")
@@ -208,9 +212,15 @@ def register_routes(bp):
             if not name:
                 raise ValueError("name is required")
             rank = validate_rank(payload["rank"])
-            validate_rank_continuity(rank=rank)
             min_years = validate_min_years(payload.get("min_years", 1))
-            grade = GradeCatalog(name=name, rank=rank, min_years=min_years)
+            grade = GradeCatalog(
+                name=name,
+                rank=rank,
+                min_years=min_years,
+                extra_year_without_university=validate_extra_year_without_university(
+                    payload.get("extra_year_without_university", False)
+                ),
+            )
             db.session.add(grade)
             commit_grade_catalog()
         except ValueError as exc:
@@ -265,13 +275,16 @@ def register_routes(bp):
         except ValueError:
             return api_response(message="assigned_date must be ISO date", status=400)
 
-        assign_grade_to_employment(
-            employment,
-            grade,
-            assigned_date,
-            basis=payload.get("basis"),
-            assigned_by_id=current_user.id if current_user.is_authenticated else None,
-        )
+        try:
+            assign_grade_to_employment(
+                employment,
+                grade,
+                assigned_date,
+                basis=payload.get("basis"),
+                assigned_by_id=current_user.id if current_user.is_authenticated else None,
+            )
+        except ValueError as exc:
+            return api_response(message=str(exc), status=400)
         recalculate_employment_events(employment)
         refresh_overdue_events(employment.company_id)
         db.session.commit()

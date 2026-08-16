@@ -6,7 +6,10 @@ from datetime import date
 
 from marshmallow import Schema, ValidationError, fields, validate, validates_schema, EXCLUDE
 
-from app.models import EventType, RoleName
+from app.models import EducationStatus, EventType, RoleName
+
+
+EDUCATION_CHOICES = (EducationStatus.YES.value, EducationStatus.NO.value)
 
 
 class BaseSchema(Schema):
@@ -50,6 +53,7 @@ class EventActionSchema(BaseSchema):
     comment = fields.Str(allow_none=True)
     extension_term_years = fields.Float(allow_none=True)
     new_end_date = DateField(allow_none=True)
+    target_grade_id = fields.Int(allow_none=True)
 
 
 class CreateEmployeeSchema(BaseSchema):
@@ -62,7 +66,7 @@ class CreateEmployeeSchema(BaseSchema):
     contract_end = DateField(allow_none=True)
     contract_term_years = fields.Float(allow_none=True)
     passport_until = DateField(allow_none=True)
-    has_university = fields.Bool(load_default=False)
+    education_status = fields.Str(required=True, validate=validate.OneOf(EDUCATION_CHOICES))
 
     @validates_schema
     def validate_dates(self, data, **kwargs):
@@ -82,7 +86,7 @@ class UpdateEmployeeSchema(BaseSchema):
     contract_end = DateField(allow_none=True)
     contract_term_years = fields.Float(allow_none=True)
     passport_until = DateField(allow_none=True)
-    has_university = fields.Bool(allow_none=True)
+    education_status = fields.Str(validate=validate.OneOf(EDUCATION_CHOICES))
     effective_date = DateField(allow_none=True)
 
     @validates_schema
@@ -153,6 +157,7 @@ class CreateGradeCatalogSchema(BaseSchema):
     name = fields.Str(required=True, validate=validate.Length(min=1, max=128))
     rank = fields.Int(required=True)
     min_years = fields.Float(load_default=0)
+    extra_year_without_university = fields.Bool(load_default=False)
 
 
 class CreateContractSchema(BaseSchema):

@@ -1,9 +1,15 @@
 from datetime import date
 
 from app.extensions import db
-from app.models import EmployeeGradeHistory, Employment, GradeCatalog, PositionHistory
+from app.models import (
+    EducationStatus,
+    EmployeeGradeHistory,
+    Employment,
+    GradeCatalog,
+    PositionHistory,
+)
 from app.services.employees import create_person_with_employment, get_current_grade, get_current_position
-from app.services.grades import compute_grade_eligibility
+from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 
 
 def test_create_grade_catalog_as_admin(admin_client, app):
@@ -24,13 +30,17 @@ def test_create_grade_catalog_as_admin(admin_client, app):
         assert GradeCatalog.query.count() == before + 1
 
 
-def test_create_grade_catalog_requires_rank_continuity(admin_client):
-    response = admin_client.post(
+def test_create_grade_catalog_allows_duplicate_rank(admin_client):
+    first = admin_client.post(
         "/api/grade-catalog",
-        json={"name": "Lead", "rank": 3, "min_years": 2},
+        json={"name": "Middle A", "rank": 3, "min_years": 2},
     )
-    assert response.status_code == 400
-    assert "missing prerequisite ranks" in response.get_json()["message"]
+    second = admin_client.post(
+        "/api/grade-catalog",
+        json={"name": "Middle B", "rank": 3, "min_years": 2},
+    )
+    assert first.status_code == 201
+    assert second.status_code == 201
 
 
 def test_create_grade_catalog_rejects_invalid_min_years(admin_client):
@@ -110,6 +120,7 @@ def test_assign_grade_creates_history_and_closes_previous(hr_client, seed_compan
             full_name="Грейд Тест",
             hire_date=date(2020, 1, 1),
             title="Инженер",
+            education_status="yes",
         )
         db.session.add(
             EmployeeGradeHistory(
@@ -187,6 +198,7 @@ def _employment_with_grades(
         hire_date=date(2020, 1, 1),
         title="Инженер",
         position_grade_id=position.id if position else None,
+        education_status="yes",
     )
     db.session.add(
         EmployeeGradeHistory(
@@ -285,6 +297,133 @@ def test_compute_grade_eligibility_max_rank_has_no_next_grade(app, seed_company)
         eligibility = compute_grade_eligibility(employment, date(2024, 6, 1))
         assert eligibility["next_grade"] is None
         assert eligibility["eligible_date"] is None
+
+
+def test_no_university_extra_year_is_frozen_at_rank_entry(app, seed_company):
+    with app.app_context():
+        junior = GradeCatalog(
+            name="Junior",
+            rank=1,
+            min_years=1,
+            extra_year_without_university=True,
+            is_active=True,
+        )
+        middle = GradeCatalog(name="Middle", rank=2, min_years=1, is_active=True)
+        db.session.add_all([junior, middle])
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Без Вуза",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status=EducationStatus.NO.value,
+        )
+        history = assign_grade_to_employment(
+            employment,
+            junior,
+            date(2024, 1, 1),
+        )
+        db.session.commit()
+
+        assert history.required_months == 24
+        assert compute_grade_eligibility(employment)["eligible_date"] == date(2026, 1, 1)
+
+        employment.person.education_status = EducationStatus.YES.value
+        junior.extra_year_without_university = False
+        junior.min_years = 0.5
+        db.session.commit()
+
+        assert compute_grade_eligibility(employment)["eligible_date"] == date(2026, 1, 1)
+
+
+def test_same_rank_transfer_preserves_level_tenure(app, seed_company):
+    with app.app_context():
+        middle_a = GradeCatalog(name="Middle A", rank=2, min_years=1, is_active=True)
+        middle_b = GradeCatalog(name="Middle B", rank=2, min_years=3, is_active=True)
+        senior = GradeCatalog(name="Senior", rank=3, min_years=1, is_active=True)
+        db.session.add_all([middle_a, middle_b, senior])
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Перевод Без Сброса",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=senior.id,
+            education_status=EducationStatus.YES.value,
+        )
+        first = assign_grade_to_employment(employment, middle_a, date(2024, 1, 1))
+        second = assign_grade_to_employment(employment, middle_b, date(2024, 6, 1))
+        db.session.commit()
+
+        assert first.valid_to == date(2024, 6, 1)
+        assert second.rank_started_at == date(2024, 1, 1)
+        assert second.required_months == 12
+        assert second.assigned_date == date(2024, 6, 1)
+        assert compute_grade_eligibility(employment)["eligible_date"] == date(2025, 1, 1)
+
+
+def test_eligibility_returns_all_candidates_on_nearest_higher_rank(app, seed_company):
+    with app.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=1, is_active=True)
+        middle_b = GradeCatalog(name="Middle B", rank=3, min_years=1, is_active=True)
+        middle_a = GradeCatalog(name="Middle A", rank=3, min_years=1, is_active=True)
+        senior = GradeCatalog(name="Senior", rank=4, min_years=1, is_active=True)
+        db.session.add_all([junior, middle_b, middle_a, senior])
+        db.session.flush()
+        employment = _employment_with_grades(
+            seed_company,
+            actual=junior,
+            position=senior,
+            assigned_date=date(2024, 1, 1),
+        )
+
+        eligibility = compute_grade_eligibility(employment)
+        assert eligibility["next_rank"] == 3
+        assert [grade.name for grade in eligibility["next_grade_candidates"]] == [
+            "Middle A",
+            "Middle B",
+        ]
+        assert eligibility["next_grade"] is None
+        assert eligibility["requires_grade_choice"] is True
+
+
+def test_eligibility_uses_rank_snapshot_after_catalog_edit(app, seed_company):
+    with app.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=1, is_active=True)
+        middle = GradeCatalog(name="Middle", rank=2, min_years=1, is_active=True)
+        senior = GradeCatalog(name="Senior", rank=3, min_years=1, is_active=True)
+        db.session.add_all([junior, middle, senior])
+        db.session.flush()
+        employment = _employment_with_grades(
+            seed_company,
+            actual=junior,
+            position=senior,
+            assigned_date=date(2024, 1, 1),
+        )
+
+        junior.rank = 4
+        db.session.commit()
+
+        eligibility = compute_grade_eligibility(employment)
+        assert eligibility["next_rank"] == 2
+        assert [grade.name for grade in eligibility["next_grade_candidates"]] == [
+            "Middle"
+        ]
+
+
+def test_catalog_rejects_non_boolean_university_policy(admin_client):
+    created = admin_client.post(
+        "/api/grade-catalog",
+        json={
+            "name": "Middle",
+            "rank": 2,
+            "min_years": 1,
+            "extra_year_without_university": "false",
+        },
+    )
+    assert created.status_code == 400
+    assert "must be boolean" in created.get_json()["message"]
 
 
 def test_delete_unused_grade_catalog(admin_client, app):

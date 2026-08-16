@@ -18,7 +18,10 @@ from app.services.rule_engine import recalculate_employment_events
 from app.utils.dates import calculate_contract_end, today_moscow
 
 
-def _promote_after_grade_review(event: Event) -> EmployeeGradeHistory | None:
+def _promote_after_grade_review(
+    event: Event,
+    target_grade_id: int | None = None,
+) -> EmployeeGradeHistory | None:
     """Move the employee to the next grade once the review is done."""
     employment = event.employment
     if not employment:
@@ -39,10 +42,25 @@ def _promote_after_grade_review(event: Event) -> EmployeeGradeHistory | None:
         return None
 
     eligibility = compute_grade_eligibility(employment)
-    next_grade = eligibility["next_grade"]
+    if eligibility["blocked_reason"]:
+        raise ValueError(eligibility["blocked_reason"])
+    candidates = eligibility["next_grade_candidates"]
     eligible_date = eligibility["eligible_date"]
-    if not next_grade or not eligible_date:
+    if not candidates or not eligible_date:
         return None
+
+    if len(candidates) > 1 and target_grade_id is None:
+        raise ValueError("Выберите следующий грейд")
+
+    if target_grade_id is None:
+        next_grade = candidates[0]
+    else:
+        next_grade = next(
+            (grade for grade in candidates if grade.id == target_grade_id),
+            None,
+        )
+        if next_grade is None:
+            raise ValueError("Выбранный грейд больше недоступен")
 
     # The grade may not start before the employee is actually eligible, even
     # when the review is completed ahead of the due date.
@@ -124,12 +142,16 @@ def apply_completion_effects(
     event: Event,
     term_years: float | None = None,
     new_end_date: date | None = None,
+    target_grade_id: int | None = None,
 ) -> dict:
     """Apply the domain side effects implied by completing ``event``."""
     assigned_grade = None
     extended_contract = None
     if event.event_type == EventType.GRADE.value:
-        assigned_grade = _promote_after_grade_review(event)
+        assigned_grade = _promote_after_grade_review(
+            event,
+            target_grade_id=target_grade_id,
+        )
     elif (
         event.event_type == EventType.REPORT.value
         and event.reference_type == "contract"

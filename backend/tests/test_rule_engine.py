@@ -152,6 +152,7 @@ def test_rule_key_invariant_matches_generated_events(app):
             hire_date=date(2020, 1, 1),
             title="Инженер",
             position_grade_id=next_grade.id,
+                education_status="yes",
         )
         contract = Contract(
             employment_id=employment.id,

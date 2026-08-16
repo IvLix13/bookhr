@@ -50,7 +50,7 @@ export interface Employee {
   actual_grade: Grade | null
   grade_date: string | null
   eligible_date: string | null
-  has_university: boolean
+  education_status: EducationStatus
   hire_date: string
   status: string
   contract_end: string | null
@@ -63,11 +63,14 @@ export interface Employee {
   reward_status: RewardStatus | null
 }
 
+export type EducationStatus = 'yes' | 'no' | 'unknown'
+
 export interface Grade {
   id: number
   name: string
   rank: number
   min_years: number
+  extra_year_without_university?: boolean
   is_active?: boolean
   in_use_count?: number
 }
@@ -89,6 +92,13 @@ export interface EventItem {
   created_at: string | null
   completed_at: string | null
   completion_comment: string | null
+  grade_completion?: {
+    next_rank: number | null
+    candidates: Grade[]
+    requires_selection: boolean
+    eligible_date: string | null
+    blocked_reason: string | null
+  } | null
 }
 
 export interface ContractRow {
@@ -129,6 +139,10 @@ export interface GradeRow {
   grade: Grade | null
   grade_date: string | null
   next_grade: Grade | null
+  next_rank?: number | null
+  next_grade_candidates?: Grade[]
+  requires_grade_choice?: boolean
+  blocked_reason?: string | null
   eligible_date: string | null
   days_left: number | null
   is_available?: boolean
