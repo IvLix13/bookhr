@@ -136,15 +136,14 @@ def build_dashboard_stats(
 
     tenure_pending = {10: 0, 15: 0, 20: 0}
     tenure_received = {10: 0, 15: 0, 20: 0}
-    if employment_ids:
-        awards = TenureAward.query.filter(TenureAward.employment_id.in_(employment_ids)).all()
-        for award in awards:
-            if award.milestone_years not in tenure_pending:
-                continue
-            if award.is_received:
-                tenure_received[award.milestone_years] += 1
-            else:
-                tenure_pending[award.milestone_years] += 1
+    awards = TenureAward.query.filter_by(company_id=company_id).all()
+    for award in awards:
+        if award.milestone_years not in tenure_pending:
+            continue
+        if award.is_received:
+            tenure_received[award.milestone_years] += 1
+        else:
+            tenure_pending[award.milestone_years] += 1
 
     passport_counts = {"ok": 0, "requires_preparation": 0, "expired": 0, "missing": 0}
     expiring_90 = 0
@@ -167,15 +166,13 @@ def build_dashboard_stats(
             EmployeeGradeHistory.assigned_date <= date_to,
         ).count()
 
-    awards_received = 0
-    if employment_ids:
-        awards_received = TenureAward.query.filter(
-            TenureAward.employment_id.in_(employment_ids),
-            TenureAward.is_received.is_(True),
-            TenureAward.received_date.isnot(None),
-            TenureAward.received_date >= date_from,
-            TenureAward.received_date <= date_to,
-        ).count()
+    awards_received = TenureAward.query.filter(
+        TenureAward.company_id == company_id,
+        TenureAward.is_received.is_(True),
+        TenureAward.received_date.isnot(None),
+        TenureAward.received_date >= date_from,
+        TenureAward.received_date <= date_to,
+    ).count()
 
     return {
         "period": {

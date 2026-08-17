@@ -92,6 +92,7 @@ export interface EventItem {
   created_at: string | null
   completed_at: string | null
   completion_comment: string | null
+  grade_event_kind?: 'preparation' | 'promotion' | null
   grade_completion?: {
     next_rank: number | null
     candidates: Grade[]
@@ -161,7 +162,17 @@ export interface TenureRow {
   employment_id: number
   full_name: string | null
   tenure_years: number
-  awards: Record<string, { milestone_years: number; milestone_date: string | null; is_received: boolean }>
+  continuous_tenure_years?: number
+  awards: Record<
+    string,
+    {
+      id?: number | null
+      milestone_years: number
+      milestone_date: string | null
+      is_received: boolean
+      received_date?: string | null
+    }
+  >
 }
 
 export interface DashboardStats {

@@ -14,7 +14,7 @@ from app.models import (
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade, get_current_name
 from app.services.events import effectively_overdue_filter
 from app.services.grades import compute_grade_eligibility
-from app.services.passports import compute_passport_status
+from app.services.tenure import active_employment
 from app.utils.dates import today_moscow
 
 ALL_CATEGORIES = ("events", "contracts", "passports", "grades", "tenure")
@@ -216,30 +216,19 @@ def _collect_grade_items(company_id: int, limit: int, today) -> list[dict]:
 
 
 def _collect_tenure_items(company_id: int, limit: int) -> list[dict]:
-    employment_ids = [
-        row.id
-        for row in Employment.query.filter_by(
-            company_id=company_id,
-            status=EmploymentStatus.ACTIVE.value,
-        ).all()
-    ]
-    if not employment_ids:
-        return []
-
     awards = (
-        TenureAward.query.filter(
-            TenureAward.employment_id.in_(employment_ids),
-            TenureAward.is_received.is_(False),
-        )
+        TenureAward.query.filter_by(company_id=company_id, is_received=False)
         .order_by(TenureAward.milestone_date.asc())
-        .limit(limit)
+        .limit(limit * 3)
         .all()
     )
     items: list[dict] = []
     for award in awards:
         if award.milestone_date > today_moscow():
             continue
-        employment = award.employment
+        employment = active_employment(award.person_id, award.company_id)
+        if not employment:
+            continue
         items.append(
             _attention_item(
                 category="tenure",
@@ -251,6 +240,8 @@ def _collect_tenure_items(company_id: int, limit: int) -> list[dict]:
                 route="/awards",
             )
         )
+        if len(items) >= limit:
+            break
     return items
 
 

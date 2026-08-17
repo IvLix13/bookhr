@@ -17,7 +17,11 @@ const table = useServerTable<TenureRow>({
 function awardLabel(row: TenureRow, years: '10' | '15' | '20'): string {
   const award = row.awards[years]
   if (!award) return '—'
-  if (award.is_received) return 'Получено'
+  if (award.is_received) {
+    return award.received_date
+      ? `Получено ${formatNumericDate(award.received_date)}`
+      : 'Получено'
+  }
   if (award.milestone_date) return formatNumericDate(award.milestone_date)
   return '—'
 }
@@ -26,8 +30,14 @@ const columns: ColumnDef<TenureRow>[] = [
   { key: 'full_name', label: 'ФИО' },
   {
     key: 'tenure_years',
-    label: 'Стаж',
+    label: 'Стаж (всего)',
     getValue: (row) => row.tenure_years,
+    format: (value) => `${value} лет`,
+  },
+  {
+    key: 'continuous_tenure_years',
+    label: 'Текущий период',
+    getValue: (row) => row.continuous_tenure_years ?? row.tenure_years,
     format: (value) => `${value} лет`,
   },
   {

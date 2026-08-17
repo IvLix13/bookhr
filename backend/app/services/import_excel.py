@@ -555,7 +555,7 @@ def confirm_import(
             if passport_until:
                 sync_passport(person, passport_until)
 
-            awards = ensure_tenure_awards(employment.id, employment.hire_date)
+            awards = ensure_tenure_awards(person.id, employment.company_id)
             if mark_reached_tenure and (created or update_existing_tenure):
                 report["tenure_marked"] += auto_mark_reached_awards(awards)
 

@@ -32,7 +32,10 @@ RULE_VERSION = 1
 OPEN_EVENT_STATUSES = {EventStatus.PLANNED.value, EventStatus.OVERDUE.value}
 
 CONTRACT_RULE_PREFIX = "contract-renewal-report"
-GRADE_RULE_PREFIX = "grade-review"
+GRADE_PREP_RULE_PREFIX = "grade-preparation"
+GRADE_PROMOTION_RULE_PREFIX = "grade-promotion"
+# Legacy prefix kept for backward compatibility with existing events.
+LEGACY_GRADE_RULE_PREFIX = "grade-review"
 PASSPORT_RULE_PREFIX = "passport-preparation"
 
 
@@ -40,8 +43,36 @@ def contract_rule_key(contract: Contract) -> str:
     return f"{CONTRACT_RULE_PREFIX}:{contract.id}:{contract.end_date.isoformat()}"
 
 
+def grade_preparation_rule_key(grade_history_id: int, eligible_date: date) -> str:
+    return (
+        f"{GRADE_PREP_RULE_PREFIX}:{grade_history_id}:{eligible_date.isoformat()}"
+    )
+
+
+def grade_promotion_rule_key(grade_history_id: int, eligible_date: date) -> str:
+    return (
+        f"{GRADE_PROMOTION_RULE_PREFIX}:{grade_history_id}:{eligible_date.isoformat()}"
+    )
+
+
 def grade_rule_key(grade_history_id: int, eligible_date: date) -> str:
-    return f"{GRADE_RULE_PREFIX}:{grade_history_id}:{eligible_date.isoformat()}"
+    """Backward-compatible alias for promotion rule keys in tests."""
+    return grade_promotion_rule_key(grade_history_id, eligible_date)
+
+
+def is_grade_preparation_event(event: Event) -> bool:
+    return bool(
+        event.rule_key
+        and event.rule_key.startswith(f"{GRADE_PREP_RULE_PREFIX}:")
+    )
+
+
+def is_grade_promotion_event(event: Event) -> bool:
+    if not event.rule_key:
+        return event.event_type == EventType.GRADE.value
+    return event.rule_key.startswith(
+        (f"{GRADE_PROMOTION_RULE_PREFIX}:", f"{LEGACY_GRADE_RULE_PREFIX}:")
+    )
 
 
 def passport_rule_key(passport: Passport) -> str:
@@ -150,7 +181,8 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
         candidates = eligibility["next_grade_candidates"]
         eligible_date = eligibility["eligible_date"]
         if candidates and eligible_date:
-            keys.add(grade_rule_key(current.id, eligible_date))
+            keys.add(grade_preparation_rule_key(current.id, eligible_date))
+            keys.add(grade_promotion_rule_key(current.id, eligible_date))
 
     passport = _active_passport(employment)
     if passport:
@@ -213,23 +245,35 @@ def process_grade_rules(employment: Employment) -> int:
     if not candidates or not eligible_date:
         return 0
 
-    event_date = subtract_months(eligible_date, 1)
+    prep_date = subtract_months(eligible_date, 1)
     name = get_current_name(employment.person) or "Сотрудник"
+    candidate_names = ", ".join(grade.name for grade in candidates)
+    description = (
+        f"Доступны грейды «{candidate_names}» с {eligible_date.isoformat()}"
+    )
     _upsert_rule_event(
         company_id=employment.company_id,
         employment_id=employment.id,
-        rule_key=grade_rule_key(current.id, eligible_date),
-        title=f"Рассмотреть повышение грейды: {name}",
+        rule_key=grade_preparation_rule_key(current.id, eligible_date),
+        title=f"Подготовить документы на повышение грейда: {name}",
         event_type=EventType.GRADE,
-        event_date=event_date,
-        description=(
-            f"Доступны грейды «{', '.join(grade.name for grade in candidates)}» "
-            f"с {eligible_date.isoformat()}"
-        ),
+        event_date=prep_date,
+        description=description,
         reference_type="employee_grade_history",
         reference_id=current.id,
     )
-    return 1
+    _upsert_rule_event(
+        company_id=employment.company_id,
+        employment_id=employment.id,
+        rule_key=grade_promotion_rule_key(current.id, eligible_date),
+        title=f"Повышение грейда: {name}",
+        event_type=EventType.GRADE,
+        event_date=eligible_date,
+        description=description,
+        reference_type="employee_grade_history",
+        reference_id=current.id,
+    )
+    return 2
 
 
 def process_passport_rules(employment: Employment) -> int:

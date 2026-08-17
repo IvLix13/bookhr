@@ -15,6 +15,7 @@ from app.api.helpers import (
     join_current_person_name,
     load_schema,
     paginate_query,
+    paginate_sequence,
     parse_pagination_args,
     parse_search_q,
     parse_sort_args,
@@ -51,7 +52,7 @@ from app.services.grade_catalog import (
 )
 from app.services.grades import assign_grade_to_employment
 from app.services.rule_engine import recalculate_employment_events
-from app.services.tenure import ensure_tenure_awards
+from app.services.tenure import ensure_tenure_awards, total_tenure_years
 from app.tenant import get_request_company_id
 from app.utils.dates import calculate_contract_end, calculate_term_years
 
@@ -373,7 +374,7 @@ def register_routes(bp):
             status=EmploymentStatus.ACTIVE.value,
         ).all()
         for employment in active_employments:
-            ensure_tenure_awards(employment.id, employment.hire_date)
+            ensure_tenure_awards(employment.person_id, employment.company_id)
         db.session.commit()
 
         query = Employment.query.filter_by(
@@ -385,15 +386,15 @@ def register_routes(bp):
             query = join_current_person_name(query)
 
         if sort == "tenure_years":
-            # Longer tenure = earlier hire_date, so invert the requested direction.
-            query = apply_sort(
-                query,
-                {"hire_date": Employment.hire_date},
-                "hire_date",
-                "asc" if direction == "desc" else "desc",
+            employments = query.all()
+            employments.sort(
+                key=lambda row: total_tenure_years(row.person_id, row.company_id),
+                reverse=direction == "desc",
             )
-        else:
-            query = apply_sort(query, TENURE_SORT_FIELDS, sort, direction)
+            rows = [tenure_row_to_dict(employment) for employment in employments]
+            return api_response(paginate_sequence(rows, page, per_page))
+
+        query = apply_sort(query, TENURE_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, tenure_row_to_dict, page, per_page))
 
     @bp.patch("/tenure/<int:award_id>")
@@ -402,11 +403,21 @@ def register_routes(bp):
         from app.models import TenureAward
 
         award = db.session.get(TenureAward, award_id)
-        if not award:
+        if not award or award.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
         payload = get_json()
         award.is_received = payload.get("is_received", award.is_received)
         if payload.get("received_date"):
             award.received_date = date.fromisoformat(payload["received_date"])
+        elif award.is_received and award.received_date is None:
+            award.received_date = award.milestone_date
         db.session.commit()
-        return api_response({"id": award.id, "is_received": award.is_received})
+        return api_response(
+            {
+                "id": award.id,
+                "is_received": award.is_received,
+                "received_date": award.received_date.isoformat()
+                if award.received_date
+                else None,
+            }
+        )

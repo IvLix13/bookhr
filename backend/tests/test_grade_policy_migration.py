@@ -11,6 +11,10 @@ def _create_legacy_schema(database_path: Path) -> None:
     connection = sqlite3.connect(database_path)
     connection.executescript(
         """
+        CREATE TABLE companies (
+            id INTEGER PRIMARY KEY
+        );
+        INSERT INTO companies VALUES (1);
         CREATE TABLE grade_catalog (
             id INTEGER PRIMARY KEY,
             name VARCHAR(64) NOT NULL UNIQUE,
@@ -46,6 +50,17 @@ def _create_legacy_schema(database_path: Path) -> None:
             valid_to DATE,
             created_at DATETIME NOT NULL,
             updated_at DATETIME NOT NULL
+        );
+        CREATE TABLE tenure_awards (
+            id INTEGER PRIMARY KEY,
+            employment_id INTEGER NOT NULL,
+            milestone_years INTEGER NOT NULL,
+            milestone_date DATE NOT NULL,
+            is_received BOOLEAN NOT NULL,
+            received_date DATE,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            CONSTRAINT uq_tenure_milestone UNIQUE (employment_id, milestone_years)
         );
         INSERT INTO grade_catalog
         VALUES (1, 'Junior', 1, 1.5, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);

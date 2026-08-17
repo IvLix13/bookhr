@@ -7,30 +7,119 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 
 from app.extensions import db
-from app.models import TenureAward
+from app.models import Employment, EmploymentStatus, TenureAward
 from app.utils.dates import today_moscow
 
 MILESTONES = (10, 15, 20)
+MAX_EMPLOYMENT_PERIODS = 3
 
 
-def ensure_tenure_awards(employment_id: int, hire_date: date) -> list[TenureAward]:
+def employment_periods(person_id: int, company_id: int) -> list[Employment]:
+    return (
+        Employment.query.filter_by(person_id=person_id, company_id=company_id)
+        .order_by(Employment.hire_date.asc(), Employment.id.asc())
+        .all()
+    )
+
+
+def count_employment_periods(person_id: int, company_id: int) -> int:
+    return Employment.query.filter_by(person_id=person_id, company_id=company_id).count()
+
+
+def tenure_years(hire_date: date, reference: date | None = None) -> int:
+    ref = reference or today_moscow()
+    delta = relativedelta(ref, hire_date)
+    return delta.years
+
+
+def _period_end(employment: Employment, reference: date) -> date:
+    if employment.dismissal_date and employment.dismissal_date <= reference:
+        return employment.dismissal_date
+    return reference
+
+
+def total_tenure_years(
+    person_id: int,
+    company_id: int,
+    reference: date | None = None,
+) -> int:
+    ref = reference or today_moscow()
+    total_months = 0
+    for employment in employment_periods(person_id, company_id):
+        if employment.hire_date > ref:
+            continue
+        end = _period_end(employment, ref)
+        delta = relativedelta(end, employment.hire_date)
+        total_months += delta.years * 12 + delta.months
+    return total_months // 12
+
+
+def compute_milestone_date(
+    person_id: int,
+    company_id: int,
+    milestone_years: int,
+) -> date:
+    """Date when cumulative tenure across all periods reaches ``milestone_years``."""
+    periods = employment_periods(person_id, company_id)
+    if not periods:
+        raise ValueError("No employment periods found")
+
+    remaining_years = milestone_years
+    for employment in periods:
+        if employment.dismissal_date:
+            period_years = tenure_years(employment.hire_date, employment.dismissal_date)
+            if period_years >= remaining_years:
+                return employment.hire_date + relativedelta(years=remaining_years)
+            remaining_years -= period_years
+            continue
+
+        return employment.hire_date + relativedelta(years=remaining_years)
+
+    last = periods[-1]
+    return last.hire_date + relativedelta(years=remaining_years)
+
+
+def active_employment(person_id: int, company_id: int) -> Employment | None:
+    return (
+        Employment.query.filter_by(
+            person_id=person_id,
+            company_id=company_id,
+            status=EmploymentStatus.ACTIVE.value,
+        )
+        .order_by(Employment.hire_date.desc(), Employment.id.desc())
+        .first()
+    )
+
+
+def continuous_tenure_years(
+    person_id: int,
+    company_id: int,
+    reference: date | None = None,
+) -> int:
+    employment = active_employment(person_id, company_id)
+    if not employment:
+        return 0
+    return tenure_years(employment.hire_date, reference)
+
+
+def ensure_tenure_awards(person_id: int, company_id: int) -> list[TenureAward]:
     awards: list[TenureAward] = []
     for years in MILESTONES:
         existing = TenureAward.query.filter_by(
-            employment_id=employment_id,
+            person_id=person_id,
+            company_id=company_id,
             milestone_years=years,
         ).first()
-        milestone_date = hire_date + relativedelta(years=years)
+        milestone_date = compute_milestone_date(person_id, company_id, years)
         if existing:
-            # Keep received awards as historical facts; refresh pending dates
-            # when hire_date changes (e.g. after import-update).
             if not existing.is_received and existing.milestone_date != milestone_date:
                 existing.milestone_date = milestone_date
             awards.append(existing)
             continue
 
         award = TenureAward(
-            employment_id=employment_id,
+            person_id=person_id,
+            company_id=company_id,
             milestone_years=years,
             milestone_date=milestone_date,
             is_received=False,
@@ -40,30 +129,27 @@ def ensure_tenure_awards(employment_id: int, hire_date: date) -> list[TenureAwar
     return awards
 
 
-def tenure_years(hire_date: date, reference: date | None = None) -> int:
-    ref = reference or today_moscow()
-    delta = relativedelta(ref, hire_date)
-    return delta.years
-
-
 def auto_mark_reached_awards(
     awards: list[TenureAward],
     reference: date | None = None,
 ) -> int:
     """Mark tenure milestones already reached as received.
 
-    Only awards that are not yet received are touched, so manual HR decisions
-    (and already-received milestones) are preserved. The receipt date is set to
-    the milestone date — the moment the employee earned it.
+    Automatic eligibility uses the continuous tenure of the active employment
+    period. Total tenure still drives the milestone date shown to HR.
     """
     ref = reference or today_moscow()
     marked = 0
     for award in awards:
         if award.is_received:
             continue
-        if award.milestone_date <= ref:
-            award.is_received = True
-            if award.received_date is None:
-                award.received_date = award.milestone_date
-            marked += 1
+        if award.milestone_date > ref:
+            continue
+        continuous = continuous_tenure_years(award.person_id, award.company_id, ref)
+        if continuous < award.milestone_years:
+            continue
+        award.is_received = True
+        if award.received_date is None:
+            award.received_date = award.milestone_date
+        marked += 1
     return marked

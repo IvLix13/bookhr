@@ -289,9 +289,6 @@ def delete_employment(employment: Employment) -> None:
     EmployeeGradeHistory.query.filter_by(employment_id=employment_id).delete(
         synchronize_session=False
     )
-    TenureAward.query.filter_by(employment_id=employment_id).delete(
-        synchronize_session=False
-    )
     Reward.query.filter_by(employment_id=employment_id).delete(synchronize_session=False)
     PositionHistory.query.filter_by(employment_id=employment_id).delete(
         synchronize_session=False
@@ -301,6 +298,7 @@ def delete_employment(employment: Employment) -> None:
 
     remaining = Employment.query.filter_by(person_id=person_id).count()
     if remaining == 0:
+        TenureAward.query.filter_by(person_id=person_id).delete(synchronize_session=False)
         Passport.query.filter_by(person_id=person_id).delete(synchronize_session=False)
         PersonNameHistory.query.filter_by(person_id=person_id).delete(
             synchronize_session=False

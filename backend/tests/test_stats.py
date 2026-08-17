@@ -86,7 +86,8 @@ def test_dashboard_stats_tenure_and_grades_per_company(seed_company, monkeypatch
     )
     db.session.add(
         TenureAward(
-            employment_id=employment.id,
+            person_id=employment.person_id,
+            company_id=employment.company_id,
             milestone_years=10,
             milestone_date=date(2020, 1, 1),
             is_received=True,

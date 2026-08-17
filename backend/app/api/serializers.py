@@ -25,12 +25,17 @@ from app.services.employees import (
     get_current_name,
     get_current_position,
 )
+from app.services.event_completion import grade_promotion_blocked_reason
 from app.services.events import effective_event_status
 from app.services.grade_catalog import grade_usage_employment_ids
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status, passport_days_left
-from app.services.rule_engine import find_contract_renewal_event
-from app.services.tenure import tenure_years
+from app.services.rule_engine import (
+    find_contract_renewal_event,
+    is_grade_preparation_event,
+    is_grade_promotion_event,
+)
+from app.services.tenure import tenure_years, total_tenure_years
 from app.utils.dates import today_moscow
 
 
@@ -116,7 +121,11 @@ def employment_to_dict(employment: Employment) -> dict:
         if passport
         else None,
         "passport_days_left": passport_days_left(passport.valid_until) if passport else None,
-        "tenure_years": tenure_years(employment.hire_date, today),
+        "tenure_years": total_tenure_years(
+            employment.person_id,
+            employment.company_id,
+            today,
+        ),
         "reward_status": latest_reward.status if latest_reward else None,
     }
 
@@ -196,19 +205,29 @@ def passport_row_to_dict(person: Person, employment: Employment | None = None) -
 
 
 def tenure_row_to_dict(employment: Employment) -> dict:
-    awards = TenureAward.query.filter_by(employment_id=employment.id).all()
+    person_id = employment.person_id
+    company_id = employment.company_id
+    awards = TenureAward.query.filter_by(
+        person_id=person_id,
+        company_id=company_id,
+    ).all()
     award_map = {a.milestone_years: a for a in awards}
     return {
         "employment_id": employment.id,
         "full_name": get_current_name(employment.person),
-        "tenure_years": tenure_years(employment.hire_date),
+        "tenure_years": total_tenure_years(person_id, company_id),
+        "continuous_tenure_years": tenure_years(employment.hire_date),
         "awards": {
             str(years): {
+                "id": award_map[years].id if years in award_map else None,
                 "milestone_years": years,
                 "milestone_date": award_map[years].milestone_date.isoformat()
                 if years in award_map
                 else None,
                 "is_received": award_map[years].is_received if years in award_map else False,
+                "received_date": award_map[years].received_date.isoformat()
+                if years in award_map and award_map[years].received_date
+                else None,
             }
             for years in (10, 15, 20)
         },
@@ -231,8 +250,22 @@ def reward_to_dict(reward: Reward) -> dict:
 
 def event_to_dict(event: Event) -> dict:
     grade_completion = None
-    if event.event_type == EventType.GRADE.value and event.employment:
+    grade_event_kind = None
+    if event.event_type == EventType.GRADE.value:
+        if is_grade_preparation_event(event):
+            grade_event_kind = "preparation"
+        elif is_grade_promotion_event(event):
+            grade_event_kind = "promotion"
+
+    if (
+        event.event_type == EventType.GRADE.value
+        and event.employment
+        and grade_event_kind != "preparation"
+    ):
         eligibility = compute_grade_eligibility(event.employment)
+        blocked_reason = (
+            grade_promotion_blocked_reason(event) or eligibility["blocked_reason"]
+        )
         grade_completion = {
             "next_rank": eligibility["next_rank"],
             "candidates": [
@@ -243,7 +276,7 @@ def event_to_dict(event: Event) -> dict:
             "eligible_date": eligibility["eligible_date"].isoformat()
             if eligibility["eligible_date"]
             else None,
-            "blocked_reason": eligibility["blocked_reason"],
+            "blocked_reason": blocked_reason,
         }
 
     return {
@@ -265,6 +298,7 @@ def event_to_dict(event: Event) -> dict:
         "created_at": event.created_at.isoformat() if event.created_at else None,
         "completed_at": event.completed_at.isoformat() if event.completed_at else None,
         "completion_comment": event.completion_comment,
+        "grade_event_kind": grade_event_kind,
         "grade_completion": grade_completion,
     }
 

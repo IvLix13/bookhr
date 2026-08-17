@@ -46,7 +46,11 @@ from app.services.employees import (
 from app.services.events import refresh_overdue_events
 from app.services.grades import resolve_unknown_education_snapshot
 from app.services.rule_engine import recalculate_employment_events
-from app.services.tenure import ensure_tenure_awards
+from app.services.tenure import (
+    MAX_EMPLOYMENT_PERIODS,
+    count_employment_periods,
+    ensure_tenure_awards,
+)
 from app.tenant import get_request_company_id
 from app.utils.dates import today_moscow
 
@@ -112,7 +116,7 @@ def register_routes(bp):
             position_grade_id=payload.get("position_grade_id"),
             education_status=payload["education_status"],
         )
-        ensure_tenure_awards(employment.id, hire_date)
+        ensure_tenure_awards(person.id, company_id)
 
         sync_active_contract(
             employment,
@@ -176,7 +180,7 @@ def register_routes(bp):
             hire_date = payload.get("hire_date")
             if hire_date and hire_date != employment.hire_date:
                 employment.hire_date = hire_date
-                ensure_tenure_awards(employment.id, hire_date)
+                ensure_tenure_awards(employment.person_id, employment.company_id)
                 needs_recalc = True
 
         if _payload_has(payload, "contract_end") or _payload_has(payload, "contract_term_years"):
@@ -256,15 +260,22 @@ def register_routes(bp):
 
         payload = load_schema(RehireEmployeeSchema)
         hire_date = payload["hire_date"]
+        company_id = get_request_company_id()
+        periods = count_employment_periods(person_id, company_id)
+        if periods >= MAX_EMPLOYMENT_PERIODS:
+            return api_response(
+                message="Достигнут лимит периодов работы (не более 3)",
+                status=400,
+            )
 
         employment = rehire_person(
             person,
-            get_request_company_id(),
+            company_id,
             hire_date,
             payload.get("title", "Не указана"),
             payload.get("position_grade_id"),
         )
-        ensure_tenure_awards(employment.id, hire_date)
+        ensure_tenure_awards(person.id, company_id)
         sync_active_contract(
             employment,
             payload.get("contract_end"),

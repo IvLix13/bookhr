@@ -165,9 +165,13 @@ async function complete(id: number) {
 
 function completeOrChoose(row: EventItem) {
   if (
-    row.grade_completion?.requires_selection ||
-    row.grade_completion?.blocked_reason
+    row.grade_event_kind === 'promotion' &&
+    (row.grade_completion?.requires_selection || row.grade_completion?.blocked_reason)
   ) {
+    openEvent(row.id)
+    return
+  }
+  if (row.grade_completion?.requires_selection || row.grade_completion?.blocked_reason) {
     openEvent(row.id)
     return
   }

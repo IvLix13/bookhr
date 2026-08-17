@@ -19,6 +19,8 @@ from app.services.rule_engine import (
     _expected_rule_keys,
     contract_rule_key,
     find_contract_renewal_event,
+    grade_preparation_rule_key,
+    grade_promotion_rule_key,
     grade_rule_key,
     passport_rule_key,
     process_contract_rules,
@@ -191,7 +193,8 @@ def test_rule_key_invariant_matches_generated_events(app):
 
         eligibility = compute_grade_eligibility(employment)
         assert contract_rule_key(contract) in expected
-        assert grade_rule_key(history.id, eligibility["eligible_date"]) in expected
+        assert grade_preparation_rule_key(history.id, eligibility["eligible_date"]) in expected
+        assert grade_promotion_rule_key(history.id, eligibility["eligible_date"]) in expected
         assert passport_rule_key(passport) in expected
 
         stats = run_rule_engine(company.id)

@@ -34,6 +34,7 @@ class Person(db.Model, TimestampMixin):
     employments = db.relationship("Employment", back_populates="person")
     name_history = db.relationship("PersonNameHistory", back_populates="person")
     passports = db.relationship("Passport", back_populates="person")
+    tenure_awards = db.relationship("TenureAward", back_populates="person")
 
 
 class Employment(db.Model, TimestampMixin):
@@ -52,7 +53,6 @@ class Employment(db.Model, TimestampMixin):
     position_history = db.relationship("PositionHistory", back_populates="employment")
     contracts = db.relationship("Contract", back_populates="employment")
     grade_history = db.relationship("EmployeeGradeHistory", back_populates="employment")
-    tenure_awards = db.relationship("TenureAward", back_populates="employment")
     rewards = db.relationship("Reward", back_populates="employment")
     events = db.relationship("Event", back_populates="employment")
 

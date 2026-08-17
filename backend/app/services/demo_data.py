@@ -82,7 +82,9 @@ def clear_demo_data(company_id: int) -> None:
         EmployeeGradeHistory.query.filter(
             EmployeeGradeHistory.employment_id.in_(employment_ids)
         ).delete(synchronize_session=False)
-        TenureAward.query.filter(TenureAward.employment_id.in_(employment_ids)).delete(synchronize_session=False)
+        TenureAward.query.filter(TenureAward.company_id == company_id).delete(
+            synchronize_session=False
+        )
         PositionHistory.query.filter(PositionHistory.employment_id.in_(employment_ids)).delete(
             synchronize_session=False
         )
@@ -215,7 +217,7 @@ def seed_demo_data(force: bool = False) -> dict[str, int]:
             )
         )
 
-        awards = ensure_tenure_awards(employment.id, employment.hire_date)
+        awards = ensure_tenure_awards(person.id, employment.company_id)
         for award in awards:
             if award.milestone_years == 10 and employment.hire_date.year <= 2016:
                 award.is_received = True

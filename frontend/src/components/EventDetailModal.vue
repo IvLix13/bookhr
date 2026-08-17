@@ -39,7 +39,14 @@ const isContractReport = computed(() => {
   )
 })
 
-const gradeCompletion = computed(() => event.value?.grade_completion ?? null)
+const isGradePromotion = computed(
+  () =>
+    event.value?.event_type === 'grade' &&
+    event.value?.grade_event_kind !== 'preparation',
+)
+const gradeCompletion = computed(() =>
+  isGradePromotion.value ? (event.value?.grade_completion ?? null) : null,
+)
 const requiresGradeChoice = computed(
   () => gradeCompletion.value?.requires_selection === true,
 )

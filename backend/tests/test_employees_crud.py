@@ -128,7 +128,7 @@ def test_resolving_unknown_education_initializes_current_rank_policy(
         assert Event.query.filter_by(
             employment_id=employment_id,
             event_type=EventType.GRADE.value,
-        ).count() == 1
+        ).count() == 2
 
 
 def test_update_contract_end_recalculates_events(hr_client, seed_company):

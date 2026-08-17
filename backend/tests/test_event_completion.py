@@ -459,3 +459,89 @@ def test_attention_contract_item_carries_related_event(hr_client, seed_company, 
     assert items
     assert items[0]["category"] == "contracts"
     assert items[0]["event_id"] == event_id
+
+
+def test_grade_preparation_completion_does_not_promote(hr_client, seed_company, app):
+    with app.app_context():
+        junior, middle = _grade_pair()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Подготовка Грейда",
+            hire_date=date(2018, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status="yes",
+        )
+        db.session.add(
+            EmployeeGradeHistory(
+                employment_id=employment.id,
+                grade_id=junior.id,
+                assigned_date=date(2020, 1, 1),
+            )
+        )
+        from app.services.rule_engine import process_grade_rules
+
+        process_grade_rules(employment)
+        db.session.commit()
+        prep_event = Event.query.filter(
+            Event.rule_key.like("grade-preparation:%")
+        ).one()
+        event_id = prep_event.id
+        employment_id = employment.id
+        junior_id = junior.id
+
+    response = hr_client.post(f"/api/events/{event_id}/complete", json={})
+    assert response.status_code == 200
+
+    with app.app_context():
+        employment = db.session.get(Employment, employment_id)
+        current = get_current_grade(employment)
+        assert current is not None
+        assert current.grade_id == junior_id
+
+
+def test_grade_promotion_blocked_until_preparation_done(hr_client, seed_company, app):
+    with app.app_context():
+        junior, middle = _grade_pair()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Блокировка Грейда",
+            hire_date=date(2018, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status="yes",
+        )
+        db.session.add(
+            EmployeeGradeHistory(
+                employment_id=employment.id,
+                grade_id=junior.id,
+                assigned_date=date(2020, 1, 1),
+            )
+        )
+        from app.services.rule_engine import process_grade_rules
+
+        process_grade_rules(employment)
+        db.session.commit()
+        promotion_event = Event.query.filter(
+            Event.rule_key.like("grade-promotion:%")
+        ).one()
+        event_id = promotion_event.id
+        employment_id = employment.id
+        middle_id = middle.id
+
+    blocked = hr_client.post(f"/api/events/{event_id}/complete", json={})
+    assert blocked.status_code == 400
+    assert "подготовку документов" in blocked.get_json()["message"]
+
+    with app.app_context():
+        prep_event = Event.query.filter(
+            Event.rule_key.like("grade-preparation:%")
+        ).one()
+        prep_id = prep_event.id
+
+    assert hr_client.post(f"/api/events/{prep_id}/complete", json={}).status_code == 200
+    assert hr_client.post(f"/api/events/{event_id}/complete", json={}).status_code == 200
+
+    with app.app_context():
+        employment = db.session.get(Employment, employment_id)
+        assert get_current_grade(employment).grade_id == middle_id

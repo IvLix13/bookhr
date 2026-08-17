@@ -139,7 +139,7 @@ def test_confirm_import_runs_rule_engine(app, tmp_path):
         assert "report" in event_types
         assert "grade" in event_types
         assert "passport" in event_types
-        assert len(events) == 3
+        assert len(events) == 4
 
 
 def test_confirm_import_accepts_datetime_cells(app, tmp_path):
@@ -303,8 +303,11 @@ def test_new_employee_import_requires_university_value(app, tmp_path):
         assert "укажите ВУЗ" in job.rows[0].errors[0]
 
 
-def _tenure_map(employment_id: int) -> dict[int, TenureAward]:
-    awards = TenureAward.query.filter_by(employment_id=employment_id).all()
+def _tenure_map(person_id: int, company_id: int) -> dict[int, TenureAward]:
+    awards = TenureAward.query.filter_by(
+        person_id=person_id,
+        company_id=company_id,
+    ).all()
     return {award.milestone_years: award for award in awards}
 
 
@@ -327,7 +330,7 @@ def test_confirm_import_auto_marks_reached_tenure(app, tmp_path):
         assert job.summary["tenure_marked"] == 2
 
         person = Person.query.one()
-        awards = _tenure_map(person.employments[0].id)
+        awards = _tenure_map(person.id, company.id)
         assert awards[10].is_received is True
         assert awards[10].received_date == date(2020, 1, 1)
         assert awards[15].is_received is True
@@ -352,7 +355,7 @@ def test_confirm_import_can_disable_tenure_marking(app, tmp_path):
 
         assert job.summary["tenure_marked"] == 0
         person = Person.query.one()
-        awards = _tenure_map(person.employments[0].id)
+        awards = _tenure_map(person.id, company.id)
         assert all(not award.is_received for award in awards.values())
 
 
@@ -380,7 +383,7 @@ def test_confirm_import_update_existing_tenure_requires_flag(app, tmp_path):
         confirm_import(job1, update_existing_tenure=False)
 
         assert job1.summary["tenure_marked"] == 0
-        awards = _tenure_map(person.employments[0].id)
+        awards = _tenure_map(person.id, company.id)
         assert all(not award.is_received for award in awards.values())
 
         # Default (update existing on): reached milestones get marked.
@@ -392,7 +395,7 @@ def test_confirm_import_update_existing_tenure_requires_flag(app, tmp_path):
         confirm_import(job2)
 
         assert job2.summary["tenure_marked"] == 2
-        awards = _tenure_map(person.employments[0].id)
+        awards = _tenure_map(person.id, company.id)
         assert awards[10].is_received is True
         assert awards[15].is_received is True
         assert awards[20].is_received is False
@@ -423,7 +426,7 @@ def test_confirm_import_updates_hire_date_and_tenure_milestones(app, tmp_path):
         db.session.refresh(person)
         updated = person.employments[0]
         assert updated.hire_date == date(2010, 1, 1)
-        awards = _tenure_map(employment_id)
+        awards = _tenure_map(person.id, company.id)
         assert awards[10].milestone_date == date(2020, 1, 1)
         assert awards[10].is_received is True
         assert awards[15].milestone_date == date(2025, 1, 1)

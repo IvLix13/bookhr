@@ -10,12 +10,48 @@ from __future__ import annotations
 from datetime import date
 
 from app.extensions import db
-from app.models import Contract, EmployeeGradeHistory, Event, EventType
+from app.models import Contract, EmployeeGradeHistory, Event, EventStatus, EventType
 from app.services.audit import _current_user_id, log_audit
 from app.services.employees import get_active_contract, get_current_grade
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
-from app.services.rule_engine import recalculate_employment_events
+from app.services.rule_engine import (
+    grade_preparation_rule_key,
+    is_grade_preparation_event,
+    is_grade_promotion_event,
+    recalculate_employment_events,
+)
 from app.utils.dates import calculate_contract_end, today_moscow
+
+
+def grade_promotion_blocked_reason(event: Event) -> str | None:
+    """Return a user-facing reason when promotion must wait for preparation."""
+    if not is_grade_promotion_event(event) or not event.rule_key or not event.employment:
+        return None
+
+    eligibility = compute_grade_eligibility(event.employment)
+    if eligibility["blocked_reason"]:
+        return eligibility["blocked_reason"]
+
+    eligible_date = eligibility["eligible_date"]
+    grade_history_id = event.reference_id
+    if eligible_date is None or grade_history_id is None:
+        return None
+
+    if not _grade_preparation_completed(event, grade_history_id, eligible_date):
+        return "Сначала выполните подготовку документов на повышение грейда"
+    return None
+
+
+def _grade_preparation_completed(
+    event: Event,
+    grade_history_id: int,
+    eligible_date: date,
+) -> bool:
+    prep_key = grade_preparation_rule_key(grade_history_id, eligible_date)
+    prep_event = Event.query.filter_by(rule_key=prep_key).first()
+    if prep_event is None:
+        return True
+    return prep_event.status == EventStatus.COMPLETED.value
 
 
 def _promote_after_grade_review(
@@ -48,6 +84,15 @@ def _promote_after_grade_review(
     eligible_date = eligibility["eligible_date"]
     if not candidates or not eligible_date:
         return None
+
+    if event.rule_key and not _grade_preparation_completed(
+        event,
+        current.id,
+        eligible_date,
+    ):
+        raise ValueError(
+            "Сначала выполните подготовку документов на повышение грейда"
+        )
 
     if len(candidates) > 1 and target_grade_id is None:
         raise ValueError("Выберите следующий грейд")
@@ -148,10 +193,18 @@ def apply_completion_effects(
     assigned_grade = None
     extended_contract = None
     if event.event_type == EventType.GRADE.value:
-        assigned_grade = _promote_after_grade_review(
-            event,
-            target_grade_id=target_grade_id,
-        )
+        if is_grade_preparation_event(event):
+            assigned_grade = None
+        elif is_grade_promotion_event(event):
+            assigned_grade = _promote_after_grade_review(
+                event,
+                target_grade_id=target_grade_id,
+            )
+        else:
+            assigned_grade = _promote_after_grade_review(
+                event,
+                target_grade_id=target_grade_id,
+            )
     elif (
         event.event_type == EventType.REPORT.value
         and event.reference_type == "contract"
