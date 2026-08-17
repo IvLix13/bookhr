@@ -114,6 +114,30 @@ def test_employees_list_sort_by_full_name(admin_client, seed_company):
     assert names == sorted(names)
 
 
+def test_grades_search_and_sort_by_full_name(admin_client, seed_company):
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Коробов Кирилл",
+        hire_date=date(2020, 1, 1),
+        title="Инженер",
+    )
+    create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Другой Сотрудник",
+        hire_date=date(2020, 2, 1),
+        title="Аналитик",
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        "/api/grades?q=Короб&sort=full_name&direction=asc&page=1&per_page=25"
+    )
+
+    assert response.status_code == 200
+    items = response.get_json()["data"]["items"]
+    assert [item["full_name"] for item in items] == ["Коробов Кирилл"]
+
+
 def test_tenure_list_sort_by_full_name(admin_client, seed_company):
     create_person_with_employment(
         company_id=seed_company.id,

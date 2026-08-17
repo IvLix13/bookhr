@@ -9,7 +9,7 @@ from typing import Any, Callable, TypeVar
 from flask import jsonify, request
 from flask_login import current_user, login_required
 from sqlalchemy import exists
-from sqlalchemy.orm import Query
+from sqlalchemy.orm import Query, aliased
 from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Employment, Person, PersonNameHistory, RoleName
@@ -123,13 +123,17 @@ def apply_employment_name_search(query: Query[Any], q: str | None) -> Query[Any]
     if not q:
         return query
 
-    return query.filter(
-        exists().where(
-            PersonNameHistory.person_id == Employment.person_id,
-            PersonNameHistory.valid_to.is_(None),
-            PersonNameHistory.full_name.ilike(f"%{q}%"),
+    searched_name = aliased(PersonNameHistory)
+    name_exists = (
+        exists()
+        .where(
+            searched_name.person_id == Employment.person_id,
+            searched_name.valid_to.is_(None),
+            searched_name.full_name.ilike(f"%{q}%"),
         )
+        .correlate(Employment)
     )
+    return query.filter(name_exists)
 
 
 def paginate_query(query, schema_fn, page: int = 1, per_page: int = 50):
