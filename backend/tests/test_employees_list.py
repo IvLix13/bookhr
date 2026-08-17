@@ -130,7 +130,7 @@ def test_grades_search_and_sort_by_full_name(admin_client, seed_company):
     db.session.commit()
 
     response = admin_client.get(
-        "/api/grades?q=короб&sort=full_name&direction=asc&page=1&per_page=25"
+        "/api/grades?q=Короб&sort=full_name&direction=asc&page=1&per_page=25"
     )
 
     assert response.status_code == 200
