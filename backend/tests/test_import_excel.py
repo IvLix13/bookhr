@@ -25,7 +25,9 @@ from app.services.import_excel import (
     annotate_unknown_grades,
     confirm_import,
     dry_run_import,
+    parse_employment_periods,
     parse_workbook,
+    validate_employment_periods,
 )
 from app.utils.dates import parse_flexible_date
 
@@ -822,4 +824,77 @@ def test_import_with_only_contract_end_calculates_term_years(admin_client, seed_
         assert contract.term_years == 2.0
         assert contract.end_date == date(2026, 1, 10)
 
+
+def test_validate_employment_periods_requires_dismissal_before_next():
+    errors = validate_employment_periods(
+        {
+            "period_1_hire": "01.01.2010",
+            "period_2_hire": "01.01.2018",
+        }
+    )
+    assert errors
+    assert any("периода 1" in item for item in errors)
+
+
+def test_confirm_import_creates_three_employment_periods(app, tmp_path):
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "periods.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.append(
+            [
+                "ФИО",
+                "Должность",
+                "ВУЗ",
+                "Начало работы 1",
+                "Увольнение 1",
+                "Начало работы 2",
+                "Увольнение 2",
+                "Начало работы 3",
+                "Начало работы",
+            ]
+        )
+        ws.append(
+            [
+                "Периодов Три Раза",
+                "Инженер",
+                "Да",
+                "01.01.2000",
+                "31.12.2004",
+                "01.01.2010",
+                "31.12.2014",
+                "01.01.2020",
+                "01.01.2020",
+            ]
+        )
+        wb.save(path)
+
+        job = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
+        db.session.add(job)
+        db.session.flush()
+        rows = parse_workbook(path)
+        assert parse_employment_periods(rows[0]) == [
+            (date(2000, 1, 1), date(2004, 12, 31)),
+            (date(2010, 1, 1), date(2014, 12, 31)),
+            (date(2020, 1, 1), None),
+        ]
+        dry_run_import(job, rows)
+        db.session.commit()
+        assert job.summary["create"] == 1
+
+        confirm_import(job)
+        db.session.commit()
+
+        person = Person.query.one()
+        from app.models import Employment, EmploymentStatus
+        from app.services.tenure import compute_milestone_date, employment_periods, total_tenure_years
+
+        periods = employment_periods(person.id, company.id)
+        assert len(periods) == 3
+        assert periods[0].dismissal_date == date(2004, 12, 31)
+        assert periods[1].dismissal_date == date(2014, 12, 31)
+        assert periods[2].status == EmploymentStatus.ACTIVE.value
+        assert total_tenure_years(person.id, company.id, date(2024, 1, 1)) == 13
+        assert compute_milestone_date(person.id, company.id, 10) == date(2022, 1, 1)
 

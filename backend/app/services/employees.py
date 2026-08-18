@@ -25,6 +25,11 @@ from app.models import (
 )
 from app.services.audit import log_audit
 from app.services.grades import assign_grade_to_employment
+from app.services.tenure import (
+    MAX_EMPLOYMENT_PERIODS,
+    active_employment,
+    employment_periods,
+)
 from app.utils.dates import calculate_contract_end, calculate_term_years, today_moscow
 
 
@@ -333,3 +338,56 @@ def rehire_person(
     )
     log_audit("rehire", "employment", employment.id, None, {"hire_date": str(hire_date)})
     return employment
+
+
+def sync_employment_periods_from_import(
+    person: Person,
+    company_id: int,
+    periods: list[tuple[date, date | None]],
+    *,
+    title: str,
+    position_grade_id: int | None = None,
+) -> Employment:
+    """Create or update up to three employment periods from import data."""
+    if not periods:
+        raise ValueError("Не указаны периоды работы")
+    if len(periods) > MAX_EMPLOYMENT_PERIODS:
+        raise ValueError("Можно указать не более 3 периодов работы")
+
+    existing = employment_periods(person.id, company_id)
+    if not existing:
+        raise ValueError("Не найдено трудоустройство для синхронизации периодов")
+    if len(existing) > len(periods):
+        raise ValueError(
+            "Импорт не удаляет ранее заведённые периоды работы — укажите все периоды"
+        )
+
+    for index, (hire, dismissal) in enumerate(periods):
+        if hire is None:
+            raise ValueError(f"Для периода {index + 1} укажите дату начала работы")
+
+        if index < len(existing):
+            employment = existing[index]
+        else:
+            employment = rehire_person(
+                person,
+                company_id,
+                hire,
+                title,
+                position_grade_id,
+            )
+            existing.append(employment)
+
+        employment.hire_date = hire
+        if dismissal is not None:
+            employment.status = EmploymentStatus.DISMISSED.value
+            employment.dismissal_date = dismissal
+        else:
+            employment.status = EmploymentStatus.ACTIVE.value
+            employment.dismissal_date = None
+            employment.dismissal_reason = None
+
+    active = active_employment(person.id, company_id)
+    if active:
+        return active
+    return existing[-1]

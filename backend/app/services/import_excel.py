@@ -15,6 +15,7 @@ from app.models import (
     Contract,
     EducationStatus,
     Employment,
+    EmploymentStatus,
     GradeCatalog,
     ImportJob,
     ImportRow,
@@ -31,12 +32,19 @@ from app.services.employees import (
     get_current_position,
     sync_active_contract,
     sync_actual_grade,
+    sync_employment_periods_from_import,
     sync_passport,
     update_position,
 )
 from app.services.grades import resolve_unknown_education_snapshot
 from app.services.rule_engine import run_rule_engine
-from app.services.tenure import auto_mark_reached_awards, ensure_tenure_awards
+from app.services.tenure import (
+    MAX_EMPLOYMENT_PERIODS,
+    auto_mark_reached_awards,
+    count_employment_periods,
+    ensure_tenure_awards,
+    employment_periods,
+)
 from app.utils.dates import (
     calculate_contract_end,
     calculate_term_years,
@@ -72,13 +80,41 @@ COLUMN_MAP = {
     "grade_date": "grade_date",
     "начало работы": "hire_date",
     "hire_date": "hire_date",
+    "начало работы 1": "period_1_hire",
+    "увольнение 1": "period_1_dismissal",
+    "начало работы 2": "period_2_hire",
+    "увольнение 2": "period_2_dismissal",
+    "начало работы 3": "period_3_hire",
+    "увольнение 3": "period_3_dismissal",
+    "period_1_hire": "period_1_hire",
+    "period_1_dismissal": "period_1_dismissal",
+    "period_2_hire": "period_2_hire",
+    "period_2_dismissal": "period_2_dismissal",
+    "period_3_hire": "period_3_hire",
+    "period_3_dismissal": "period_3_dismissal",
     "срок окончания паспорта": "passport_until",
     "passport_until": "passport_until",
     "№ п/п": "row_num",
     "row_num": "row_num",
 }
 
-DATE_FIELDS = {"hire_date", "contract_end", "grade_date", "passport_until"}
+DATE_FIELDS = {
+    "hire_date",
+    "contract_end",
+    "grade_date",
+    "passport_until",
+    "period_1_hire",
+    "period_1_dismissal",
+    "period_2_hire",
+    "period_2_dismissal",
+    "period_3_hire",
+    "period_3_dismissal",
+}
+PERIOD_FIELD_GROUPS = (
+    ("period_1_hire", "period_1_dismissal"),
+    ("period_2_hire", "period_2_dismissal"),
+    ("period_3_hire", "period_3_dismissal"),
+)
 GRADE_FIELDS = ("position_grade", "actual_grade")
 UNKNOWN_GRADE_WARNING_PREFIX = "Грейд «"
 UNKNOWN_GRADE_WARNING_SUFFIX = "» не найден в справочнике"
@@ -119,6 +155,82 @@ def _parse_education_status(value: Any) -> str | None:
 
 def _parse_date(value: Any) -> date | None:
     return parse_flexible_date(value)
+
+
+def _period_columns_used(data: dict[str, Any]) -> bool:
+    return any(data.get(field) not in (None, "") for field, _ in PERIOD_FIELD_GROUPS)
+
+
+def parse_employment_periods(data: dict[str, Any]) -> list[tuple[date, date | None]] | None:
+    """Return imported employment periods or ``None`` when legacy hire_date mode is used."""
+    if not _period_columns_used(data):
+        return None
+
+    periods: list[tuple[date, date | None]] = []
+    for hire_field, dismiss_field in PERIOD_FIELD_GROUPS:
+        hire = _parse_date(data.get(hire_field))
+        dismiss = _parse_date(data.get(dismiss_field))
+        if hire is None and dismiss is None:
+            break
+        periods.append((hire, dismiss))
+    return periods
+
+
+def validate_employment_periods(
+    data: dict[str, Any],
+    *,
+    existing_period_count: int | None = None,
+) -> list[str]:
+    errors: list[str] = []
+    periods = parse_employment_periods(data)
+    if periods is None:
+        return errors
+
+    if not periods or periods[0][0] is None:
+        errors.append("Для периода 1 укажите дату начала работы")
+        return errors
+
+    if len(periods) > MAX_EMPLOYMENT_PERIODS:
+        errors.append("Можно указать не более 3 периодов работы")
+
+    previous_dismissal: date | None = None
+    for index, (hire, dismiss) in enumerate(periods, start=1):
+        if hire is None:
+            errors.append(f"Для периода {index} укажите дату начала работы")
+            continue
+        if dismiss is not None and dismiss < hire:
+            errors.append(f"Увольнение периода {index} не может быть раньше начала")
+        if index < len(periods) and dismiss is None:
+            errors.append(
+                f"Укажите дату увольнения для периода {index} перед следующим периодом"
+            )
+        if previous_dismissal is not None and hire <= previous_dismissal:
+            errors.append(
+                f"Начало периода {index} должно быть позже увольнения предыдущего периода"
+            )
+        previous_dismissal = dismiss
+
+    legacy_hire = _parse_date(data.get("hire_date"))
+    last_hire = periods[-1][0]
+    if legacy_hire and last_hire and legacy_hire != last_hire:
+        errors.append(
+            "Колонка «Начало работы» должна совпадать с началом последнего периода"
+        )
+
+    if existing_period_count is not None and len(periods) < existing_period_count:
+        errors.append(
+            "Импорт не удаляет ранее заведённые периоды работы — укажите все периоды"
+        )
+
+    return errors
+
+
+def effective_hire_date(data: dict[str, Any]) -> date | None:
+    periods = parse_employment_periods(data)
+    if periods:
+        last_hire = periods[-1][0]
+        return last_hire
+    return _parse_date(data.get("hire_date"))
 
 
 def _normalize_grade_name(name: str | None) -> str:
@@ -239,8 +351,10 @@ def validate_row(data: dict[str, Any]) -> tuple[list[str], list[str]]:
     if not data.get("full_name"):
         errors.append("Не указано ФИО")
 
-    if not _parse_date(data.get("hire_date")):
+    if not effective_hire_date(data):
         errors.append("Не указана или некорректна дата начала работы")
+
+    errors.extend(validate_employment_periods(data))
 
     education_raw = data.get("education_status")
     if (
@@ -444,15 +558,18 @@ def confirm_import(
                 continue
 
             data = row.raw_data or {}
-            hire_date = _parse_date(data.get("hire_date"))
+            hire_date = effective_hire_date(data)
             if not hire_date:
                 bump_skip("no_hire_date")
                 _mark_row_result(row, "skipped", "Некорректная дата начала работы")
                 continue
 
+            periods = parse_employment_periods(data)
             person: Person | None = None
             employment: Employment | None = None
             created = False
+            title = str(data.get("title") or "Не указана")
+            position_grade_id = _resolve_grade_id(data.get("position_grade"))
 
             if action == "update":
                 if not person_uuid:
@@ -464,14 +581,34 @@ def confirm_import(
                     bump_skip("person_not_found")
                     _mark_row_result(row, "skipped", "Сотрудник для обновления не найден")
                     continue
-                employment = (
-                    Employment.query.filter_by(
-                        person_id=person.id,
-                        company_id=job.company_id,
+                if periods is not None:
+                    period_errors = validate_employment_periods(
+                        data,
+                        existing_period_count=count_employment_periods(
+                            person.id,
+                            job.company_id,
+                        ),
                     )
-                    .order_by(Employment.hire_date.desc())
-                    .first()
-                )
+                    if period_errors:
+                        bump_skip("invalid_employment_periods")
+                        _mark_row_result(row, "skipped", period_errors[0])
+                        continue
+                    employment = sync_employment_periods_from_import(
+                        person,
+                        job.company_id,
+                        periods,
+                        title=title,
+                        position_grade_id=position_grade_id,
+                    )
+                else:
+                    employment = (
+                        Employment.query.filter_by(
+                            person_id=person.id,
+                            company_id=job.company_id,
+                        )
+                        .order_by(Employment.hire_date.desc())
+                        .first()
+                    )
             elif action == "create":
                 education_status = _parse_education_status(data.get("education_status"))
                 if education_status is None:
@@ -482,16 +619,25 @@ def confirm_import(
                         "Для нового сотрудника укажите ВУЗ: «Да» или «Нет»",
                     )
                     continue
+                initial_hire = periods[0][0] if periods else hire_date
                 person, employment = create_person_with_employment(
                     company_id=job.company_id,
                     full_name=str(data.get("full_name", "")),
-                    hire_date=hire_date,
-                    title=str(data.get("title") or "Не указана"),
-                    position_grade_id=_resolve_grade_id(data.get("position_grade")),
+                    hire_date=initial_hire,
+                    title=title,
+                    position_grade_id=position_grade_id,
                     education_status=education_status,
                 )
                 row.person_uuid = person.uuid
                 created = True
+                if periods is not None:
+                    employment = sync_employment_periods_from_import(
+                        person,
+                        job.company_id,
+                        periods,
+                        title=title,
+                        position_grade_id=position_grade_id,
+                    )
             else:
                 bump_skip("unknown_action")
                 _mark_row_result(row, "skipped", f"Неизвестное действие: {action}")
@@ -514,20 +660,29 @@ def confirm_import(
                 person.education_status = education_status
                 resolve_unknown_education_snapshot(employment, education_status)
 
-            if not created:
+            if not created and periods is None:
                 if hire_date != employment.hire_date:
                     employment.hire_date = hire_date
-                title = str(data.get("title") or "").strip()
-                if title:
+                if title.strip():
                     current_position = get_current_position(employment)
                     current_title = current_position.title if current_position else ""
                     if title != current_title:
                         update_position(
                             employment,
                             title,
-                            _resolve_grade_id(data.get("position_grade")),
+                            position_grade_id,
                             hire_date,
                         )
+            elif not created and periods is not None and title.strip():
+                current_position = get_current_position(employment)
+                current_title = current_position.title if current_position else ""
+                if title != current_title:
+                    update_position(
+                        employment,
+                        title,
+                        position_grade_id,
+                        employment.hire_date,
+                    )
 
             contract_end = _parse_date(data.get("contract_end"))
             term_years_raw = data.get("contract_term_years")
@@ -598,22 +753,53 @@ def export_template(company_id: int, path: Path) -> None:
         "Срок договора (лет)",
         "Окончание договора",
         "Дата получения текущего грейда",
+        "Начало работы 1",
+        "Увольнение 1",
+        "Начало работы 2",
+        "Увольнение 2",
+        "Начало работы 3",
+        "Увольнение 3",
         "Начало работы",
         "Срок окончания паспорта",
     ]
     ws.append(headers)
 
+    seen_person_ids: set[int] = set()
+    row_num = 0
     employments = Employment.query.filter_by(company_id=company_id).all()
-    for idx, employment in enumerate(employments, start=1):
+    for employment in employments:
         person = employment.person
-        position = get_current_position(employment)
-        contract = get_active_contract(employment)
-        grade = get_current_grade(employment)
+        if person.id in seen_person_ids:
+            continue
+        seen_person_ids.add(person.id)
+        row_num += 1
+
+        periods = employment_periods(person.id, company_id)
+        active = next(
+            (item for item in reversed(periods) if item.status == EmploymentStatus.ACTIVE.value),
+            periods[-1] if periods else employment,
+        )
+        position = get_current_position(active)
+        contract = get_active_contract(active)
+        grade = get_current_grade(active)
         passport = get_active_passport(person)
+
+        period_cells: list[str] = []
+        for index in range(MAX_EMPLOYMENT_PERIODS):
+            if index < len(periods):
+                period = periods[index]
+                period_cells.append(format_display_date_ru(period.hire_date))
+                period_cells.append(
+                    format_display_date_ru(period.dismissal_date)
+                    if period.dismissal_date
+                    else ""
+                )
+            else:
+                period_cells.extend(["", ""])
 
         ws.append(
             [
-                idx,
+                row_num,
                 get_current_name(person),
                 position.title if position else "",
                 position.position_grade.name if position and position.position_grade else "",
@@ -628,7 +814,8 @@ def export_template(company_id: int, path: Path) -> None:
                 contract.term_years if contract and contract.term_years is not None else "",
                 format_display_date_ru(contract.end_date) if contract else "",
                 format_display_date_ru(grade.assigned_date) if grade else "",
-                format_display_date_ru(employment.hire_date),
+                *period_cells,
+                format_display_date_ru(active.hire_date),
                 format_display_date_ru(passport.valid_until) if passport else "",
             ]
         )
