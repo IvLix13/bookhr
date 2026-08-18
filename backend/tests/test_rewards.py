@@ -53,6 +53,27 @@ def test_create_reward_viewer_forbidden(viewer_client, seed_company):
     assert response.status_code == 403
 
 
+def test_create_reward_accepts_extra_status(hr_client, seed_company):
+    person, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Extra Status",
+        hire_date=date(2020, 1, 1),
+        title="Инженер",
+    )
+    db.session.commit()
+
+    response = hr_client.post(
+        "/api/rewards",
+        json={
+            "employment_id": employment.id,
+            "reward_type": "Грамота",
+            "status": RewardStatus.EXTRA_2.value,
+        },
+    )
+    assert response.status_code == 201
+    assert response.get_json()["data"]["status"] == RewardStatus.EXTRA_2.value
+
+
 def test_update_reward_status_to_delivered_sets_date(hr_client, seed_company, monkeypatch):
     employment = _create_employment(seed_company.id)
     monkeypatch.setattr("app.services.rewards.today_moscow", lambda: date(2026, 7, 28))

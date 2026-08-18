@@ -11,7 +11,33 @@ from app.models import Employment, EmploymentStatus, TenureAward
 from app.utils.dates import today_moscow
 
 MILESTONES = (10, 15, 20)
+LOWER_MILESTONES: dict[int, tuple[int, ...]] = {
+    10: (),
+    15: (10,),
+    20: (10, 15),
+}
 MAX_EMPLOYMENT_PERIODS = 3
+
+
+def is_tenure_award_pending(
+    award: TenureAward,
+    person_awards: dict[int, TenureAward],
+    reference: date | None = None,
+) -> bool:
+    """Pending for stats/attention: due date reached and all lower milestones received."""
+    if award.is_received:
+        return False
+
+    ref = reference or today_moscow()
+    if award.milestone_date > ref:
+        return False
+
+    for lower_years in LOWER_MILESTONES.get(award.milestone_years, ()):
+        lower_award = person_awards.get(lower_years)
+        if not lower_award or not lower_award.is_received:
+            return False
+
+    return True
 
 
 def employment_periods(person_id: int, company_id: int) -> list[Employment]:

@@ -116,6 +116,9 @@ async function submit() {
         <option value="not_delivered">Не вручено</option>
         <option value="in_hr">В кадрах</option>
         <option value="delivered">Вручено</option>
+        <option value="extra_1">Доп. статус 1</option>
+        <option value="extra_2">Доп. статус 2</option>
+        <option value="extra_3">Доп. статус 3</option>
       </select>
     </label>
     <label>

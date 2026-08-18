@@ -102,6 +102,79 @@ def test_dashboard_stats_tenure_and_grades_per_company(seed_company, monkeypatch
     assert stats["tenure"]["received_in_period"] == 1
 
 
+def test_dashboard_stats_tenure_pending_requires_due_date_and_lower_awards(
+    seed_company,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.services.statistics.today_moscow", lambda: date(2026, 7, 24))
+
+    person, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Стаж Статистика",
+        hire_date=date(2010, 1, 1),
+        title="Аналитик",
+    )
+    db.session.add_all(
+        [
+            TenureAward(
+                person_id=employment.person_id,
+                company_id=employment.company_id,
+                milestone_years=10,
+                milestone_date=date(2020, 1, 1),
+                is_received=True,
+                received_date=date(2020, 1, 1),
+            ),
+            TenureAward(
+                person_id=employment.person_id,
+                company_id=employment.company_id,
+                milestone_years=15,
+                milestone_date=date(2025, 1, 1),
+                is_received=False,
+            ),
+            TenureAward(
+                person_id=employment.person_id,
+                company_id=employment.company_id,
+                milestone_years=20,
+                milestone_date=date(2030, 1, 1),
+                is_received=False,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    stats = build_dashboard_stats(seed_company.id)
+
+    assert stats["tenure"]["pending"]["10"] == 0
+    assert stats["tenure"]["pending"]["15"] == 1
+    assert stats["tenure"]["pending"]["20"] == 0
+    assert stats["tenure"]["received"]["10"] == 1
+
+
+def test_dashboard_stats_tenure_pending_skips_without_lower_award(seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.statistics.today_moscow", lambda: date(2026, 7, 24))
+
+    person, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Без Десятилетки",
+        hire_date=date(2010, 1, 1),
+        title="Аналитик",
+    )
+    db.session.add(
+        TenureAward(
+            person_id=employment.person_id,
+            company_id=employment.company_id,
+            milestone_years=15,
+            milestone_date=date(2020, 1, 1),
+            is_received=False,
+        )
+    )
+    db.session.commit()
+
+    stats = build_dashboard_stats(seed_company.id)
+
+    assert stats["tenure"]["pending"]["15"] == 0
+
+
 def test_stats_api_requires_auth(client):
     response = client.get("/api/stats")
     assert response.status_code in (401, 302)

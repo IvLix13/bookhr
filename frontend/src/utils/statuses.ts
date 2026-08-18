@@ -1,6 +1,12 @@
 export type PassportStatus = 'ok' | 'requires_preparation' | 'expired'
 export type EventStatus = 'planned' | 'completed' | 'cancelled' | 'overdue'
-export type RewardStatus = 'not_delivered' | 'in_hr' | 'delivered'
+export type RewardStatus =
+  | 'not_delivered'
+  | 'in_hr'
+  | 'delivered'
+  | 'extra_1'
+  | 'extra_2'
+  | 'extra_3'
 export type BadgeVariant = '' | 'success' | 'warning' | 'danger'
 
 export interface StatusMeta {
@@ -25,6 +31,9 @@ const REWARD_STATUS_MAP: Record<RewardStatus, StatusMeta> = {
   not_delivered: { label: 'Не вручено', variant: '' },
   in_hr: { label: 'В кадрах', variant: 'warning' },
   delivered: { label: 'Вручено', variant: 'success' },
+  extra_1: { label: 'Доп. статус 1', variant: '' },
+  extra_2: { label: 'Доп. статус 2', variant: '' },
+  extra_3: { label: 'Доп. статус 3', variant: '' },
 }
 
 const PASSPORT_STATUS_UNKNOWN: StatusMeta = {
@@ -65,9 +74,14 @@ export function getRewardStatusMeta(status: string | null | undefined): StatusMe
       return REWARD_STATUS_MAP.in_hr
     case 'delivered':
       return REWARD_STATUS_MAP.delivered
+    case 'extra_1':
+      return REWARD_STATUS_MAP.extra_1
+    case 'extra_2':
+      return REWARD_STATUS_MAP.extra_2
+    case 'extra_3':
+      return REWARD_STATUS_MAP.extra_3
     default: {
-      const _exhaustive: never = status as never
-      return { label: String(_exhaustive), variant: '' }
+      return { label: status, variant: '' }
     }
   }
 }

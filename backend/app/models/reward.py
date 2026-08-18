@@ -12,6 +12,10 @@ class RewardStatus(str, Enum):
     NOT_DELIVERED = "not_delivered"
     IN_HR = "in_hr"
     DELIVERED = "delivered"
+    # Placeholder codes — rename labels in REWARD_STATUS_LABELS (see docs/reward-statuses.md).
+    EXTRA_1 = "extra_1"
+    EXTRA_2 = "extra_2"
+    EXTRA_3 = "extra_3"
 
 
 class Reward(db.Model, TimestampMixin):

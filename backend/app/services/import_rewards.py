@@ -43,12 +43,21 @@ STATUS_ALIASES = {
     "in_hr": RewardStatus.IN_HR.value,
     "вручено": RewardStatus.DELIVERED.value,
     "delivered": RewardStatus.DELIVERED.value,
+    "доп. статус 1": RewardStatus.EXTRA_1.value,
+    "extra_1": RewardStatus.EXTRA_1.value,
+    "доп. статус 2": RewardStatus.EXTRA_2.value,
+    "extra_2": RewardStatus.EXTRA_2.value,
+    "доп. статус 3": RewardStatus.EXTRA_3.value,
+    "extra_3": RewardStatus.EXTRA_3.value,
 }
 
 STATUS_LABELS = {
     RewardStatus.NOT_DELIVERED.value: "Не вручено",
     RewardStatus.IN_HR.value: "В кадрах",
     RewardStatus.DELIVERED.value: "Вручено",
+    RewardStatus.EXTRA_1.value: "Доп. статус 1",
+    RewardStatus.EXTRA_2.value: "Доп. статус 2",
+    RewardStatus.EXTRA_3.value: "Доп. статус 3",
 }
 
 

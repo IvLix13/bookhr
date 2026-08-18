@@ -120,7 +120,13 @@ export interface ContractRow {
   } | null
 }
 
-export type RewardStatus = 'not_delivered' | 'in_hr' | 'delivered'
+export type RewardStatus =
+  | 'not_delivered'
+  | 'in_hr'
+  | 'delivered'
+  | 'extra_1'
+  | 'extra_2'
+  | 'extra_3'
 
 export interface RewardRow {
   id: number

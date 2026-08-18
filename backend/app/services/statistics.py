@@ -19,6 +19,7 @@ from app.services.employees import get_active_contract, get_active_passport, get
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status
 from app.services.events import effective_event_status
+from app.services.tenure import is_tenure_award_pending
 from app.utils.dates import today_moscow
 
 
@@ -137,12 +138,17 @@ def build_dashboard_stats(
     tenure_pending = {10: 0, 15: 0, 20: 0}
     tenure_received = {10: 0, 15: 0, 20: 0}
     awards = TenureAward.query.filter_by(company_id=company_id).all()
+    awards_by_person: dict[tuple[int, int], dict[int, TenureAward]] = defaultdict(dict)
+    for award in awards:
+        awards_by_person[(award.person_id, award.company_id)][award.milestone_years] = award
+
     for award in awards:
         if award.milestone_years not in tenure_pending:
             continue
+        person_awards = awards_by_person[(award.person_id, award.company_id)]
         if award.is_received:
             tenure_received[award.milestone_years] += 1
-        else:
+        elif is_tenure_award_pending(award, person_awards, today):
             tenure_pending[award.milestone_years] += 1
 
     passport_counts = {"ok": 0, "requires_preparation": 0, "expired": 0, "missing": 0}

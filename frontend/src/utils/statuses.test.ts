@@ -34,6 +34,7 @@ describe('status dictionaries', () => {
     expect(getRewardStatusMeta('not_delivered')).toEqual({ label: 'Не вручено', variant: '' })
     expect(getRewardStatusMeta('in_hr')).toEqual({ label: 'В кадрах', variant: 'warning' })
     expect(getRewardStatusMeta('delivered')).toEqual({ label: 'Вручено', variant: 'success' })
+    expect(getRewardStatusMeta('extra_1')).toEqual({ label: 'Доп. статус 1', variant: '' })
   })
 
   it('maps contract report display statuses', () => {

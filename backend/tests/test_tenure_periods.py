@@ -12,6 +12,7 @@ from app.services.tenure import (
     continuous_milestone_reached_date,
     ensure_tenure_awards,
     is_tenure_award_auto_eligible,
+    is_tenure_award_pending,
     total_tenure_years,
 )
 
@@ -147,6 +148,27 @@ def test_milestone_date_within_first_period(seed_company):
     db.session.commit()
 
     assert compute_milestone_date(person.id, seed_company.id, 10) == date(2010, 1, 1)
+
+
+def test_tenure_award_pending_requires_lower_milestones(seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+
+    person, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Pending Logic",
+        hire_date=date(2010, 1, 1),
+        title="Инженер",
+    )
+    awards = ensure_tenure_awards(person.id, seed_company.id)
+    by_years = {award.milestone_years: award for award in awards}
+    by_years[10].is_received = True
+    by_years[10].received_date = date(2020, 1, 1)
+    db.session.commit()
+
+    assert is_tenure_award_pending(by_years[15], by_years) is True
+    assert is_tenure_award_pending(by_years[20], by_years) is False
+    by_years[15].is_received = True
+    assert is_tenure_award_pending(by_years[20], by_years) is False
 
 
 def test_rehire_limited_to_three_periods(hr_client, seed_company, app):
