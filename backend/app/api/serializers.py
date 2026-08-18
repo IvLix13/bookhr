@@ -204,6 +204,17 @@ def passport_row_to_dict(person: Person, employment: Employment | None = None) -
     }
 
 
+def tenure_award_to_dict(award: TenureAward) -> dict:
+    return {
+        "id": award.id,
+        "person_id": award.person_id,
+        "milestone_years": award.milestone_years,
+        "milestone_date": award.milestone_date.isoformat(),
+        "is_received": award.is_received,
+        "received_date": award.received_date.isoformat() if award.received_date else None,
+    }
+
+
 def tenure_row_to_dict(employment: Employment) -> dict:
     person_id = employment.person_id
     company_id = employment.company_id

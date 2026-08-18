@@ -199,6 +199,11 @@ class UpdatePassportSchema(BaseSchema):
     received_date = DateField(allow_none=True)
 
 
+class UpdateTenureAwardSchema(BaseSchema):
+    is_received = fields.Bool()
+    received_date = DateField(allow_none=True)
+
+
 class NotificationRuleSchema(BaseSchema):
     room_token = fields.Str(required=True, validate=validate.Length(min=1, max=128))
     room_name = fields.Str(allow_none=True)
