@@ -4,7 +4,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0011_tenure_periods_and_grade_events"
+revision = "0011_tenure_person_scope"
 down_revision = "0010_grade_policy_and_ranking"
 branch_labels = None
 depends_on = None
