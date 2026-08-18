@@ -62,6 +62,7 @@ class EventActionSchema(BaseSchema):
     extension_term_years = fields.Float(allow_none=True)
     new_end_date = DateField(allow_none=True)
     target_grade_id = fields.Int(allow_none=True)
+    new_passport_valid_until = DateField(allow_none=True)
 
 
 class CreateEmployeeSchema(BaseSchema):

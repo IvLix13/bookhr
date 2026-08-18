@@ -201,6 +201,39 @@ describe('EventDetailModal', () => {
     expect(completeEvent).toHaveBeenCalledWith(7, undefined, { target_grade_id: 3 })
   })
 
+  it('completes passport preparation with new valid until date', async () => {
+    const passportEvent: EventItem = {
+      ...plannedEvent,
+      event_type: 'passport',
+      title: 'Подготовка документов для паспорта: Иванов',
+      reference_type: 'passport',
+      reference_id: 5,
+      passport_completion: {
+        current_valid_until: '2026-09-01',
+        requires_new_date: true,
+      },
+    }
+    getEvent.mockResolvedValueOnce(passportEvent)
+    const wrapper = await mountModal('hr')
+
+    const dateInput = document.body.querySelector('#new-passport-date') as HTMLInputElement
+    expect(dateInput).toBeTruthy()
+    dateInput.value = '2031-06-01'
+    dateInput.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+
+    const completeBtn = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Выполнить'),
+    )!
+    await completeBtn.click()
+    await flushPromises()
+
+    expect(completeEvent).toHaveBeenCalledWith(7, undefined, {
+      new_passport_valid_until: '2031-06-01',
+    })
+    expect(wrapper.emitted('changed')).toBeTruthy()
+  })
+
   it('shows edit and delete for manual open events', async () => {
     getEvent.mockResolvedValueOnce({ ...plannedEvent, source: 'manual' })
     await mountModal('hr')

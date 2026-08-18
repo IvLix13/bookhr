@@ -30,6 +30,7 @@ const actionBusy = ref(false)
 const comment = ref('')
 const extensionTermYears = ref('1')
 const targetGradeId = ref('')
+const newPassportValidUntil = ref('')
 const editing = ref(false)
 
 const isContractReport = computed(() => {
@@ -52,6 +53,12 @@ const gradeCompletion = computed(() =>
 const requiresGradeChoice = computed(
   () => gradeCompletion.value?.requires_selection === true,
 )
+
+const isPassportPreparation = computed(
+  () => event.value?.passport_completion?.requires_new_date === true,
+)
+const passportCompletion = computed(() => event.value?.passport_completion ?? null)
+const requiresPassportDate = computed(() => isPassportPreparation.value)
 
 const { activate, deactivate } = useFocusTrap(modalRef, () => props.open)
 
@@ -110,6 +117,7 @@ watch(
       comment.value = ''
       extensionTermYears.value = '1'
       targetGradeId.value = ''
+      newPassportValidUntil.value = ''
       editing.value = false
       void loadEvent()
     } else {
@@ -118,6 +126,7 @@ watch(
       comment.value = ''
       extensionTermYears.value = '1'
       targetGradeId.value = ''
+      newPassportValidUntil.value = ''
       editing.value = false
     }
   },
@@ -175,6 +184,9 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
         if (requiresGradeChoice.value && !targetGradeId.value) {
           throw new Error('Выберите следующий грейд')
         }
+        if (requiresPassportDate.value && !newPassportValidUntil.value) {
+          throw new Error('Укажите новый срок действия паспорта')
+        }
         const termYears =
           isContractReport.value && extensionTermYears.value
             ? Number(extensionTermYears.value)
@@ -183,6 +195,9 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
           ...(termYears !== undefined ? { extension_term_years: termYears } : {}),
           ...(targetGradeId.value
             ? { target_grade_id: Number(targetGradeId.value) }
+            : {}),
+          ...(newPassportValidUntil.value
+            ? { new_passport_valid_until: newPassportValidUntil.value }
             : {}),
         }
         event.value = (
@@ -370,6 +385,20 @@ async function onUpdated() {
                 <p v-if="gradeCompletion?.blocked_reason" class="state error inline">
                   {{ gradeCompletion.blocked_reason }}
                 </p>
+                <div v-if="isPassportPreparation" class="extension-row passport-row">
+                  <label for="new-passport-date">Новый срок паспорта:</label>
+                  <input
+                    id="new-passport-date"
+                    v-model="newPassportValidUntil"
+                    type="date"
+                    :disabled="actionBusy"
+                    :required="requiresPassportDate"
+                  />
+                </div>
+                <p v-if="passportCompletion?.current_valid_until" class="hint inline">
+                  Текущий срок:
+                  {{ formatShortDate(passportCompletion.current_valid_until) }}
+                </p>
                 <input
                   v-model="comment"
                   type="text"
@@ -384,7 +413,8 @@ async function onUpdated() {
                     :disabled="
                       actionBusy ||
                       Boolean(gradeCompletion?.blocked_reason) ||
-                      (requiresGradeChoice && !targetGradeId)
+                      (requiresGradeChoice && !targetGradeId) ||
+                      (requiresPassportDate && !newPassportValidUntil)
                     "
                     @click="runAction('complete')"
                   >
@@ -501,6 +531,19 @@ async function onUpdated() {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface);
+}
+
+.passport-row input[type='date'] {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.hint.inline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .actions input {

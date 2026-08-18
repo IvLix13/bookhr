@@ -100,6 +100,10 @@ export interface EventItem {
     eligible_date: string | null
     blocked_reason: string | null
   } | null
+  passport_completion?: {
+    current_valid_until: string | null
+    requires_new_date: boolean
+  } | null
 }
 
 export interface ContractRow {

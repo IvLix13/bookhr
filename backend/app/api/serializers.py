@@ -34,6 +34,7 @@ from app.services.rule_engine import (
     find_contract_renewal_event,
     is_grade_preparation_event,
     is_grade_promotion_event,
+    is_passport_preparation_event,
 )
 from app.services.tenure import tenure_years, total_tenure_years
 from app.utils.dates import today_moscow
@@ -262,6 +263,7 @@ def reward_to_dict(reward: Reward) -> dict:
 def event_to_dict(event: Event) -> dict:
     grade_completion = None
     grade_event_kind = None
+    passport_completion = None
     if event.event_type == EventType.GRADE.value:
         if is_grade_preparation_event(event):
             grade_event_kind = "preparation"
@@ -290,6 +292,13 @@ def event_to_dict(event: Event) -> dict:
             "blocked_reason": blocked_reason,
         }
 
+    if is_passport_preparation_event(event) and event.employment:
+        passport = get_active_passport(event.employment.person)
+        passport_completion = {
+            "current_valid_until": passport.valid_until.isoformat() if passport else None,
+            "requires_new_date": True,
+        }
+
     return {
         "id": event.id,
         "title": event.title,
@@ -311,6 +320,7 @@ def event_to_dict(event: Event) -> dict:
         "completion_comment": event.completion_comment,
         "grade_event_kind": grade_event_kind,
         "grade_completion": grade_completion,
+        "passport_completion": passport_completion,
     }
 
 

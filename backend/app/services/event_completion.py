@@ -10,14 +10,15 @@ from __future__ import annotations
 from datetime import date
 
 from app.extensions import db
-from app.models import Contract, EmployeeGradeHistory, Event, EventStatus, EventType
+from app.models import Contract, EmployeeGradeHistory, Event, EventStatus, EventType, Passport
 from app.services.audit import _current_user_id, log_audit
-from app.services.employees import get_active_contract, get_current_grade
+from app.services.employees import get_active_contract, get_active_passport, get_current_grade
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.rule_engine import (
     grade_preparation_rule_key,
     is_grade_preparation_event,
     is_grade_promotion_event,
+    is_passport_preparation_event,
     recalculate_employment_events,
 )
 from app.utils.dates import calculate_contract_end, today_moscow
@@ -183,15 +184,61 @@ def _extend_contract_after_report_completion(
     return contract
 
 
+def _renew_passport_after_preparation(
+    event: Event,
+    new_valid_until: date,
+) -> Passport:
+    """Register a renewed passport when preparation is completed."""
+    employment = event.employment
+    if not employment:
+        raise ValueError("Мероприятие не привязано к сотруднику")
+
+    today = today_moscow()
+    if new_valid_until <= today:
+        raise ValueError("Новый срок паспорта должен быть в будущем")
+
+    person = employment.person
+    active = get_active_passport(person)
+    if active and new_valid_until <= active.valid_until:
+        raise ValueError("Новый срок паспорта должен быть позже текущего")
+
+    old_valid_until = active.valid_until.isoformat() if active else None
+    if active:
+        active.is_active = False
+
+    passport = Passport(
+        person_id=person.id,
+        valid_until=new_valid_until,
+        series_number=active.series_number if active else None,
+        is_active=True,
+    )
+    db.session.add(passport)
+    db.session.flush()
+
+    log_audit(
+        "passport_renew",
+        "passport",
+        passport.id,
+        {"valid_until": old_valid_until},
+        {
+            "valid_until": new_valid_until.isoformat(),
+            "event_id": event.id,
+        },
+    )
+    return passport
+
+
 def apply_completion_effects(
     event: Event,
     term_years: float | None = None,
     new_end_date: date | None = None,
     target_grade_id: int | None = None,
+    new_passport_valid_until: date | None = None,
 ) -> dict:
     """Apply the domain side effects implied by completing ``event``."""
     assigned_grade = None
     extended_contract = None
+    renewed_passport = None
     if event.event_type == EventType.GRADE.value:
         if is_grade_preparation_event(event):
             assigned_grade = None
@@ -214,6 +261,13 @@ def apply_completion_effects(
             term_years=term_years,
             new_end_date=new_end_date,
         )
+    elif is_passport_preparation_event(event):
+        if new_passport_valid_until is None:
+            raise ValueError("Укажите новый срок действия паспорта")
+        renewed_passport = _renew_passport_after_preparation(
+            event,
+            new_passport_valid_until,
+        )
 
     if event.employment:
         recalculate_employment_events(event.employment)
@@ -221,4 +275,5 @@ def apply_completion_effects(
     return {
         "assigned_grade": assigned_grade,
         "extended_contract": extended_contract,
+        "renewed_passport": renewed_passport,
     }

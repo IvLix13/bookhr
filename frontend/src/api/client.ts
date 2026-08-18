@@ -196,6 +196,7 @@ export const api = {
       extension_term_years?: number | null
       new_end_date?: string | null
       target_grade_id?: number | null
+      new_passport_valid_until?: string | null
     },
   ) =>
     request(`/api/events/${id}/complete`, {
@@ -208,6 +209,9 @@ export const api = {
         ...(options?.new_end_date !== undefined ? { new_end_date: options.new_end_date } : {}),
         ...(options?.target_grade_id !== undefined
           ? { target_grade_id: options.target_grade_id }
+          : {}),
+        ...(options?.new_passport_valid_until !== undefined
+          ? { new_passport_valid_until: options.new_passport_valid_until }
           : {}),
       }),
     }),

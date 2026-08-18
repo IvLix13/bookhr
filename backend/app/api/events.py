@@ -171,6 +171,7 @@ def register_routes(bp):
                 term_years=payload.get("extension_term_years"),
                 new_end_date=payload.get("new_end_date"),
                 target_grade_id=payload.get("target_grade_id"),
+                new_passport_valid_until=payload.get("new_passport_valid_until"),
             )
         except InvalidEventTransition as exc:
             return api_response(message=str(exc), status=409)

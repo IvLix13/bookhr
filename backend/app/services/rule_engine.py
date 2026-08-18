@@ -75,6 +75,14 @@ def is_grade_promotion_event(event: Event) -> bool:
     )
 
 
+def is_passport_preparation_event(event: Event) -> bool:
+    if event.event_type != EventType.PASSPORT.value:
+        return False
+    if event.rule_key and event.rule_key.startswith(f"{PASSPORT_RULE_PREFIX}:"):
+        return True
+    return event.reference_type == "passport"
+
+
 def passport_rule_key(passport: Passport) -> str:
     return f"{PASSPORT_RULE_PREFIX}:{passport.id}:{passport.valid_until.isoformat()}"
 
