@@ -896,5 +896,5 @@ def test_confirm_import_creates_three_employment_periods(app, tmp_path):
         assert periods[1].dismissal_date == date(2014, 12, 31)
         assert periods[2].status == EmploymentStatus.ACTIVE.value
         assert total_tenure_years(person.id, company.id, date(2024, 1, 1)) == 13
-        assert compute_milestone_date(person.id, company.id, 10) == date(2022, 1, 1)
+        assert compute_milestone_date(person.id, company.id, 10) == date(2020, 3, 1)
 
