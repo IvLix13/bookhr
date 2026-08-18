@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import EventDetailModal from '@/components/EventDetailModal.vue'
 import EventForm from '@/components/EventForm.vue'
 import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
@@ -27,8 +28,7 @@ const events = ref<EventItem[]>([])
 const loading = ref(false)
 const error = ref('')
 const showForm = ref(false)
-const completingId = ref<number | null>(null)
-const comments = ref<Record<number, string>>({})
+const openEventId = ref<number | null>(null)
 
 const { activate, deactivate } = useFocusTrap(modalRef, () => props.open)
 
@@ -57,6 +57,7 @@ watch(
   ([open]) => {
     if (open) {
       showForm.value = false
+      openEventId.value = null
       loadDayEvents()
     }
   },
@@ -98,19 +99,17 @@ onUnmounted(() => {
   deactivate()
 })
 
-async function completeEvent(id: number) {
-  if (!auth.canEdit()) return
-  completingId.value = id
-  error.value = ''
-  try {
-    await api.completeEvent(id, comments.value[id] || undefined)
-    emit('changed')
-    await loadDayEvents()
-  } catch (err) {
-    error.value = normalizeError(err)
-  } finally {
-    completingId.value = null
-  }
+function openEvent(id: number) {
+  openEventId.value = id
+}
+
+function closeEventDetail() {
+  openEventId.value = null
+}
+
+async function onEventChanged() {
+  emit('changed')
+  await loadDayEvents()
 }
 
 async function onCreated() {
@@ -144,34 +143,20 @@ async function onCreated() {
 
         <TransitionGroup v-else-if="events.length" tag="ul" name="list" class="list">
           <li v-for="event in events" :key="event.id" class="item">
-            <div class="item-main">
-              <strong>{{ event.title }}</strong>
-              <p>{{ event.employee_name ?? 'Без сотрудника' }}</p>
-              <p v-if="event.description" class="description">{{ event.description }}</p>
-            </div>
-            <div class="item-meta">
-              <span class="badge">{{ labelEventType(event.event_type) }}</span>
-              <StatusBadge
-                :label="getEventStatusMeta(resolveEventStatus(event.status, event.effective_status)).label"
-                :variant="getEventStatusMeta(resolveEventStatus(event.status, event.effective_status)).variant"
-              />
-              <template v-if="auth.canEdit() && event.status !== 'completed' && event.status !== 'cancelled'">
-                <input
-                  v-model="comments[event.id]"
-                  type="text"
-                  placeholder="Комментарий"
-                  aria-label="Комментарий к завершению"
+            <button type="button" class="item-button" @click="openEvent(event.id)">
+              <div class="item-main">
+                <strong>{{ event.title }}</strong>
+                <p>{{ event.employee_name ?? 'Без сотрудника' }}</p>
+                <p v-if="event.description" class="description">{{ event.description }}</p>
+              </div>
+              <div class="item-meta">
+                <span class="badge">{{ labelEventType(event.event_type) }}</span>
+                <StatusBadge
+                  :label="getEventStatusMeta(resolveEventStatus(event.status, event.effective_status)).label"
+                  :variant="getEventStatusMeta(resolveEventStatus(event.status, event.effective_status)).variant"
                 />
-                <button
-                  class="btn secondary"
-                  type="button"
-                  :disabled="completingId === event.id"
-                  @click="completeEvent(event.id)"
-                >
-                  {{ completingId === event.id ? '...' : 'Выполнить' }}
-                </button>
-              </template>
-            </div>
+              </div>
+            </button>
           </li>
         </TransitionGroup>
         <div v-else class="state">На этот день мероприятий нет</div>
@@ -199,6 +184,13 @@ async function onCreated() {
       </div>
     </Transition>
   </Teleport>
+
+  <EventDetailModal
+    :open="openEventId != null"
+    :event-id="openEventId"
+    @close="closeEventDetail"
+    @changed="onEventChanged"
+  />
 </template>
 
 <style scoped>
@@ -252,9 +244,6 @@ async function onCreated() {
 }
 
 .item {
-  display: grid;
-  gap: 0.75rem;
-  padding: 0.85rem 0;
   border-bottom: 1px solid var(--border);
 }
 
@@ -264,6 +253,24 @@ async function onCreated() {
 
 .item:last-child {
   border-bottom: none;
+}
+
+.item-button {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.85rem 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.item-button:hover {
+  background: var(--accent-soft);
 }
 
 .item-main p {
@@ -276,14 +283,10 @@ async function onCreated() {
 }
 
 .item-meta {
-  display: grid;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
-}
-
-.item-meta input {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 0.55rem 0.75rem;
 }
 
 .state {

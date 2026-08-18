@@ -72,6 +72,8 @@ vi.mock('@/api/client', () => ({
     completeEvent,
     cancelEvent: vi.fn(),
     reopenEvent: vi.fn(),
+    updateEvent: vi.fn(),
+    deleteEvent: vi.fn(),
     employees,
     createEvent,
   },

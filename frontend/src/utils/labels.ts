@@ -27,6 +27,7 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
 
 export const EVENT_SOURCE_LABELS: Record<string, string> = {
   manual: 'Вручную',
+  rule: 'Автоматически',
   rule_engine: 'Автоматически',
   import: 'Импорт',
 }

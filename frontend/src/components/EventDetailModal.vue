@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
+import EventForm from '@/components/EventForm.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
@@ -29,6 +30,7 @@ const actionBusy = ref(false)
 const comment = ref('')
 const extensionTermYears = ref('1')
 const targetGradeId = ref('')
+const editing = ref(false)
 
 const isContractReport = computed(() => {
   if (!event.value) return false
@@ -73,6 +75,15 @@ const isClosedStatus = computed(() => {
 
 const canAct = computed(() => auth.canEdit() && !!event.value)
 
+const isManualEvent = computed(() => event.value?.source === 'manual')
+
+const canEditEvent = computed(
+  () =>
+    canAct.value &&
+    isManualEvent.value &&
+    isOpenStatus.value,
+)
+
 async function loadEvent() {
   if (props.eventId == null) {
     event.value = null
@@ -99,6 +110,7 @@ watch(
       comment.value = ''
       extensionTermYears.value = '1'
       targetGradeId.value = ''
+      editing.value = false
       void loadEvent()
     } else {
       event.value = null
@@ -106,6 +118,7 @@ watch(
       comment.value = ''
       extensionTermYears.value = '1'
       targetGradeId.value = ''
+      editing.value = false
     }
   },
   { immediate: true },
@@ -198,6 +211,29 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
     actionBusy.value = false
   }
 }
+
+async function deleteEvent() {
+  if (!event.value || !canAct.value || !isManualEvent.value) return
+  const confirmed = window.confirm('Удалить мероприятие? Это действие нельзя отменить.')
+  if (!confirmed) return
+  actionBusy.value = true
+  error.value = ''
+  try {
+    await api.deleteEvent(event.value.id)
+    emit('changed')
+    closeModal()
+  } catch (err) {
+    error.value = normalizeError(err)
+  } finally {
+    actionBusy.value = false
+  }
+}
+
+async function onUpdated() {
+  editing.value = false
+  await loadEvent()
+  emit('changed')
+}
 </script>
 
 <template>
@@ -227,6 +263,16 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
           <div v-else-if="error && !event" class="state error">{{ error }}</div>
 
           <div v-else-if="event" class="body">
+            <EventForm
+              v-if="editing"
+              compact
+              :initial-date="event.event_date"
+              :event="event"
+              @updated="onUpdated"
+              @cancel="editing = false"
+            />
+
+            <template v-else>
             <dl class="details">
               <div>
                 <dt>Статус</dt>
@@ -271,6 +317,24 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
             <p v-if="error" class="state error inline">{{ error }}</p>
 
             <footer v-if="canAct" class="actions">
+              <div v-if="canEditEvent" class="action-buttons">
+                <button
+                  class="btn secondary"
+                  type="button"
+                  :disabled="actionBusy"
+                  @click="editing = true"
+                >
+                  Редактировать
+                </button>
+                <button
+                  class="btn ghost danger"
+                  type="button"
+                  :disabled="actionBusy"
+                  @click="deleteEvent"
+                >
+                  Удалить
+                </button>
+              </div>
               <template v-if="isOpenStatus">
                 <div v-if="isContractReport" class="extension-row">
                   <label for="extension-term-select">Срок продления договора:</label>
@@ -347,6 +411,7 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
                 </button>
               </template>
             </footer>
+            </template>
           </div>
         </section>
       </div>
@@ -449,6 +514,10 @@ async function runAction(action: 'complete' | 'cancel' | 'reopen') {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.btn.danger {
+  color: var(--danger);
 }
 
 .state {

@@ -97,7 +97,7 @@ def test_reopen_event_hr(hr_client, seed_company):
         company_id=seed_company.id,
         title="Reopen me",
         event_type=EventType.MANUAL,
-        event_date=date(2026, 7, 24),
+        event_date=date(2030, 7, 24),
     )
     transition_event_status(event, EventStatus.COMPLETED, "done")
     db.session.commit()
@@ -275,3 +275,126 @@ def test_create_event_missing_title_returns_json_400(admin_client, seed_company)
     assert response.status_code == 400
     assert response.is_json
     assert response.get_json()["success"] is False
+
+
+def test_update_manual_event_hr(hr_client, seed_company):
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Editable",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+        description="Old",
+    )
+    db.session.commit()
+
+    response = hr_client.patch(
+        f"/api/events/{event.id}",
+        json={
+            "title": "Updated title",
+            "description": "New description",
+            "event_date": "2026-08-01",
+        },
+    )
+    assert response.status_code == 200
+    payload = response.get_json()["data"]
+    assert payload["title"] == "Updated title"
+    assert payload["description"] == "New description"
+    assert payload["event_date"] == "2026-08-01"
+
+
+def test_update_rule_event_returns_409(hr_client, seed_company, app):
+    from app.models import EventSource
+
+    with app.app_context():
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Rule event",
+            event_type=EventType.CONTRACT,
+            event_date=date(2026, 7, 24),
+        )
+        event.source = EventSource.RULE.value
+        db.session.commit()
+        event_id = event.id
+
+    response = hr_client.patch(
+        f"/api/events/{event_id}",
+        json={"title": "Nope"},
+    )
+    assert response.status_code == 409
+
+
+def test_delete_manual_event_hr(hr_client, seed_company):
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Delete me",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+    )
+    db.session.commit()
+    event_id = event.id
+
+    response = hr_client.delete(f"/api/events/{event_id}")
+    assert response.status_code == 200
+    assert db.session.get(Event, event_id) is None
+
+
+def test_delete_rule_event_returns_409(hr_client, seed_company, app):
+    from app.models import EventSource
+
+    with app.app_context():
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Rule event",
+            event_type=EventType.GRADE,
+            event_date=date(2026, 7, 24),
+        )
+        event.source = EventSource.RULE.value
+        db.session.commit()
+        event_id = event.id
+
+    response = hr_client.delete(f"/api/events/{event_id}")
+    assert response.status_code == 409
+    assert db.session.get(Event, event_id) is not None
+
+
+def test_cancel_event_triggers_recalc(hr_client, seed_company, monkeypatch):
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Cancel me",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+    )
+    db.session.commit()
+
+    called = {"count": 0}
+
+    def fake_refresh(*, company_id, employment=None):
+        called["count"] += 1
+
+    monkeypatch.setattr("app.api.events.refresh_events_after_mutation", fake_refresh)
+
+    response = hr_client.post(f"/api/events/{event.id}/cancel", json={"comment": "No"})
+    assert response.status_code == 200
+    assert called["count"] == 1
+
+
+def test_reopen_event_triggers_recalc(hr_client, seed_company, monkeypatch):
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Reopen me",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+    )
+    transition_event_status(event, EventStatus.COMPLETED, "done")
+    db.session.commit()
+
+    called = {"count": 0}
+
+    def fake_refresh(*, company_id, employment=None):
+        called["count"] += 1
+
+    monkeypatch.setattr("app.api.events.refresh_events_after_mutation", fake_refresh)
+
+    response = hr_client.post(f"/api/events/{event.id}/reopen", json={})
+    assert response.status_code == 200
+    assert called["count"] == 1

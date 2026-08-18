@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import date
 
 from app.extensions import db
-from app.models import Event, EventStatus, EventStatusHistory, EventType
+from app.models import (
+    Employment,
+    Event,
+    EventSource,
+    EventStatus,
+    EventStatusHistory,
+    EventType,
+)
 from app.services.audit import _current_user_id, log_audit
 from app.utils.dates import today_moscow
 
@@ -180,6 +187,86 @@ def create_manual_event(
 
     queue_notifications_for_event(event)
     return event
+
+
+OPEN_EDIT_STATUSES = {
+    EventStatus.PLANNED.value,
+    EventStatus.OVERDUE.value,
+}
+
+
+class EventMutationError(Exception):
+    """Raised when an event cannot be updated or deleted."""
+
+
+def refresh_events_after_mutation(
+    *,
+    company_id: int,
+    employment: Employment | None = None,
+) -> None:
+    """Recalculate rule events and refresh overdue flags after a mutation."""
+    from app.services.rule_engine import recalculate_employment_events
+
+    if employment:
+        recalculate_employment_events(employment)
+    refresh_overdue_events(company_id)
+
+
+def update_manual_event(event: Event, payload: dict) -> Event:
+    if event.source != EventSource.MANUAL.value:
+        raise EventMutationError("Only manually created events can be edited")
+    if event.status not in OPEN_EDIT_STATUSES:
+        raise EventMutationError("Only open events can be edited")
+    if not payload:
+        return event
+
+    old_values = {
+        "title": event.title,
+        "event_type": event.event_type,
+        "event_date": event.event_date.isoformat(),
+        "description": event.description,
+        "employment_id": event.employment_id,
+    }
+
+    if "title" in payload:
+        event.title = payload["title"]
+    if "event_type" in payload:
+        event.event_type = payload["event_type"].value
+    if "event_date" in payload:
+        event.event_date = payload["event_date"]
+    if "description" in payload:
+        event.description = payload["description"]
+    if "employment_id" in payload:
+        employment_id = payload["employment_id"]
+        if employment_id is not None:
+            employment = db.session.get(Employment, employment_id)
+            if not employment or employment.company_id != event.company_id:
+                raise EventMutationError("Employment not found")
+        event.employment_id = employment_id
+
+    new_values = {
+        "title": event.title,
+        "event_type": event.event_type,
+        "event_date": event.event_date.isoformat(),
+        "description": event.description,
+        "employment_id": event.employment_id,
+    }
+    log_audit("update", "event", event.id, old_values, new_values)
+    return event
+
+
+def delete_manual_event(event: Event) -> Employment | None:
+    if event.source != EventSource.MANUAL.value:
+        raise EventMutationError("Only manually created events can be deleted")
+
+    employment = event.employment
+    event_id = event.id
+    log_audit("delete", "event", event_id, {"title": event.title}, None)
+    EventStatusHistory.query.filter_by(event_id=event_id).delete(
+        synchronize_session=False
+    )
+    db.session.delete(event)
+    return employment
 
 
 def refresh_overdue_events(company_id: int | None = None) -> int:

@@ -181,6 +181,10 @@ export const api = {
   upcomingEvents: (limit = 10) => request(`/api/events/upcoming?limit=${limit}`),
   createEvent: (body: Record<string, unknown>) =>
     request('/api/events', { method: 'POST', body: JSON.stringify(body) }),
+  updateEvent: (id: number, body: Record<string, unknown>) =>
+    request(`/api/events/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteEvent: (id: number) =>
+    request(`/api/events/${id}`, { method: 'DELETE' }),
   completeEvent: (
     id: number,
     comment?: string,

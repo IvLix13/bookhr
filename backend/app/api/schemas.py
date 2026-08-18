@@ -49,6 +49,14 @@ class CreateEventSchema(BaseSchema):
     employment_id = fields.Int(allow_none=True)
 
 
+class UpdateEventSchema(BaseSchema):
+    title = fields.Str(validate=validate.Length(min=1, max=512))
+    event_date = DateField()
+    event_type = EventTypeField()
+    description = fields.Str(allow_none=True)
+    employment_id = fields.Int(allow_none=True)
+
+
 class EventActionSchema(BaseSchema):
     comment = fields.Str(allow_none=True)
     extension_term_years = fields.Float(allow_none=True)

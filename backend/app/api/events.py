@@ -16,17 +16,21 @@ from app.api.helpers import (
     parse_sort_args,
     require_roles,
 )
-from app.api.schemas import CreateEventSchema, EventActionSchema, parse_query_date
+from app.api.schemas import CreateEventSchema, EventActionSchema, UpdateEventSchema, parse_query_date
 from app.api.serializers import event_to_dict
 from app.extensions import db
 from app.models import Event, EventStatus, RoleName
 from app.services.event_completion import apply_completion_effects
 from app.services.events import (
+    EventMutationError,
     InvalidEventTransition,
     apply_status_filter,
     create_manual_event,
+    delete_manual_event,
+    refresh_events_after_mutation,
     refresh_overdue_events,
     transition_event_status,
+    update_manual_event,
 )
 from app.tenant import get_request_company_id
 
@@ -107,8 +111,47 @@ def register_routes(bp):
             description=payload.get("description"),
             employment_id=payload.get("employment_id"),
         )
+        refresh_events_after_mutation(
+            company_id=event.company_id,
+            employment=event.employment,
+        )
         db.session.commit()
         return api_response(event_to_dict(event), status=201)
+
+    @bp.patch("/events/<int:event_id>")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def update_event(event_id: int):
+        event = db.session.get(Event, event_id)
+        if not event or event.company_id != get_request_company_id():
+            return api_response(message="Not found", status=404)
+        payload = load_schema(UpdateEventSchema)
+        employment_before = event.employment
+        try:
+            event = update_manual_event(event, payload)
+            refresh_events_after_mutation(
+                company_id=event.company_id,
+                employment=event.employment or employment_before,
+            )
+        except EventMutationError as exc:
+            return api_response(message=str(exc), status=409)
+        db.session.commit()
+        return api_response(event_to_dict(event))
+
+    @bp.delete("/events/<int:event_id>")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def delete_event(event_id: int):
+        event = db.session.get(Event, event_id)
+        if not event or event.company_id != get_request_company_id():
+            return api_response(message="Not found", status=404)
+        company_id = event.company_id
+        employment = event.employment
+        try:
+            delete_manual_event(event)
+        except EventMutationError as exc:
+            return api_response(message=str(exc), status=409)
+        refresh_events_after_mutation(company_id=company_id, employment=employment)
+        db.session.commit()
+        return api_response(message="Deleted")
 
     @bp.post("/events/<int:event_id>/complete")
     @require_roles(RoleName.ADMIN, RoleName.HR)
@@ -153,6 +196,10 @@ def register_routes(bp):
             )
         except InvalidEventTransition as exc:
             return api_response(message=str(exc), status=409)
+        refresh_events_after_mutation(
+            company_id=event.company_id,
+            employment=event.employment,
+        )
         db.session.commit()
         return api_response(event_to_dict(event))
 
@@ -171,5 +218,9 @@ def register_routes(bp):
             )
         except InvalidEventTransition as exc:
             return api_response(message=str(exc), status=409)
+        refresh_events_after_mutation(
+            company_id=event.company_id,
+            employment=event.employment,
+        )
         db.session.commit()
         return api_response(event_to_dict(event))

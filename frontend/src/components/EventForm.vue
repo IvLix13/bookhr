@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
-import type { Employee, Paginated } from '@/types'
+import type { Employee, EventItem, Paginated } from '@/types'
 
 const props = defineProps<{
   initialDate: string
   compact?: boolean
+  event?: EventItem | null
 }>()
 
 const emit = defineEmits<{
   created: []
+  updated: []
   cancel: []
 }>()
+
+const isEdit = computed(() => props.event != null)
 
 const form = ref({
   title: '',
@@ -27,8 +31,25 @@ const error = ref('')
 watch(
   () => props.initialDate,
   (value) => {
-    form.value.event_date = value
+    if (!isEdit.value) {
+      form.value.event_date = value
+    }
   },
+)
+
+watch(
+  () => props.event,
+  (event) => {
+    if (!event) return
+    form.value = {
+      title: event.title,
+      event_type: event.event_type,
+      event_date: event.event_date,
+      description: event.description ?? '',
+      employment_id: event.employment_id != null ? String(event.employment_id) : '',
+    }
+  },
+  { immediate: true },
 )
 
 onMounted(async () => {
@@ -39,19 +60,30 @@ onMounted(async () => {
 async function submit() {
   submitting.value = true
   error.value = ''
+  const body = {
+    title: form.value.title,
+    event_type: form.value.event_type,
+    event_date: form.value.event_date,
+    description: form.value.description || undefined,
+    employment_id: form.value.employment_id ? Number(form.value.employment_id) : null,
+  }
   try {
-    await api.createEvent({
-      title: form.value.title,
-      event_type: form.value.event_type,
-      event_date: form.value.event_date,
-      description: form.value.description || undefined,
-      employment_id: form.value.employment_id ? Number(form.value.employment_id) : undefined,
-    })
-    form.value.title = ''
-    form.value.description = ''
-    emit('created')
+    if (isEdit.value && props.event) {
+      await api.updateEvent(props.event.id, body)
+      emit('updated')
+    } else {
+      await api.createEvent(body)
+      form.value.title = ''
+      form.value.description = ''
+      emit('created')
+    }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : 'Не удалось создать мероприятие'
+    error.value =
+      err instanceof Error
+        ? err.message
+        : isEdit.value
+          ? 'Не удалось обновить мероприятие'
+          : 'Не удалось создать мероприятие'
   } finally {
     submitting.value = false
   }
@@ -94,7 +126,13 @@ async function submit() {
     </label>
     <div class="actions">
       <button class="btn" type="submit" :disabled="submitting">
-        {{ submitting ? 'Сохранение...' : 'Сохранить' }}
+        {{
+          submitting
+            ? 'Сохранение...'
+            : isEdit
+              ? 'Сохранить изменения'
+              : 'Сохранить'
+        }}
       </button>
       <button v-if="compact" class="btn ghost" type="button" @click="emit('cancel')">Отмена</button>
     </div>

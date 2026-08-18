@@ -15,6 +15,7 @@ vi.mock('@/api/client', () => ({
           description: null,
           event_date: '2026-07-24',
           status: 'planned',
+          effective_status: 'planned',
           source: 'manual',
           employment_id: null,
           employee_name: null,
@@ -25,7 +26,29 @@ vi.mock('@/api/client', () => ({
         },
       ],
     })),
+    getEvent: vi.fn(async () => ({
+      id: 1,
+      title: 'Event',
+      event_type: 'manual',
+      description: null,
+      event_date: '2026-07-24',
+      status: 'planned',
+      effective_status: 'planned',
+      source: 'manual',
+      employment_id: null,
+      employee_name: null,
+      created_by: null,
+      created_at: null,
+      completed_at: null,
+      completion_comment: null,
+    })),
     completeEvent: vi.fn(async () => ({})),
+    cancelEvent: vi.fn(),
+    reopenEvent: vi.fn(),
+    updateEvent: vi.fn(),
+    deleteEvent: vi.fn(),
+    createEvent: vi.fn(async () => ({})),
+    employees: vi.fn(async () => ({ items: [] })),
   },
 }))
 
@@ -76,10 +99,16 @@ describe('DayEventsModal', () => {
         date: '2026-07-24',
       },
       attachTo: document.body,
+      global: {
+        stubs: {
+          teleport: true,
+          EventDetailModal: true,
+        },
+      },
     })
 
     await flushPromises()
 
-    expect(document.body.querySelector('button.secondary')).not.toBeNull()
+    expect(document.body.querySelector('.item-button')).not.toBeNull()
   })
 })

@@ -30,11 +30,13 @@ const completedEvent: EventItem = {
   completion_comment: 'Готово',
 }
 
-const { getEvent, completeEvent, cancelEvent, reopenEvent } = vi.hoisted(() => ({
+const { getEvent, completeEvent, cancelEvent, reopenEvent, updateEvent, deleteEvent } = vi.hoisted(() => ({
   getEvent: vi.fn(async () => plannedEvent),
   completeEvent: vi.fn(async () => ({ ...plannedEvent, status: 'completed' })),
   cancelEvent: vi.fn(async () => ({ ...plannedEvent, status: 'cancelled' })),
   reopenEvent: vi.fn(async () => plannedEvent),
+  updateEvent: vi.fn(async () => plannedEvent),
+  deleteEvent: vi.fn(async () => ({})),
 }))
 
 vi.mock('@/api/client', () => ({
@@ -43,6 +45,9 @@ vi.mock('@/api/client', () => ({
     completeEvent,
     cancelEvent,
     reopenEvent,
+    updateEvent,
+    deleteEvent,
+    employees: vi.fn(async () => ({ items: [] })),
   },
 }))
 
@@ -194,5 +199,36 @@ describe('EventDetailModal', () => {
     await completeBtn.click()
     await flushPromises()
     expect(completeEvent).toHaveBeenCalledWith(7, undefined, { target_grade_id: 3 })
+  })
+
+  it('shows edit and delete for manual open events', async () => {
+    getEvent.mockResolvedValueOnce({ ...plannedEvent, source: 'manual' })
+    await mountModal('hr')
+    const text = document.body.textContent ?? ''
+    expect(text).toContain('Редактировать')
+    expect(text).toContain('Удалить')
+  })
+
+  it('hides edit and delete for rule events', async () => {
+    getEvent.mockResolvedValueOnce({ ...plannedEvent, source: 'rule' })
+    await mountModal('hr')
+    const text = document.body.textContent ?? ''
+    expect(text).not.toContain('Редактировать')
+    expect(text).not.toContain('Удалить')
+  })
+
+  it('deletes manual event and closes modal', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    getEvent.mockResolvedValueOnce({ ...plannedEvent, source: 'manual' })
+    const wrapper = await mountModal('hr')
+    const deleteBtn = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Удалить'),
+    )
+    expect(deleteBtn).toBeTruthy()
+    await deleteBtn!.click()
+    await flushPromises()
+    expect(deleteEvent).toHaveBeenCalledWith(7)
+    expect(wrapper.emitted('changed')).toBeTruthy()
+    expect(wrapper.emitted('close')).toBeTruthy()
   })
 })
