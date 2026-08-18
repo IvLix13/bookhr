@@ -7,7 +7,9 @@ from app.services.employees import create_person_with_employment, rehire_person
 from app.services.tenure import (
     auto_mark_reached_awards,
     compute_milestone_date,
+    continuous_milestone_reached_date,
     ensure_tenure_awards,
+    is_tenure_award_auto_eligible,
     total_tenure_years,
 )
 
@@ -68,6 +70,32 @@ def test_auto_mark_requires_continuous_tenure(seed_company, monkeypatch):
     db.session.commit()
     long_awards = ensure_tenure_awards(long_term.id, seed_company.id)
     assert auto_mark_reached_awards(long_awards) == 2
+
+
+def test_auto_mark_sets_received_date_from_continuous_period(seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2031, 1, 1))
+
+    person, first = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Дата Награды",
+        hire_date=date(2000, 1, 1),
+        title="Инженер",
+    )
+    first.status = EmploymentStatus.DISMISSED.value
+    first.dismissal_date = date(2010, 1, 1)
+    rehire_person(person, seed_company.id, date(2021, 1, 1), "Инженер")
+    db.session.commit()
+
+    awards = ensure_tenure_awards(person.id, seed_company.id)
+    assert is_tenure_award_auto_eligible(awards[0]) is True
+    assert auto_mark_reached_awards(awards) == 1
+    assert awards[0].received_date == date(2031, 1, 1)
+    assert awards[0].received_date == continuous_milestone_reached_date(
+        person.id,
+        seed_company.id,
+        10,
+    )
+    assert compute_milestone_date(person.id, seed_company.id, 10) == date(2010, 1, 1)
 
 
 def test_rehire_limited_to_three_periods(hr_client, seed_company, app):

@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.extensions import db
-from app.models import EmployeeGradeHistory, EventType, GradeCatalog, TenureAward
+from app.models import EmployeeGradeHistory, Employment, EmploymentStatus, EventType, GradeCatalog, TenureAward
 from app.services.employees import create_person_with_employment
 from app.services.events import create_manual_event
 
@@ -67,6 +67,48 @@ def test_attention_summary_pending_tenure(admin_client, seed_company, monkeypatc
     data = response.get_json()["data"]
     assert data["counts"]["tenure"] == 1
     assert data["items"][0]["category"] == "tenure"
+
+
+def test_attention_excludes_tenure_when_only_cumulative_qualifies(
+    admin_client,
+    seed_company,
+    monkeypatch,
+):
+    monkeypatch.setattr("app.services.attention.today_moscow", lambda: date(2026, 7, 24))
+
+    person, first = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Суммарный Стаж",
+        hire_date=date(2000, 1, 1),
+        title="Аналитик",
+    )
+    first.status = EmploymentStatus.DISMISSED.value
+    first.dismissal_date = date(2010, 1, 1)
+    second = Employment(
+        person_id=person.id,
+        company_id=seed_company.id,
+        hire_date=date(2020, 1, 1),
+        status=EmploymentStatus.ACTIVE.value,
+    )
+    db.session.add(second)
+    db.session.add(
+        TenureAward(
+            person_id=person.id,
+            company_id=seed_company.id,
+            milestone_years=10,
+            milestone_date=date(2010, 1, 1),
+            is_received=False,
+        )
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/attention?company_id={seed_company.id}&categories=tenure&limit=5"
+    )
+    assert response.status_code == 200
+    data = response.get_json()["data"]
+    assert data["counts"]["tenure"] == 0
+    assert data["items"] == []
 
 
 def test_attention_excludes_max_grade_without_next(admin_client, seed_company, monkeypatch):

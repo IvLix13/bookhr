@@ -102,6 +102,39 @@ def continuous_tenure_years(
     return tenure_years(employment.hire_date, reference)
 
 
+def continuous_milestone_reached_date(
+    person_id: int,
+    company_id: int,
+    milestone_years: int,
+) -> date | None:
+    """Date when the active employment period reaches ``milestone_years``."""
+    employment = active_employment(person_id, company_id)
+    if not employment:
+        return None
+    return employment.hire_date + relativedelta(years=milestone_years)
+
+
+def is_tenure_award_auto_eligible(
+    award: TenureAward,
+    reference: date | None = None,
+) -> bool:
+    """Award can be granted automatically only on continuous active tenure."""
+    if award.is_received:
+        return False
+
+    ref = reference or today_moscow()
+    continuous = continuous_tenure_years(award.person_id, award.company_id, ref)
+    if continuous < award.milestone_years:
+        return False
+
+    reached_on = continuous_milestone_reached_date(
+        award.person_id,
+        award.company_id,
+        award.milestone_years,
+    )
+    return reached_on is not None and reached_on <= ref
+
+
 def ensure_tenure_awards(person_id: int, company_id: int) -> list[TenureAward]:
     awards: list[TenureAward] = []
     for years in MILESTONES:
@@ -133,23 +166,24 @@ def auto_mark_reached_awards(
     awards: list[TenureAward],
     reference: date | None = None,
 ) -> int:
-    """Mark tenure milestones already reached as received.
+    """Mark tenure milestones when continuous active tenure reaches the milestone.
 
-    Automatic eligibility uses the continuous tenure of the active employment
-    period. Total tenure still drives the milestone date shown to HR.
+    ``milestone_date`` is still based on cumulative tenure across all periods and
+    is shown to HR, but automatic receipt requires uninterrupted tenure in the
+    current employment period.
     """
     ref = reference or today_moscow()
     marked = 0
     for award in awards:
-        if award.is_received:
-            continue
-        if award.milestone_date > ref:
-            continue
-        continuous = continuous_tenure_years(award.person_id, award.company_id, ref)
-        if continuous < award.milestone_years:
+        if not is_tenure_award_auto_eligible(award, ref):
             continue
         award.is_received = True
         if award.received_date is None:
-            award.received_date = award.milestone_date
+            reached_on = continuous_milestone_reached_date(
+                award.person_id,
+                award.company_id,
+                award.milestone_years,
+            )
+            award.received_date = reached_on or award.milestone_date
         marked += 1
     return marked
