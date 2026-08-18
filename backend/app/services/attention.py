@@ -14,6 +14,7 @@ from app.models import (
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade, get_current_name
 from app.services.events import effectively_overdue_filter
 from app.services.grades import compute_grade_eligibility
+from app.services.passports import compute_passport_status
 from app.services.tenure import active_employment
 from app.utils.dates import today_moscow
 
