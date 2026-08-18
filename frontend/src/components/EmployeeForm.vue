@@ -10,6 +10,7 @@ type GradeField = 'position' | 'actual'
 
 const props = defineProps<{
   initial?: Employee | null
+  readonly?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -150,6 +151,7 @@ async function onGradeCreated(grade: Grade) {
 }
 
 async function submit() {
+  if (props.readonly) return
   submitting.value = true
   error.value = ''
   try {
@@ -203,23 +205,29 @@ async function submit() {
 
 <template>
   <form class="form" @submit.prevent="submit">
-    <h3>{{ initial ? 'Редактирование сотрудника' : 'Новый сотрудник' }}</h3>
+    <h3>{{ initial ? (readonly ? 'Карточка сотрудника' : 'Редактирование сотрудника') : 'Новый сотрудник' }}</h3>
     <div class="grid">
       <label>
         ФИО
-        <input v-model="form.full_name" required />
+        <input v-model="form.full_name" required :readonly="readonly" />
       </label>
       <label>
         Должность
-        <input v-model="form.title" />
+        <input v-model="form.title" :readonly="readonly" />
       </label>
       <label>
         Начало работы
-        <input v-model="form.hire_date" type="date" required @change="onHireDateChange" />
+        <input
+          v-model="form.hire_date"
+          type="date"
+          required
+          :readonly="readonly"
+          @change="onHireDateChange"
+        />
       </label>
       <label>
         Высшее образование
-        <select v-model="form.education_status" required>
+        <select v-model="form.education_status" required :disabled="readonly">
           <option value="" disabled>Выберите значение</option>
           <option value="yes">Есть</option>
           <option value="no">Нет</option>
@@ -228,7 +236,7 @@ async function submit() {
       <div class="field-with-action">
         <label>
           Грейд по должности
-          <select v-model="form.position_grade_id">
+          <select v-model="form.position_grade_id" :disabled="readonly">
             <option value="">Не указан</option>
             <option v-for="grade in activeGrades" :key="grade.id" :value="String(grade.id)">
               {{ grade.name }}
@@ -236,7 +244,7 @@ async function submit() {
           </select>
         </label>
         <button
-          v-if="auth.canEdit()"
+          v-if="auth.canEdit() && !readonly"
           class="btn ghost"
           type="button"
           @click="openGradeModal('position')"
@@ -247,7 +255,7 @@ async function submit() {
       <div class="field-with-action">
         <label>
           Фактический грейд
-          <select v-model="form.actual_grade_id">
+          <select v-model="form.actual_grade_id" :disabled="readonly">
             <option value="">Не указан</option>
             <option v-for="grade in activeGrades" :key="grade.id" :value="String(grade.id)">
               {{ grade.name }}
@@ -255,7 +263,7 @@ async function submit() {
           </select>
         </label>
         <button
-          v-if="auth.canEdit()"
+          v-if="auth.canEdit() && !readonly"
           class="btn ghost"
           type="button"
           @click="openGradeModal('actual')"
@@ -265,11 +273,20 @@ async function submit() {
       </div>
       <label>
         Дата текущего грейда
-        <input v-model="form.grade_date" type="date" :required="Boolean(form.actual_grade_id)" />
+        <input
+          v-model="form.grade_date"
+          type="date"
+          :required="Boolean(form.actual_grade_id)"
+          :readonly="readonly"
+        />
       </label>
       <label>
         Срок договора (лет)
-        <select v-model="form.contract_term_years" @change="onTermYearsChange">
+        <select
+          v-model="form.contract_term_years"
+          :disabled="readonly"
+          @change="onTermYearsChange"
+        >
           <option value="">Не указан</option>
           <option value="1">1 год</option>
           <option value="2">2 года</option>
@@ -288,19 +305,29 @@ async function submit() {
       </label>
       <label>
         Окончание договора
-        <input v-model="form.contract_end" type="date" @change="onContractEndChange" />
+        <input
+          v-model="form.contract_end"
+          type="date"
+          :readonly="readonly"
+          @change="onContractEndChange"
+        />
       </label>
       <label>
         Срок паспорта
-        <input v-model="form.passport_until" type="date" />
+        <input v-model="form.passport_until" type="date" :readonly="readonly" />
       </label>
     </div>
-    <div class="actions">
+    <div v-if="!readonly" class="actions">
       <button class="btn" type="submit" :disabled="submitting">
         {{ submitting ? 'Сохранение...' : 'Сохранить' }}
       </button>
       <button class="btn ghost" type="button" @click="emit('cancel')">
         Отмена
+      </button>
+    </div>
+    <div v-else class="actions">
+      <button class="btn ghost" type="button" @click="emit('cancel')">
+        Закрыть
       </button>
     </div>
     <p v-if="error" class="error">{{ error }}</p>

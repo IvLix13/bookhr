@@ -34,6 +34,8 @@ const editing = ref<Employee | null>(null)
 const modalOpen = ref(false)
 const actionError = ref('')
 
+const formReadonly = computed(() => !auth.canEdit())
+
 const columns: ColumnDef<Employee>[] = [
   {
     key: 'index',
@@ -95,12 +97,6 @@ const columns: ColumnDef<Employee>[] = [
     format: (value) => getRewardStatusMeta(value as string | null).label,
     sortable: false,
   },
-  {
-    key: 'actions',
-    label: '',
-    sortable: false,
-    filterable: false,
-  },
 ]
 
 function onQueryUpdate(patch: Partial<TableQueryState>) {
@@ -119,12 +115,13 @@ onUnmounted(() => {
 })
 
 function openCreate() {
+  if (!auth.canEdit()) return
   editing.value = null
   actionError.value = ''
   modalOpen.value = true
 }
 
-function startEdit(row: Employee) {
+function openEmployee(row: Employee) {
   editing.value = row
   actionError.value = ''
   modalOpen.value = true
@@ -141,7 +138,9 @@ async function handleSaved() {
   await table.reload()
 }
 
-async function removeEmployee(row: Employee) {
+async function removeEmployee() {
+  if (!editing.value || !auth.canEdit()) return
+  const row = editing.value
   const name = row.full_name ?? `ID ${row.id}`
   if (!window.confirm(`Удалить сотрудника «${name}»? Связанные автособытия также будут удалены.`)) {
     return
@@ -149,9 +148,7 @@ async function removeEmployee(row: Employee) {
   actionError.value = ''
   try {
     await api.deleteEmployee(row.id)
-    if (editing.value?.id === row.id) {
-      closeModal()
-    }
+    closeModal()
     await table.reload()
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : 'Не удалось удалить сотрудника'
@@ -185,6 +182,7 @@ async function removeEmployee(row: Employee) {
         :columns="columns"
         :rows="table.rows.value"
         row-key="id"
+        row-clickable
         :loading="table.loading.value"
         :total="table.total.value"
         :page="table.query.value.page"
@@ -195,6 +193,7 @@ async function removeEmployee(row: Employee) {
         :column-filters="table.query.value.columnFilters"
         search-placeholder="Поиск по сотрудникам..."
         @update:query="onQueryUpdate"
+        @row-click="openEmployee"
       >
         <template #cell-index="{ row }">
           {{
@@ -215,22 +214,12 @@ async function removeEmployee(row: Employee) {
             :variant="getRewardStatusMeta(row.reward_status).variant"
           />
         </template>
-        <template #cell-actions="{ row }">
-          <div v-if="auth.canEdit()" class="row-actions">
-            <button class="btn secondary" type="button" @click="startEdit(row)">
-              Изменить
-            </button>
-            <button class="btn ghost" type="button" @click="removeEmployee(row)">
-              Удалить
-            </button>
-          </div>
-        </template>
       </DataTable>
     </PageState>
 
     <Teleport to="body">
       <div
-        v-if="modalOpen && auth.canEdit()"
+        v-if="modalOpen"
         class="overlay"
         @click.self="closeModal"
       >
@@ -238,16 +227,35 @@ async function removeEmployee(row: Employee) {
           class="card modal"
           role="dialog"
           aria-modal="true"
-          :aria-label="editing ? 'Редактирование сотрудника' : 'Новый сотрудник'"
+          :aria-label="editing ? 'Карточка сотрудника' : 'Новый сотрудник'"
         >
           <header class="modal-header">
-            <h3>{{ editing ? 'Редактирование сотрудника' : 'Новый сотрудник' }}</h3>
-            <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">
-              ×
-            </button>
+            <h3>
+              {{
+                editing
+                  ? formReadonly
+                    ? 'Карточка сотрудника'
+                    : 'Редактирование сотрудника'
+                  : 'Новый сотрудник'
+              }}
+            </h3>
+            <div class="modal-header-actions">
+              <button
+                v-if="auth.canEdit() && editing"
+                class="btn ghost danger"
+                type="button"
+                @click="removeEmployee"
+              >
+                Удалить
+              </button>
+              <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">
+                ×
+              </button>
+            </div>
           </header>
           <EmployeeForm
             :initial="editing"
+            :readonly="formReadonly && Boolean(editing)"
             @saved="handleSaved"
             @cancel="closeModal"
           />
@@ -274,12 +282,6 @@ async function removeEmployee(row: Employee) {
 
 .page-header .btn {
   justify-self: start;
-}
-
-.row-actions {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
 }
 
 .error {
@@ -314,6 +316,16 @@ async function removeEmployee(row: Employee) {
 
 .modal-header h3 {
   margin: 0;
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.btn.danger {
+  color: var(--danger);
 }
 
 :deep(.form h3) {

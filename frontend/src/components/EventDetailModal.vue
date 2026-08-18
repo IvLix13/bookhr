@@ -102,6 +102,8 @@ async function loadEvent() {
     event.value = (await api.getEvent(props.eventId)) as EventItem
     const candidates = event.value.grade_completion?.candidates ?? []
     targetGradeId.value = candidates.length === 1 ? String(candidates[0].id) : ''
+    newPassportValidUntil.value =
+      event.value.passport_completion?.suggested_new_valid_until ?? ''
   } catch (err) {
     error.value = normalizeError(err)
     event.value = null
@@ -393,11 +395,13 @@ async function onUpdated() {
                     type="date"
                     :disabled="actionBusy"
                     :required="requiresPassportDate"
+                    readonly
                   />
                 </div>
                 <p v-if="passportCompletion?.current_valid_until" class="hint inline">
                   Текущий срок:
                   {{ formatShortDate(passportCompletion.current_valid_until) }}
+                  (новый — +5 лет)
                 </p>
                 <input
                   v-model="comment"

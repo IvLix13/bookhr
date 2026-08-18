@@ -29,7 +29,11 @@ from app.services.event_completion import grade_promotion_blocked_reason
 from app.services.events import effective_event_status
 from app.services.grade_catalog import grade_usage_employment_ids
 from app.services.grades import compute_grade_eligibility
-from app.services.passports import compute_passport_status, passport_days_left
+from app.services.passports import (
+    calculate_passport_renewal_date,
+    compute_passport_status,
+    passport_days_left,
+)
 from app.services.rule_engine import (
     find_contract_renewal_event,
     is_grade_preparation_event,
@@ -294,8 +298,14 @@ def event_to_dict(event: Event) -> dict:
 
     if is_passport_preparation_event(event) and event.employment:
         passport = get_active_passport(event.employment.person)
+        suggested_new_valid_until = (
+            calculate_passport_renewal_date(passport.valid_until).isoformat()
+            if passport
+            else None
+        )
         passport_completion = {
             "current_valid_until": passport.valid_until.isoformat() if passport else None,
+            "suggested_new_valid_until": suggested_new_valid_until,
             "requires_new_date": True,
         }
 

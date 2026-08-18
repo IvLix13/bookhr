@@ -25,6 +25,7 @@ from app.services.events import (
     transition_event_status,
 )
 from app.services.grades import compute_grade_eligibility
+from app.services.passports import PASSPORT_PREP_MONTHS
 from app.utils.dates import subtract_months
 
 
@@ -289,7 +290,7 @@ def process_passport_rules(employment: Employment) -> int:
     if not passport:
         return 0
 
-    prep_date = subtract_months(passport.valid_until, 3)
+    prep_date = subtract_months(passport.valid_until, PASSPORT_PREP_MONTHS)
     name = get_current_name(employment.person) or "Сотрудник"
     _upsert_rule_event(
         company_id=employment.company_id,

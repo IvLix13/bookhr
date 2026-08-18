@@ -28,10 +28,16 @@ def test_passport_status_thresholds():
     expiry = date(2026, 12, 1)
     assert compute_passport_status(expiry, date(2026, 5, 1)) == PassportStatus.OK.value
     assert (
-        compute_passport_status(expiry, subtract_months(expiry, 3))
+        compute_passport_status(expiry, subtract_months(expiry, 4))
         == PassportStatus.REQUIRES_PREPARATION.value
     )
     assert compute_passport_status(expiry, date(2026, 12, 2)) == PassportStatus.EXPIRED.value
+
+
+def test_calculate_passport_renewal_date():
+    from app.services.passports import calculate_passport_renewal_date
+
+    assert calculate_passport_renewal_date(date(2026, 9, 1)) == date(2031, 9, 1)
 
 
 def test_grade_eligibility_date():

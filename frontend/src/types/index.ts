@@ -102,6 +102,7 @@ export interface EventItem {
   } | null
   passport_completion?: {
     current_valid_until: string | null
+    suggested_new_valid_until?: string | null
     requires_new_date: boolean
   } | null
 }

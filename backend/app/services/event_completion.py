@@ -14,6 +14,7 @@ from app.models import Contract, EmployeeGradeHistory, Event, EventStatus, Event
 from app.services.audit import _current_user_id, log_audit
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
+from app.services.passports import calculate_passport_renewal_date
 from app.services.rule_engine import (
     grade_preparation_rule_key,
     is_grade_preparation_event,
@@ -199,8 +200,15 @@ def _renew_passport_after_preparation(
 
     person = employment.person
     active = get_active_passport(person)
-    if active and new_valid_until <= active.valid_until:
-        raise ValueError("Новый срок паспорта должен быть позже текущего")
+    if not active:
+        raise ValueError("У сотрудника нет активного паспорта")
+
+    expected_valid_until = calculate_passport_renewal_date(active.valid_until)
+    if new_valid_until != expected_valid_until:
+        raise ValueError(
+            "Новый срок паспорта должен быть на 5 лет позже текущего "
+            f"({expected_valid_until.isoformat()})"
+        )
 
     old_valid_until = active.valid_until.isoformat() if active else None
     if active:
@@ -262,11 +270,21 @@ def apply_completion_effects(
             new_end_date=new_end_date,
         )
     elif is_passport_preparation_event(event):
-        if new_passport_valid_until is None:
-            raise ValueError("Укажите новый срок действия паспорта")
+        active = (
+            get_active_passport(event.employment.person)
+            if event.employment
+            else None
+        )
+        if active is None:
+            raise ValueError("У сотрудника нет активного паспорта")
+        resolved_valid_until = (
+            new_passport_valid_until
+            if new_passport_valid_until is not None
+            else calculate_passport_renewal_date(active.valid_until)
+        )
         renewed_passport = _renew_passport_after_preparation(
             event,
-            new_passport_valid_until,
+            resolved_valid_until,
         )
 
     if event.employment:

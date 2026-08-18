@@ -210,6 +210,7 @@ describe('EventDetailModal', () => {
       reference_id: 5,
       passport_completion: {
         current_valid_until: '2026-09-01',
+        suggested_new_valid_until: '2031-09-01',
         requires_new_date: true,
       },
     }
@@ -218,9 +219,7 @@ describe('EventDetailModal', () => {
 
     const dateInput = document.body.querySelector('#new-passport-date') as HTMLInputElement
     expect(dateInput).toBeTruthy()
-    dateInput.value = '2031-06-01'
-    dateInput.dispatchEvent(new Event('input', { bubbles: true }))
-    await flushPromises()
+    expect(dateInput.value).toBe('2031-09-01')
 
     const completeBtn = Array.from(document.body.querySelectorAll('button')).find((button) =>
       button.textContent?.includes('Выполнить'),
@@ -229,7 +228,7 @@ describe('EventDetailModal', () => {
     await flushPromises()
 
     expect(completeEvent).toHaveBeenCalledWith(7, undefined, {
-      new_passport_valid_until: '2031-06-01',
+      new_passport_valid_until: '2031-09-01',
     })
     expect(wrapper.emitted('changed')).toBeTruthy()
   })
