@@ -32,6 +32,11 @@ def tenure_years(hire_date: date, reference: date | None = None) -> int:
     return delta.years
 
 
+def _months_between(start: date, end: date) -> int:
+    delta = relativedelta(end, start)
+    return delta.years * 12 + delta.months
+
+
 def _period_end(employment: Employment, reference: date) -> date:
     if employment.dismissal_date and employment.dismissal_date <= reference:
         return employment.dismissal_date
@@ -49,8 +54,7 @@ def total_tenure_years(
         if employment.hire_date > ref:
             continue
         end = _period_end(employment, ref)
-        delta = relativedelta(end, employment.hire_date)
-        total_months += delta.years * 12 + delta.months
+        total_months += _months_between(employment.hire_date, end)
     return total_months // 12
 
 
@@ -59,24 +63,31 @@ def compute_milestone_date(
     company_id: int,
     milestone_years: int,
 ) -> date:
-    """Date when cumulative tenure across all periods reaches ``milestone_years``."""
+    """Date when cumulative tenure across all periods reaches ``milestone_years``.
+
+    Sums actual worked months in each employment period (same basis as
+    ``total_tenure_years``), skipping calendar gaps between periods.
+    """
     periods = employment_periods(person_id, company_id)
     if not periods:
         raise ValueError("No employment periods found")
 
-    remaining_years = milestone_years
+    remaining_months = milestone_years * 12
     for employment in periods:
         if employment.dismissal_date:
-            period_years = tenure_years(employment.hire_date, employment.dismissal_date)
-            if period_years >= remaining_years:
-                return employment.hire_date + relativedelta(years=remaining_years)
-            remaining_years -= period_years
+            period_months = _months_between(
+                employment.hire_date,
+                employment.dismissal_date,
+            )
+            if period_months >= remaining_months:
+                return employment.hire_date + relativedelta(months=remaining_months)
+            remaining_months -= period_months
             continue
 
-        return employment.hire_date + relativedelta(years=remaining_years)
+        return employment.hire_date + relativedelta(months=remaining_months)
 
     last = periods[-1]
-    return last.hire_date + relativedelta(years=remaining_years)
+    return last.hire_date + relativedelta(months=remaining_months)
 
 
 def active_employment(person_id: int, company_id: int) -> Employment | None:

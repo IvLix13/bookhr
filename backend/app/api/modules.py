@@ -21,12 +21,13 @@ from app.api.helpers import (
     parse_sort_args,
     require_roles,
 )
-from app.api.schemas import CreateContractSchema, UpdateContractSchema
+from app.api.schemas import CreateContractSchema, UpdateContractSchema, UpdateTenureAwardSchema
 from app.api.serializers import (
     contract_to_dict,
     grade_row_to_dict,
     grade_to_dict,
     passport_row_to_dict,
+    tenure_award_to_dict,
     tenure_row_to_dict,
 )
 from app.extensions import db
@@ -405,19 +406,26 @@ def register_routes(bp):
         award = db.session.get(TenureAward, award_id)
         if not award or award.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
-        payload = get_json()
-        award.is_received = payload.get("is_received", award.is_received)
-        if payload.get("received_date"):
-            award.received_date = date.fromisoformat(payload["received_date"])
-        elif award.is_received and award.received_date is None:
+
+        raw = get_json()
+        load_schema(UpdateTenureAwardSchema)
+
+        ensure_tenure_awards(award.person_id, award.company_id)
+        db.session.refresh(award)
+
+        if "is_received" in raw:
+            award.is_received = bool(raw["is_received"])
+            if not award.is_received:
+                award.received_date = None
+
+        if "received_date" in raw:
+            value = raw["received_date"]
+            if value in (None, ""):
+                award.received_date = None
+            else:
+                award.received_date = date.fromisoformat(str(value))
+        elif raw.get("is_received") and award.received_date is None:
             award.received_date = award.milestone_date
+
         db.session.commit()
-        return api_response(
-            {
-                "id": award.id,
-                "is_received": award.is_received,
-                "received_date": award.received_date.isoformat()
-                if award.received_date
-                else None,
-            }
-        )
+        return api_response(tenure_award_to_dict(award))

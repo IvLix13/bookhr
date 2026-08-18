@@ -1,12 +1,18 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import DataTable from '@/components/DataTable.vue'
 import PageState from '@/components/PageState.vue'
+import TenureAwardEditForm from '@/components/TenureAwardEditForm.vue'
 import { api } from '@/api/client'
 import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { Paginated, TableQueryState, TenureRow } from '@/types'
 import { MODULE_LABELS } from '@/utils/labels'
 import { formatNumericDate } from '@/utils/dates'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const editing = ref<TenureRow | null>(null)
 
 const table = useServerTable<TenureRow>({
   tableId: 'awards',
@@ -55,16 +61,43 @@ const columns: ColumnDef<TenureRow>[] = [
     label: '20 лет',
     getValue: (row) => awardLabel(row, '20'),
   },
+  {
+    key: 'actions',
+    label: '',
+    sortable: false,
+    filterable: false,
+  },
 ]
 
 function onQueryUpdate(patch: Partial<TableQueryState>) {
   table.setQuery(patch)
+}
+
+function startEdit(row: TenureRow) {
+  editing.value = row
+}
+
+function cancelEdit() {
+  editing.value = null
+}
+
+async function handleSaved() {
+  editing.value = null
+  await table.reload()
 }
 </script>
 
 <template>
   <section class="card page">
     <header><h2>{{ MODULE_LABELS.awards }}</h2></header>
+
+    <TenureAwardEditForm
+      v-if="auth.canEdit() && editing"
+      :row="editing"
+      @saved="handleSaved"
+      @cancel="cancelEdit"
+    />
+
     <PageState
       :error="table.error.value"
       @retry="table.reload()"
@@ -85,7 +118,18 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
         :column-filters="table.query.value.columnFilters"
         search-placeholder="Поиск по наградам за стаж..."
         @update:query="onQueryUpdate"
-      />
+      >
+        <template #cell-actions="{ row }">
+          <button
+            v-if="auth.canEdit()"
+            class="btn secondary"
+            type="button"
+            @click="startEdit(row)"
+          >
+            Изменить
+          </button>
+        </template>
+      </DataTable>
     </PageState>
   </section>
 </template>
@@ -93,5 +137,12 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
 <style scoped>
 .page {
   padding: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.page-header h2,
+header h2 {
+  margin: 0;
 }
 </style>

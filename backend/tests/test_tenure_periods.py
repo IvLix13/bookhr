@@ -1,6 +1,8 @@
 from datetime import date
 import uuid
 
+from dateutil.relativedelta import relativedelta
+
 from app.extensions import db
 from app.models import Employment, EmploymentStatus, Person, TenureAward
 from app.services.employees import create_person_with_employment, rehire_person
@@ -95,6 +97,55 @@ def test_auto_mark_sets_received_date_from_continuous_period(seed_company, monke
         seed_company.id,
         10,
     )
+    assert compute_milestone_date(person.id, seed_company.id, 10) == date(2010, 1, 1)
+
+
+def test_milestone_date_uses_months_not_truncated_years(seed_company):
+    person, first = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Стаж По Месяцам",
+        hire_date=date(2000, 1, 1),
+        title="Инженер",
+    )
+    first.status = EmploymentStatus.DISMISSED.value
+    first.dismissal_date = date(2004, 12, 31)
+    second = Employment(
+        person_id=person.id,
+        company_id=seed_company.id,
+        hire_date=date(2010, 1, 1),
+        status=EmploymentStatus.DISMISSED.value,
+        dismissal_date=date(2014, 12, 31),
+    )
+    third = Employment(
+        person_id=person.id,
+        company_id=seed_company.id,
+        hire_date=date(2020, 1, 1),
+        status=EmploymentStatus.ACTIVE.value,
+    )
+    db.session.add_all([second, third])
+    db.session.commit()
+
+    milestone = compute_milestone_date(person.id, seed_company.id, 10)
+    assert milestone == date(2020, 3, 1)
+    assert total_tenure_years(person.id, seed_company.id, milestone) >= 10
+    assert total_tenure_years(
+        person.id,
+        seed_company.id,
+        milestone - relativedelta(days=1),
+    ) < 10
+
+
+def test_milestone_date_within_first_period(seed_company):
+    person, employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Стаж В Первом Периоде",
+        hire_date=date(2000, 1, 1),
+        title="Инженер",
+    )
+    employment.status = EmploymentStatus.DISMISSED.value
+    employment.dismissal_date = date(2015, 6, 1)
+    db.session.commit()
+
     assert compute_milestone_date(person.id, seed_company.id, 10) == date(2010, 1, 1)
 
 

@@ -169,6 +169,10 @@ export const api = {
     request<Paginated<unknown>>(`/api/passports${buildQuery(params)}`),
   tenure: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/tenure${buildQuery(params)}`),
+  updateTenureAward: (
+    id: number,
+    body: { is_received?: boolean; received_date?: string | null },
+  ) => request(`/api/tenure/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   rewards: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/rewards${buildQuery(params)}`),
   createReward: (body: Record<string, unknown>) =>

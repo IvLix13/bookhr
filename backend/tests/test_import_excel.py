@@ -896,5 +896,65 @@ def test_confirm_import_creates_three_employment_periods(app, tmp_path):
         assert periods[1].dismissal_date == date(2014, 12, 31)
         assert periods[2].status == EmploymentStatus.ACTIVE.value
         assert total_tenure_years(person.id, company.id, date(2024, 1, 1)) == 13
-        assert compute_milestone_date(person.id, company.id, 10) == date(2022, 1, 1)
+        assert compute_milestone_date(person.id, company.id, 10) == date(2020, 3, 1)
+
+        awards = _tenure_map(person.id, company.id)
+        assert awards[10].milestone_date == date(2020, 3, 1)
+        assert awards[10].is_received is False
+        assert awards[10].received_date is None
+        assert job.summary["tenure_marked"] == 0
+
+
+def test_confirm_import_tenure_received_date_uses_continuous_period(app, tmp_path, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+
+    with app.app_context():
+        company, user = _seed_import_company()
+        path = tmp_path / "periods-continuous.xlsx"
+        wb = Workbook()
+        ws = wb.active
+        ws.append(
+            [
+                "ФИО",
+                "Должность",
+                "ВУЗ",
+                "Начало работы 1",
+                "Увольнение 1",
+                "Начало работы 2",
+                "Начало работы",
+            ]
+        )
+        ws.append(
+            [
+                "Стаж Непрерывный Импорт",
+                "Инженер",
+                "Да",
+                "01.01.2000",
+                "01.01.2005",
+                "01.01.2010",
+                "01.01.2010",
+            ]
+        )
+        wb.save(path)
+
+        job = ImportJob(company_id=company.id, filename=path.name, uploaded_by_id=user.id)
+        db.session.add(job)
+        db.session.flush()
+        dry_run_import(job, parse_workbook(path))
+        db.session.commit()
+        confirm_import(job)
+        db.session.commit()
+
+        person = Person.query.one()
+        awards = _tenure_map(person.id, company.id)
+
+        assert awards[10].milestone_date == date(2015, 1, 1)
+        assert awards[10].is_received is True
+        assert awards[10].received_date == date(2020, 1, 1)
+        assert awards[15].milestone_date == date(2020, 1, 1)
+        assert awards[15].is_received is True
+        assert awards[15].received_date == date(2025, 1, 1)
+        assert awards[20].is_received is False
+        assert awards[20].received_date is None
+        assert job.summary["tenure_marked"] == 2
 
