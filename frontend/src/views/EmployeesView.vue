@@ -34,7 +34,10 @@ const editing = ref<Employee | null>(null)
 const modalOpen = ref(false)
 const actionError = ref('')
 
-const formReadonly = computed(() => !auth.canEdit())
+const canEditEmployeeCard = computed(() => {
+  const role = auth.user?.role
+  return role === 'admin' || role === 'hr'
+})
 
 const columns: ColumnDef<Employee>[] = [
   {
@@ -115,7 +118,7 @@ onUnmounted(() => {
 })
 
 function openCreate() {
-  if (!auth.canEdit()) return
+  if (!canEditEmployeeCard.value) return
   editing.value = null
   actionError.value = ''
   modalOpen.value = true
@@ -139,7 +142,7 @@ async function handleSaved() {
 }
 
 async function removeEmployee() {
-  if (!editing.value || !auth.canEdit()) return
+  if (!editing.value || !canEditEmployeeCard.value) return
   const row = editing.value
   const name = row.full_name ?? `ID ${row.id}`
   if (!window.confirm(`Удалить сотрудника «${name}»? Связанные автособытия также будут удалены.`)) {
@@ -161,7 +164,7 @@ async function removeEmployee() {
     <header class="page-header">
       <h2>Общая таблица сотрудников</h2>
       <button
-        v-if="auth.canEdit()"
+        v-if="canEditEmployeeCard"
         class="btn"
         type="button"
         @click="openCreate"
@@ -233,15 +236,15 @@ async function removeEmployee() {
             <h3>
               {{
                 editing
-                  ? formReadonly
-                    ? 'Карточка сотрудника'
-                    : 'Редактирование сотрудника'
+                  ? canEditEmployeeCard
+                    ? 'Редактирование сотрудника'
+                    : 'Карточка сотрудника'
                   : 'Новый сотрудник'
               }}
             </h3>
             <div class="modal-header-actions">
               <button
-                v-if="auth.canEdit() && editing"
+                v-if="canEditEmployeeCard && editing"
                 class="btn ghost danger"
                 type="button"
                 @click="removeEmployee"
@@ -255,7 +258,7 @@ async function removeEmployee() {
           </header>
           <EmployeeForm
             :initial="editing"
-            :readonly="formReadonly && Boolean(editing)"
+            :readonly="!canEditEmployeeCard"
             @saved="handleSaved"
             @cancel="closeModal"
           />

@@ -209,11 +209,11 @@ async function submit() {
     <div class="grid">
       <label>
         ФИО
-        <input v-model="form.full_name" required :readonly="readonly" />
+        <input v-model="form.full_name" required :disabled="readonly" />
       </label>
       <label>
         Должность
-        <input v-model="form.title" :readonly="readonly" />
+        <input v-model="form.title" :disabled="readonly" />
       </label>
       <label>
         Начало работы
@@ -221,7 +221,7 @@ async function submit() {
           v-model="form.hire_date"
           type="date"
           required
-          :readonly="readonly"
+          :disabled="readonly"
           @change="onHireDateChange"
         />
       </label>
@@ -277,7 +277,7 @@ async function submit() {
           v-model="form.grade_date"
           type="date"
           :required="Boolean(form.actual_grade_id)"
-          :readonly="readonly"
+          :disabled="readonly"
         />
       </label>
       <label>
@@ -308,13 +308,13 @@ async function submit() {
         <input
           v-model="form.contract_end"
           type="date"
-          :readonly="readonly"
+          :disabled="readonly"
           @change="onContractEndChange"
         />
       </label>
       <label>
         Срок паспорта
-        <input v-model="form.passport_until" type="date" :readonly="readonly" />
+        <input v-model="form.passport_until" type="date" :disabled="readonly" />
       </label>
     </div>
     <div v-if="!readonly" class="actions">
