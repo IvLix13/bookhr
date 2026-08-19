@@ -33,6 +33,7 @@ from app.api.serializers import (
 from app.extensions import db
 from app.models import (
     Contract,
+    EmployeeGradeHistory,
     Employment,
     EmploymentStatus,
     GradeCatalog,
@@ -51,7 +52,7 @@ from app.services.grade_catalog import (
     validate_min_years,
     validate_rank,
 )
-from app.services.grades import assign_grade_to_employment
+from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import ensure_tenure_awards, total_tenure_years
 from app.tenant import get_request_company_id
@@ -79,6 +80,37 @@ PASSPORT_SORT_FIELDS = {
     "full_name": PersonNameHistory.full_name,
     "valid_until": Passport.valid_until,
 }
+
+GRADE_SORT_FIELDS = {
+    "full_name": PersonNameHistory.full_name,
+    "hire_date": Employment.hire_date,
+    "grade_date": EmployeeGradeHistory.assigned_date,
+    "eligible_date": Employment.hire_date,
+    "days_left": Employment.hire_date,
+}
+
+GRADE_COMPUTED_SORTS = frozenset({"days_left", "eligible_date"})
+
+
+def _sort_employments_by_grade_computed(
+    employments: list[Employment],
+    sort: str,
+    direction: str,
+) -> None:
+    reverse = direction == "desc"
+
+    def sort_value(employment: Employment) -> int | None:
+        eligibility = compute_grade_eligibility(employment)
+        value = eligibility.get(sort)
+        if sort == "eligible_date":
+            return value.toordinal() if value is not None else None
+        return value
+
+    ranked = [(employment, sort_value(employment)) for employment in employments]
+    with_values = [(employment, value) for employment, value in ranked if value is not None]
+    without_values = [employment for employment, value in ranked if value is None]
+    with_values.sort(key=lambda item: item[1], reverse=reverse)
+    employments[:] = [employment for employment, _ in with_values] + without_values
 
 
 def register_routes(bp):
@@ -171,7 +203,7 @@ def register_routes(bp):
         page, per_page = parse_pagination_args()
         q = parse_search_q()
         sort, direction = parse_sort_args(
-            EMPLOYEE_SORT_FIELDS,
+            GRADE_SORT_FIELDS,
             default_field="full_name",
             default_direction="asc",
         )
@@ -184,7 +216,20 @@ def register_routes(bp):
         if sort == "full_name":
             query = join_current_person_name(query)
 
-        query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
+        if sort in GRADE_COMPUTED_SORTS:
+            employments = query.all()
+            _sort_employments_by_grade_computed(employments, sort, direction)
+            rows = [grade_row_to_dict(employment) for employment in employments]
+            return api_response(paginate_sequence(rows, page, per_page))
+
+        if sort == "grade_date":
+            query = query.outerjoin(
+                EmployeeGradeHistory,
+                (EmployeeGradeHistory.employment_id == Employment.id)
+                & (EmployeeGradeHistory.valid_to.is_(None)),
+            )
+
+        query = apply_sort(query, GRADE_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, grade_row_to_dict, page, per_page))
 
     @bp.get("/grade-catalog")
