@@ -74,6 +74,22 @@ def get_active_contract(employment: Employment) -> Contract | None:
     )
 
 
+def deactivate_other_active_contracts(
+    employment_id: int,
+    *,
+    keep_contract_id: int | None = None,
+) -> int:
+    """Ensure only one active contract remains for an employment."""
+    query = Contract.query.filter_by(employment_id=employment_id, is_active=True)
+    if keep_contract_id is not None:
+        query = query.filter(Contract.id != keep_contract_id)
+    deactivated = 0
+    for contract in query.all():
+        contract.is_active = False
+        deactivated += 1
+    return deactivated
+
+
 def create_person_with_employment(
     company_id: int,
     full_name: str,
@@ -205,6 +221,7 @@ def sync_active_contract(
         contract.end_date = end_date
         contract.term_years = term_years
         contract.is_active = True
+        deactivate_other_active_contracts(employment.id, keep_contract_id=contract.id)
         return contract
 
     new_contract = Contract(
@@ -215,6 +232,8 @@ def sync_active_contract(
         is_active=True,
     )
     db.session.add(new_contract)
+    db.session.flush()
+    deactivate_other_active_contracts(employment.id, keep_contract_id=new_contract.id)
     return new_contract
 
 

@@ -10,6 +10,7 @@ from app.models import Company, Event, EventStatus, Role, RoleName, User
 from app.services.demo_data import seed_demo_data
 from app.services.notifications import process_pending_notifications, queue_notifications_for_event
 from app.services.purge_employees import purge_all_employees
+from app.services.repair_contracts import repair_active_contract_dates
 from app.services.rule_engine import run_rule_engine
 
 
@@ -82,6 +83,18 @@ def register_commands(app: Flask) -> None:
         stats = process_pending_notifications()
         db.session.commit()
         click.echo(f"Notifications: {stats}")
+
+    @app.cli.command("repair-contracts")
+    def repair_contracts():
+        """Fix active contract start dates (end - term) and deactivate duplicates."""
+        result = repair_active_contract_dates()
+        click.echo(
+            "Repair completed: "
+            f"seen={result.contracts_seen}, "
+            f"start_dates_fixed={result.start_dates_fixed}, "
+            f"duplicates_deactivated={result.duplicates_deactivated}, "
+            f"skipped_missing_term={result.skipped_missing_term}",
+        )
 
     @app.cli.command("purge-employees")
     @click.option(

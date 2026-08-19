@@ -44,7 +44,7 @@ from app.models import (
     PersonNameHistory,
     RoleName,
 )
-from app.services.employees import get_active_passport
+from app.services.employees import deactivate_other_active_contracts, get_active_passport
 from app.services.events import refresh_overdue_events
 from app.services.grade_catalog import (
     apply_grade_catalog_payload,
@@ -171,6 +171,10 @@ def register_routes(bp):
         )
         db.session.add(contract)
         db.session.flush()
+        deactivate_other_active_contracts(
+            payload["employment_id"],
+            keep_contract_id=contract.id,
+        )
         employment = db.session.get(Employment, payload["employment_id"])
         if employment:
             recalculate_employment_events(employment)

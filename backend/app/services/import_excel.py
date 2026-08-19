@@ -736,7 +736,7 @@ def confirm_import(
             contract_end = _parse_date(data.get("contract_end"))
             term_years = _parse_contract_term_years(data.get("contract_term_years"))
 
-            if contract_end is not None or term_years is not None:
+            if contract_end is not None and term_years is not None:
                 sync_active_contract(
                     employment,
                     contract_end,
