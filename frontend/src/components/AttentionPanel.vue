@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
 import EventDetailModal from '@/components/EventDetailModal.vue'
 import PageState from '@/components/PageState.vue'
 import { api } from '@/api/client'
@@ -8,8 +7,6 @@ import { useAsyncResource } from '@/composables/useAsyncResource'
 import {
   attentionEventId,
   attentionItemKey,
-  canOpenAttentionEvent,
-  resolveAttentionRoute,
   type BackendAttentionItem,
 } from '@/utils/attention'
 
@@ -24,8 +21,12 @@ const emit = defineEmits<{
   changed: []
 }>()
 
+const ATTENTION_LIMIT = 12
+const ATTENTION_CATEGORY_LIMIT = 50
+
 const openEventId = ref<number | null>(null)
 const selectedCategory = ref<string | null>(null)
+const chipCounts = ref<Record<string, number>>({})
 
 interface AttentionPayload {
   total: number
@@ -36,16 +37,18 @@ interface AttentionPayload {
 const resource = useAsyncResource<AttentionPayload>()
 
 const summary = computed(() => resource.data.value)
-const counts = computed(() => summary.value?.counts ?? {})
-const items = computed(() => summary.value?.items ?? [])
-const filteredItems = computed(() => {
-  if (!selectedCategory.value) return items.value
-  return items.value.filter((item) => item.category === selectedCategory.value)
-})
-
-const visibleTotal = computed(() =>
-  selectedCategory.value ? filteredItems.value.length : (summary.value?.total ?? 0),
+const counts = computed(() =>
+  Object.keys(chipCounts.value).length ? chipCounts.value : (summary.value?.counts ?? {}),
 )
+const items = computed(() => summary.value?.items ?? [])
+
+const visibleTotal = computed(() => {
+  if (!summary.value) return 0
+  if (selectedCategory.value) {
+    return chipCounts.value[selectedCategory.value] ?? items.value.length
+  }
+  return summary.value.total
+})
 
 const categoryLabels: Record<string, string> = {
   events: 'Мероприятия',
@@ -54,6 +57,20 @@ const categoryLabels: Record<string, string> = {
   grades: 'Грейды',
   tenure: 'Награды за стаж',
 }
+
+const categoryOrder = ['events', 'contracts', 'passports', 'grades', 'tenure'] as const
+
+const orderedCounts = computed(() => {
+  const source = counts.value
+  const ordered: Record<string, number> = {}
+  for (const key of categoryOrder) {
+    if (key in source) ordered[key] = source[key]
+  }
+  for (const [key, value] of Object.entries(source)) {
+    if (!(key in ordered)) ordered[key] = value
+  }
+  return ordered
+})
 
 function categoryLabel(key: string): string {
   return categoryLabels[key] ?? key
@@ -74,23 +91,57 @@ function severityClass(severity: BackendAttentionItem['severity']): string {
   }
 }
 
-async function loadAttention() {
-  await resource.execute(() => api.attention({ limit: 12 }) as Promise<AttentionPayload>)
+async function loadAttentionAll() {
   selectedCategory.value = null
+  await resource.execute(async () => {
+    const data = (await api.attention({ limit: ATTENTION_LIMIT })) as AttentionPayload
+    chipCounts.value = data.counts
+    return data
+  })
 }
 
-function toggleCategoryFilter(category: string) {
-  selectedCategory.value = selectedCategory.value === category ? null : category
+async function loadAttentionCategory(category: string) {
+  selectedCategory.value = category
+  await resource.execute(async () => {
+    const filtered = (await api.attention({
+      limit: ATTENTION_CATEGORY_LIMIT,
+      categories: category,
+    })) as AttentionPayload
+    return {
+      total: chipCounts.value[category] ?? filtered.total,
+      counts: chipCounts.value,
+      items: filtered.items,
+    }
+  })
+}
+
+async function loadAttention() {
+  if (selectedCategory.value) {
+    await loadAttentionCategory(selectedCategory.value)
+    return
+  }
+  await loadAttentionAll()
+}
+
+async function toggleCategoryFilter(category: string) {
+  if (selectedCategory.value === category) {
+    await loadAttentionAll()
+    return
+  }
+  await loadAttentionCategory(category)
 }
 
 function isCategoryActive(category: string): boolean {
   return selectedCategory.value === category
 }
 
-function openItemEvent(item: BackendAttentionItem) {
+function openAttentionItem(item: BackendAttentionItem) {
   const eventId = attentionEventId(item)
-  if (eventId == null) return
-  openEventId.value = eventId
+  if (eventId != null) {
+    openEventId.value = eventId
+    return
+  }
+  void loadAttentionCategory(item.category)
 }
 
 function closeEventModal() {
@@ -103,7 +154,7 @@ async function onEventChanged() {
 }
 
 onMounted(() => {
-  void loadAttention()
+  void loadAttentionAll()
 })
 
 defineExpose({ reload: loadAttention })
@@ -117,7 +168,7 @@ defineExpose({ reload: loadAttention })
         <p v-if="summary">
           {{
             selectedCategory
-              ? `Показано: ${visibleTotal} · ${categoryLabel(selectedCategory)}`
+              ? `Показано: ${items.length} · ${categoryLabel(selectedCategory)}`
               : `Всего: ${visibleTotal}`
           }}
         </p>
@@ -126,7 +177,7 @@ defineExpose({ reload: loadAttention })
         type="button"
         class="btn ghost"
         :disabled="resource.isBusy()"
-        @click="loadAttention()"
+        @click="loadAttentionAll()"
       >
         Обновить
       </button>
@@ -136,7 +187,7 @@ defineExpose({ reload: loadAttention })
       :loading="resource.isLoading()"
       :refreshing="resource.isRefreshing()"
       :error="resource.error.value"
-      :empty="!resource.isBusy() && !filteredItems.length"
+      :empty="!resource.isBusy() && !items.length"
       :empty-text="
         selectedCategory
           ? `Нет задач в категории «${categoryLabel(selectedCategory)}»`
@@ -145,13 +196,13 @@ defineExpose({ reload: loadAttention })
       @retry="loadAttention()"
     >
       <TransitionGroup
-        v-if="Object.keys(counts).length"
+        v-if="Object.keys(orderedCounts).length"
         tag="div"
         name="list"
         class="attention-counts"
       >
         <button
-          v-for="(count, key) in counts"
+          v-for="(count, key) in orderedCounts"
           :key="key"
           type="button"
           class="count-chip"
@@ -165,13 +216,12 @@ defineExpose({ reload: loadAttention })
       </TransitionGroup>
 
       <TransitionGroup tag="ul" name="list" class="attention-list">
-        <li v-for="item in filteredItems" :key="attentionItemKey(item)" class="attention-item">
+        <li v-for="item in items" :key="attentionItemKey(item)" class="attention-item">
           <button
-            v-if="canOpenAttentionEvent(item)"
             type="button"
             class="attention-link"
             :class="severityClass(item.severity)"
-            @click="openItemEvent(item)"
+            @click="openAttentionItem(item)"
           >
             <div class="attention-main">
               <strong>{{ item.title }}</strong>
@@ -184,23 +234,6 @@ defineExpose({ reload: loadAttention })
               <time v-if="item.due_date">{{ item.due_date }}</time>
             </div>
           </button>
-          <RouterLink
-            v-else
-            :to="resolveAttentionRoute(item)"
-            class="attention-link"
-            :class="severityClass(item.severity)"
-          >
-            <div class="attention-main">
-              <strong>{{ item.title }}</strong>
-              <p v-if="item.subtitle">{{ item.subtitle }}</p>
-            </div>
-            <div class="attention-meta">
-              <span class="badge" :class="severityClass(item.severity)">
-                {{ categoryLabel(item.category) }}
-              </span>
-              <time v-if="item.due_date">{{ item.due_date }}</time>
-            </div>
-          </RouterLink>
         </li>
       </TransitionGroup>
     </PageState>
@@ -298,21 +331,18 @@ defineExpose({ reload: loadAttention })
   display: flex;
   justify-content: space-between;
   gap: 0.75rem;
+  width: 100%;
+  margin: 0;
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  transition: background var(--transition), transform var(--transition),
-    box-shadow var(--transition);
-}
-
-button.attention-link {
-  width: 100%;
-  margin: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  transition: background var(--transition), transform var(--transition),
+    box-shadow var(--transition);
 }
 
 .attention-link:hover {

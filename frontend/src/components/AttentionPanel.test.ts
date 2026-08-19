@@ -3,49 +3,70 @@ import { describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import AttentionPanel from '@/components/AttentionPanel.vue'
 
+const attentionPayload = {
+  total: 5,
+  counts: { events: 1, grades: 1, contracts: 1, passports: 1, tenure: 1 },
+  items: [
+    {
+      category: 'events',
+      id: 42,
+      title: 'Просроченное мероприятие',
+      subtitle: 'Иван Иванов',
+      due_date: '2026-07-01',
+      severity: 'danger',
+      route: '/?event=42',
+      event_id: 42,
+    },
+    {
+      category: 'grades',
+      id: 88,
+      title: 'Рассмотреть повышение грейда',
+      subtitle: 'Иван Иванов',
+      due_date: '2026-07-10',
+      severity: 'warning',
+      route: '/?event=88',
+      event_id: 88,
+    },
+    {
+      category: 'contracts',
+      id: 7,
+      title: 'Истекает договор',
+      severity: 'warning',
+      route: '/contracts',
+      event_id: 71,
+    },
+    {
+      category: 'passports',
+      id: 9,
+      title: 'Паспорт скоро истекает',
+      severity: 'warning',
+      route: '/passports',
+      event_id: null,
+    },
+    {
+      category: 'tenure',
+      id: 3,
+      title: 'Поощрение за 10 лет',
+      severity: 'warning',
+      route: '/awards',
+      event_id: null,
+    },
+  ],
+}
+
 const { attention } = vi.hoisted(() => ({
-  attention: vi.fn(async () => ({
-    total: 4,
-    counts: { events: 1, grades: 1, contracts: 1, tenure: 1 },
-    items: [
-      {
-        category: 'events',
-        id: 42,
-        title: 'Просроченное мероприятие',
-        subtitle: 'Иван Иванов',
-        due_date: '2026-07-01',
-        severity: 'danger',
-        route: '/?event=42',
-        event_id: 42,
-      },
-      {
-        category: 'grades',
-        id: 88,
-        title: 'Рассмотреть повышение грейда',
-        subtitle: 'Иван Иванов',
-        due_date: '2026-07-10',
-        severity: 'warning',
-        route: '/?event=88',
-        event_id: 88,
-      },
-      {
-        category: 'contracts',
-        id: 7,
-        title: 'Истекает договор',
-        severity: 'warning',
-        route: '/contracts',
-        event_id: 71,
-      },
-      {
-        category: 'tenure',
-        id: 3,
-        title: 'Поощрение за 10 лет',
-        severity: 'warning',
-        route: '/awards',
-        event_id: null,
-      },
-    ],
-  })),
+  attention: vi.fn(async (params?: { categories?: string; limit?: number }) => {
+    const category = params?.categories
+    if (category) {
+      return {
+        ...attentionPayload,
+        total: attentionPayload.counts[category as keyof typeof attentionPayload.counts] ?? 0,
+        counts: { [category]: attentionPayload.counts[category as keyof typeof attentionPayload.counts] ?? 0 },
+        items: attentionPayload.items.filter((item) => item.category === category),
+      }
+    }
+    return attentionPayload
+  }),
 }))
 
 vi.mock('@/api/client', () => ({
@@ -70,6 +91,7 @@ async function mountPanel() {
       { path: '/', name: 'calendar', component: { template: '<div />' } },
       { path: '/events', name: 'events', component: { template: '<div />' } },
       { path: '/contracts', name: 'contracts', component: { template: '<div />' } },
+      { path: '/passports', name: 'passports', component: { template: '<div />' } },
       { path: '/awards', name: 'awards', component: { template: '<div />' } },
     ],
   })
@@ -90,6 +112,10 @@ async function mountPanel() {
 
 function itemButton(wrapper: ReturnType<typeof mount>, text: string) {
   return wrapper.findAll('button.attention-link').find((button) => button.text().includes(text))
+}
+
+function categoryChip(wrapper: ReturnType<typeof mount>, label: string) {
+  return wrapper.findAll('button.count-chip').find((button) => button.text().includes(label))
 }
 
 describe('AttentionPanel', () => {
@@ -124,14 +150,19 @@ describe('AttentionPanel', () => {
     expect(wrapper.find('.modal-event-id').text()).toBe('71')
   })
 
-  it('navigates for items that have no related event', async () => {
-    const { wrapper } = await mountPanel()
+  it('filters by category when a non-event item is clicked', async () => {
+    const { wrapper, pushSpy } = await mountPanel()
 
-    expect(itemButton(wrapper, 'Поощрение за 10 лет')).toBeUndefined()
-    const link = wrapper
-      .findAll('a.attention-link')
-      .find((anchor) => anchor.text().includes('Поощрение за 10 лет'))
-    expect(link!.attributes('href')).toBe('/awards')
+    await itemButton(wrapper, 'Поощрение за 10 лет')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.attention-item')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Поощрение за 10 лет')
+    expect(categoryChip(wrapper, 'Награды за стаж')!.classes()).toContain('active')
+    expect(pushSpy).not.toHaveBeenCalled()
+    expect(attention).toHaveBeenLastCalledWith(
+      expect.objectContaining({ categories: 'tenure', limit: 50 }),
+    )
   })
 
   it('reloads the list and reports the change after completing an event', async () => {
@@ -143,54 +174,55 @@ describe('AttentionPanel', () => {
     await wrapper.find('.modal-complete').trigger('click')
     await flushPromises()
 
-    expect(attention).toHaveBeenCalledTimes(1)
+    expect(attention).toHaveBeenCalled()
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
 
-  it('filters attention items by category chip without navigating away', async () => {
+  it.each([
+    ['Договоры', 'contracts', 'Истекает договор'],
+    ['Мероприятия', 'events', 'Просроченное мероприятие'],
+    ['Грейды', 'grades', 'Рассмотреть повышение грейда'],
+    ['Паспорта', 'passports', 'Паспорт скоро истекает'],
+    ['Награды за стаж', 'tenure', 'Поощрение за 10 лет'],
+  ])('filters by %s chip without navigating away', async (label, category, visibleTitle) => {
     const { wrapper, pushSpy } = await mountPanel()
+    attention.mockClear()
 
-    const contractChip = wrapper
-      .findAll('button.count-chip')
-      .find((button) => button.text().includes('Договоры'))
-    expect(contractChip).toBeTruthy()
-    expect(wrapper.findAll('.attention-item')).toHaveLength(4)
+    const chip = categoryChip(wrapper, label)
+    expect(chip).toBeTruthy()
+    expect(wrapper.findAll('.attention-item')).toHaveLength(5)
 
-    await contractChip!.trigger('click')
+    await chip!.trigger('click')
     await flushPromises()
 
     expect(wrapper.findAll('.attention-item')).toHaveLength(1)
-    expect(wrapper.text()).toContain('Истекает договор')
-    expect(contractChip!.classes()).toContain('active')
+    expect(wrapper.text()).toContain(visibleTitle)
+    expect(chip!.classes()).toContain('active')
     expect(pushSpy).not.toHaveBeenCalled()
+    expect(attention).toHaveBeenLastCalledWith(
+      expect.objectContaining({ categories: category, limit: 50 }),
+    )
 
-    await contractChip!.trigger('click')
+    await chip!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.findAll('.attention-item')).toHaveLength(4)
-    expect(contractChip!.classes()).not.toContain('active')
+    expect(wrapper.findAll('.attention-item')).toHaveLength(5)
+    expect(chip!.classes()).not.toContain('active')
   })
 
   it('switches category filter when another chip is clicked', async () => {
     const { wrapper } = await mountPanel()
 
-    const gradesChip = wrapper
-      .findAll('button.count-chip')
-      .find((button) => button.text().includes('Грейды'))
-    const contractsChip = wrapper
-      .findAll('button.count-chip')
-      .find((button) => button.text().includes('Договоры'))
-
-    await gradesChip!.trigger('click')
+    await categoryChip(wrapper, 'Грейды')!.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Рассмотреть повышение грейда')
     expect(wrapper.text()).not.toContain('Истекает договор')
 
-    await contractsChip!.trigger('click')
+    await categoryChip(wrapper, 'Договоры')!.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('Истекает договор')
     expect(wrapper.text()).not.toContain('Рассмотреть повышение грейда')
-    expect(contractsChip!.classes()).toContain('active')
-    expect(gradesChip!.classes()).not.toContain('active')
+    expect(categoryChip(wrapper, 'Договоры')!.classes()).toContain('active')
+    expect(categoryChip(wrapper, 'Грейды')!.classes()).not.toContain('active')
   })
 })
