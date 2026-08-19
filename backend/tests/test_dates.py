@@ -54,6 +54,13 @@ def test_calculate_contract_end():
     assert calculate_contract_end(start, 3.5) == date(2028, 3, 1)
 
 
+def test_calculate_contract_start():
+    from app.utils.dates import calculate_contract_start
+
+    assert calculate_contract_start(date(2027, 1, 10), 3) == date(2024, 1, 10)
+    assert calculate_contract_start(date(2026, 1, 10), 2) == date(2024, 1, 10)
+
+
 def test_calculate_term_years():
     start = date(2024, 9, 1)
     assert calculate_term_years(start, date(2025, 9, 1)) == 1.0

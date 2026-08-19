@@ -30,7 +30,7 @@ from app.services.tenure import (
     active_employment,
     employment_periods,
 )
-from app.utils.dates import calculate_contract_end, calculate_term_years, today_moscow
+from app.utils.dates import calculate_contract_start, today_moscow
 
 
 def get_current_name(person: Person) -> str | None:
@@ -183,30 +183,26 @@ def dismiss_employment(
 def sync_active_contract(
     employment: Employment,
     end_date: date | None = None,
-    start_date: date | None = None,
     term_years: float | None = None,
 ) -> Contract | None:
+    """Apply HR-entered contract end date and term to the active contract."""
     contract = get_active_contract(employment)
-    contract_start = start_date or (contract.start_date if contract else employment.hire_date)
+    has_end = end_date is not None
+    has_term = term_years is not None
 
-    if end_date is None and term_years is not None:
-        end_date = calculate_contract_end(contract_start, term_years)
-
-    if end_date is None:
+    if not has_end and not has_term:
         if contract:
             contract.is_active = False
         return None
 
-    if end_date <= contract_start:
-        raise ValueError("Дата окончания договора должна быть позже даты начала")
+    if not has_end or not has_term:
+        raise ValueError("Укажите срок договора и дату окончания")
 
-    if term_years is None:
-        term_years = calculate_term_years(contract_start, end_date)
+    contract_start = calculate_contract_start(end_date, term_years)
 
     if contract:
+        contract.start_date = contract_start
         contract.end_date = end_date
-        if start_date:
-            contract.start_date = start_date
         contract.term_years = term_years
         contract.is_active = True
         return contract

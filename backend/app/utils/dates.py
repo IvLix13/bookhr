@@ -54,6 +54,21 @@ def calculate_contract_end(start_date: date, term_years: float | int) -> date:
     return add_years(start_date, term_years)
 
 
+def subtract_years(value: date, years: float | int) -> date:
+    whole_years = int(years)
+    remaining_months = round((years - whole_years) * 12)
+    return value - relativedelta(years=whole_years, months=remaining_months)
+
+
+def calculate_contract_start(end_date: date, term_years: float | int) -> date:
+    if term_years <= 0:
+        raise ValueError("Срок договора должен быть больше нуля")
+    start_date = subtract_years(end_date, term_years)
+    if start_date >= end_date:
+        raise ValueError("Дата окончания договора должна быть позже даты начала")
+    return start_date
+
+
 def calculate_term_years(start_date: date, end_date: date) -> float:
     if end_date <= start_date:
         raise ValueError("Дата окончания договора должна быть позже даты начала")

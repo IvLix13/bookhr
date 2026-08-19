@@ -74,8 +74,8 @@ def test_create_contract_triggers_renewal_report(hr_client, seed_company):
         "/api/contracts",
         json={
             "employment_id": employment_id,
-            "start_date": "2025-01-01",
             "end_date": "2027-12-01",
+            "term_years": 3,
         },
     )
     assert response.status_code == 201
