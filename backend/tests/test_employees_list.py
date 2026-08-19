@@ -138,6 +138,57 @@ def test_grades_search_and_sort_by_full_name(admin_client, seed_company):
     assert [item["full_name"] for item in items] == ["Коробов Кирилл"]
 
 
+def test_grades_list_sort_by_days_left(admin_client, seed_company, monkeypatch):
+    from app.models import EmployeeGradeHistory, GradeCatalog
+
+    with admin_client.application.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=1.5, is_active=True)
+        middle = GradeCatalog(name="Middle", rank=2, min_years=2, is_active=True)
+        db.session.add_all([junior, middle])
+        db.session.flush()
+
+        soon = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Скоро Доступен",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status="yes",
+        )[1]
+        db.session.add(
+            EmployeeGradeHistory(
+                employment_id=soon.id,
+                grade_id=junior.id,
+                assigned_date=date(2024, 12, 1),
+            )
+        )
+
+        later = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Позже Доступен",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status="yes",
+        )[1]
+        db.session.add(
+            EmployeeGradeHistory(
+                employment_id=later.id,
+                grade_id=junior.id,
+                assigned_date=date(2024, 1, 1),
+            )
+        )
+        db.session.commit()
+
+    monkeypatch.setattr("app.services.grades.today_moscow", lambda: date(2025, 6, 1))
+
+    response = admin_client.get("/api/grades?sort=days_left&direction=asc")
+    assert response.status_code == 200
+    items = response.get_json()["data"]["items"]
+    assert [item["full_name"] for item in items[:2]] == ["Позже Доступен", "Скоро Доступен"]
+    assert items[0]["days_left"] <= items[1]["days_left"]
+
+
 def test_tenure_list_sort_by_full_name(admin_client, seed_company):
     create_person_with_employment(
         company_id=seed_company.id,
