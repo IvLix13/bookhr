@@ -32,6 +32,8 @@ REWARD_SORT_FIELDS = {
     "status_changed_date": Reward.status_changed_date,
     "updated_at": Reward.updated_at,
     "delivered_date": Reward.delivered_date,
+    "directive_text": Reward.directive_text,
+    "notes": Reward.notes,
     "full_name": PersonNameHistory.full_name,
 }
 

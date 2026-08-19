@@ -12,13 +12,20 @@ from app.api.helpers import (
     api_response,
     apply_employment_name_search,
     apply_sort,
-    load_schema,
+    join_active_contract,
+    join_active_passport,
+    join_current_grade_history,
     join_current_person_name,
+    join_current_position,
+    join_person,
+    load_schema,
     paginate_query,
+    paginate_sequence,
     parse_pagination_args,
     parse_search_q,
     parse_sort_args,
     require_roles,
+    sort_sequence_with_nulls_last,
 )
 from app.api.schemas import (
     CreateEmployeeSchema,
@@ -28,7 +35,17 @@ from app.api.schemas import (
 )
 from app.api.serializers import employment_to_dict
 from app.extensions import db
-from app.models import Employment, EmploymentStatus, PersonNameHistory, RoleName
+from app.models import (
+    Contract,
+    EmployeeGradeHistory,
+    Employment,
+    EmploymentStatus,
+    Passport,
+    Person,
+    PersonNameHistory,
+    PositionHistory,
+    RoleName,
+)
 from app.services.employees import (
     create_person_with_employment,
     delete_employment,
@@ -44,12 +61,13 @@ from app.services.employees import (
     update_position,
 )
 from app.services.events import refresh_overdue_events
-from app.services.grades import resolve_unknown_education_snapshot
+from app.services.grades import compute_grade_eligibility, resolve_unknown_education_snapshot
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import (
     MAX_EMPLOYMENT_PERIODS,
     count_employment_periods,
     ensure_tenure_awards,
+    total_tenure_years,
 )
 from app.tenant import get_request_company_id
 from app.utils.dates import today_moscow
@@ -68,10 +86,44 @@ def _payload_has(payload: dict[str, Any], key: str) -> bool:
 
 
 EMPLOYEE_SORT_FIELDS = {
+    "full_name": PersonNameHistory.full_name,
     "hire_date": Employment.hire_date,
     "status": Employment.status,
-    "full_name": PersonNameHistory.full_name,
+    "title": PositionHistory.title,
+    "education_status": Person.education_status,
+    "contract_end": Contract.end_date,
+    "grade_date": EmployeeGradeHistory.assigned_date,
+    "passport": Passport.valid_until,
+    "eligible_date": Employment.hire_date,
+    "tenure_years": Employment.hire_date,
 }
+
+EMPLOYEE_COMPUTED_SORTS = frozenset({"eligible_date", "tenure_years"})
+
+
+def _employee_computed_sort_value(employment: Employment, sort: str) -> int | float | None:
+    if sort == "eligible_date":
+        eligible_date = compute_grade_eligibility(employment)["eligible_date"]
+        return eligible_date.toordinal() if eligible_date else None
+    if sort == "tenure_years":
+        return total_tenure_years(employment.person_id, employment.company_id)
+    return None
+
+
+def _apply_employee_list_sort_joins(query, sort: str):
+    if sort == "full_name":
+        return join_current_person_name(query)
+    if sort == "title":
+        return join_current_position(query)
+    if sort == "education_status":
+        return join_person(query)
+    if sort == "contract_end":
+        return join_active_contract(query)
+    if sort == "grade_date":
+        return join_current_grade_history(query)
+    if sort == "passport":
+        return join_active_passport(query)
+    return query
 
 
 def register_routes(bp):
@@ -93,9 +145,18 @@ def register_routes(bp):
             query = query.filter_by(status=EmploymentStatus.ACTIVE.value)
 
         query = apply_employment_name_search(query, q)
-        if sort == "full_name":
-            query = join_current_person_name(query)
 
+        if sort in EMPLOYEE_COMPUTED_SORTS:
+            employments = query.all()
+            sort_sequence_with_nulls_last(
+                employments,
+                lambda employment: _employee_computed_sort_value(employment, sort),
+                reverse=direction == "desc",
+            )
+            rows = [employment_to_dict(employment) for employment in employments]
+            return api_response(paginate_sequence(rows, page, per_page))
+
+        query = _apply_employee_list_sort_joins(query, sort)
         query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
 
         return api_response(paginate_query(query, employment_to_dict, page, per_page))

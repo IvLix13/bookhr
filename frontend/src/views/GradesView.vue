@@ -37,6 +37,7 @@ const columns: ColumnDef<GradeRow>[] = [
   {
     key: 'next_grade_candidates',
     label: 'Следующий грейд',
+    sortable: false,
     getValue: (row) => {
       const candidates = row.next_grade_candidates ?? []
       return candidates.length ? candidates.map((grade) => grade.name).join(', ') : '—'

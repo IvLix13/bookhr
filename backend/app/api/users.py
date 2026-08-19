@@ -25,6 +25,8 @@ USER_SORT_FIELDS = {
     "username": User.username,
     "full_name": User.full_name,
     "role": Role.name,
+    "auth_source": User.auth_source,
+    "is_locked": User.locked_until,
 }
 
 
