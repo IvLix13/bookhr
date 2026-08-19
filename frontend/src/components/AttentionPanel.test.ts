@@ -146,4 +146,51 @@ describe('AttentionPanel', () => {
     expect(attention).toHaveBeenCalledTimes(1)
     expect(wrapper.emitted('changed')).toHaveLength(1)
   })
+
+  it('filters attention items by category chip without navigating away', async () => {
+    const { wrapper, pushSpy } = await mountPanel()
+
+    const contractChip = wrapper
+      .findAll('button.count-chip')
+      .find((button) => button.text().includes('Договоры'))
+    expect(contractChip).toBeTruthy()
+    expect(wrapper.findAll('.attention-item')).toHaveLength(4)
+
+    await contractChip!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.attention-item')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Истекает договор')
+    expect(contractChip!.classes()).toContain('active')
+    expect(pushSpy).not.toHaveBeenCalled()
+
+    await contractChip!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.attention-item')).toHaveLength(4)
+    expect(contractChip!.classes()).not.toContain('active')
+  })
+
+  it('switches category filter when another chip is clicked', async () => {
+    const { wrapper } = await mountPanel()
+
+    const gradesChip = wrapper
+      .findAll('button.count-chip')
+      .find((button) => button.text().includes('Грейды'))
+    const contractsChip = wrapper
+      .findAll('button.count-chip')
+      .find((button) => button.text().includes('Договоры'))
+
+    await gradesChip!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Рассмотреть повышение грейда')
+    expect(wrapper.text()).not.toContain('Истекает договор')
+
+    await contractsChip!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Истекает договор')
+    expect(wrapper.text()).not.toContain('Рассмотреть повышение грейда')
+    expect(contractsChip!.classes()).toContain('active')
+    expect(gradesChip!.classes()).not.toContain('active')
+  })
 })

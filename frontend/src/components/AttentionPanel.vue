@@ -6,7 +6,6 @@ import PageState from '@/components/PageState.vue'
 import { api } from '@/api/client'
 import { useAsyncResource } from '@/composables/useAsyncResource'
 import {
-  attentionCategoryRoute,
   attentionEventId,
   attentionItemKey,
   canOpenAttentionEvent,
@@ -26,6 +25,7 @@ const emit = defineEmits<{
 }>()
 
 const openEventId = ref<number | null>(null)
+const selectedCategory = ref<string | null>(null)
 
 interface AttentionPayload {
   total: number
@@ -38,6 +38,14 @@ const resource = useAsyncResource<AttentionPayload>()
 const summary = computed(() => resource.data.value)
 const counts = computed(() => summary.value?.counts ?? {})
 const items = computed(() => summary.value?.items ?? [])
+const filteredItems = computed(() => {
+  if (!selectedCategory.value) return items.value
+  return items.value.filter((item) => item.category === selectedCategory.value)
+})
+
+const visibleTotal = computed(() =>
+  selectedCategory.value ? filteredItems.value.length : (summary.value?.total ?? 0),
+)
 
 const categoryLabels: Record<string, string> = {
   events: 'Мероприятия',
@@ -68,10 +76,15 @@ function severityClass(severity: BackendAttentionItem['severity']): string {
 
 async function loadAttention() {
   await resource.execute(() => api.attention({ limit: 12 }) as Promise<AttentionPayload>)
+  selectedCategory.value = null
 }
 
-function staysOnCalendarChip(category: string): boolean {
-  return category === 'events' || category === 'grades'
+function toggleCategoryFilter(category: string) {
+  selectedCategory.value = selectedCategory.value === category ? null : category
+}
+
+function isCategoryActive(category: string): boolean {
+  return selectedCategory.value === category
 }
 
 function openItemEvent(item: BackendAttentionItem) {
@@ -101,7 +114,13 @@ defineExpose({ reload: loadAttention })
     <header class="attention-header">
       <div>
         <h3 v-if="!embedded">Требует внимания</h3>
-        <p v-if="summary">Всего: {{ summary.total }}</p>
+        <p v-if="summary">
+          {{
+            selectedCategory
+              ? `Показано: ${visibleTotal} · ${categoryLabel(selectedCategory)}`
+              : `Всего: ${visibleTotal}`
+          }}
+        </p>
       </div>
       <button
         type="button"
@@ -117,8 +136,12 @@ defineExpose({ reload: loadAttention })
       :loading="resource.isLoading()"
       :refreshing="resource.isRefreshing()"
       :error="resource.error.value"
-      :empty="!resource.isBusy() && !items.length"
-      empty-text="Нет срочных задач"
+      :empty="!resource.isBusy() && !filteredItems.length"
+      :empty-text="
+        selectedCategory
+          ? `Нет задач в категории «${categoryLabel(selectedCategory)}»`
+          : 'Нет срочных задач'
+      "
       @retry="loadAttention()"
     >
       <TransitionGroup
@@ -127,21 +150,22 @@ defineExpose({ reload: loadAttention })
         name="list"
         class="attention-counts"
       >
-        <component
-          :is="staysOnCalendarChip(String(key)) ? 'span' : RouterLink"
+        <button
           v-for="(count, key) in counts"
           :key="key"
-          v-bind="staysOnCalendarChip(String(key)) ? {} : { to: attentionCategoryRoute(String(key)) }"
+          type="button"
           class="count-chip"
-          :class="{ static: staysOnCalendarChip(String(key)) }"
+          :class="{ active: isCategoryActive(String(key)) }"
+          :aria-pressed="isCategoryActive(String(key))"
+          @click="toggleCategoryFilter(String(key))"
         >
           <span class="count-label">{{ categoryLabel(String(key)) }}</span>
           <strong>{{ count }}</strong>
-        </component>
+        </button>
       </TransitionGroup>
 
       <TransitionGroup tag="ul" name="list" class="attention-list">
-        <li v-for="item in items" :key="attentionItemKey(item)" class="attention-item">
+        <li v-for="item in filteredItems" :key="attentionItemKey(item)" class="attention-item">
           <button
             v-if="canOpenAttentionEvent(item)"
             type="button"
@@ -237,18 +261,24 @@ defineExpose({ reload: loadAttention })
   border-radius: var(--radius-pill);
   padding: 0.25rem 0.65rem;
   font-size: 0.85rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
   transition: background var(--transition), transform var(--transition),
     border-color var(--transition);
 }
 
-.count-chip:hover:not(.static) {
+.count-chip:hover {
   background: var(--accent-soft);
   border-color: var(--accent-border, var(--accent));
   transform: translateY(-1px);
 }
 
-.count-chip.static {
-  cursor: default;
+.count-chip.active {
+  background: var(--accent-soft);
+  border-color: var(--accent-border, var(--accent));
+  box-shadow: inset 0 0 0 1px var(--accent-border, var(--accent));
 }
 
 .count-label {
