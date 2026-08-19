@@ -709,7 +709,10 @@ def confirm_import(
                 if title.strip():
                     current_position = get_current_position(employment)
                     current_title = current_position.title if current_position else ""
-                    if title != current_title:
+                    current_grade_id = (
+                        current_position.position_grade_id if current_position else None
+                    )
+                    if title != current_title or position_grade_id != current_grade_id:
                         update_position(
                             employment,
                             title,
@@ -719,7 +722,10 @@ def confirm_import(
             elif not created and periods is not None and title.strip():
                 current_position = get_current_position(employment)
                 current_title = current_position.title if current_position else ""
-                if title != current_title:
+                current_grade_id = (
+                    current_position.position_grade_id if current_position else None
+                )
+                if title != current_title or position_grade_id != current_grade_id:
                     update_position(
                         employment,
                         title,
