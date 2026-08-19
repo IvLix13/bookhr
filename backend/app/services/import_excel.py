@@ -46,8 +46,7 @@ from app.services.tenure import (
     employment_periods,
 )
 from app.utils.dates import (
-    calculate_contract_end,
-    calculate_term_years,
+    calculate_contract_start,
     format_display_date_ru,
     normalize_full_name,
     parse_flexible_date,
@@ -284,6 +283,26 @@ def _is_unknown_grade_warning(message: str) -> bool:
     )
 
 
+def _parse_contract_term_years(value: Any) -> float | None:
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        term = float(str(value).replace(",", ".").strip())
+    except ValueError:
+        return None
+    if term <= 0:
+        return None
+    return term
+
+
+def _contract_fields_present(data: dict[str, Any]) -> tuple[bool, bool]:
+    has_end = data.get("contract_end") not in (None, "") and str(data.get("contract_end")).strip()
+    has_term = data.get("contract_term_years") not in (None, "") and str(
+        data.get("contract_term_years")
+    ).strip()
+    return bool(has_end), bool(has_term)
+
+
 def _serialize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
     serialized: dict[str, Any] = {}
     for key, value in data.items():
@@ -301,6 +320,10 @@ def _serialize_raw_data(data: dict[str, Any]) -> dict[str, Any]:
                 serialized[key] = (
                     "Да" if status == EducationStatus.YES.value else "Нет"
                 )
+            continue
+        if key == "contract_term_years":
+            parsed = _parse_contract_term_years(value)
+            serialized[key] = parsed
             continue
         serialized[key] = None if value is None else str(value)
     return serialized
@@ -363,6 +386,22 @@ def validate_row(data: dict[str, Any]) -> tuple[list[str], list[str]]:
         and _parse_education_status(education_raw) is None
     ):
         errors.append("Поле ВУЗ должно содержать «Да» или «Нет»")
+
+    has_end, has_term = _contract_fields_present(data)
+    if has_end != has_term:
+        errors.append("Укажите срок договора и дату окончания")
+    elif has_end:
+        contract_end = _parse_date(data.get("contract_end"))
+        term_years = _parse_contract_term_years(data.get("contract_term_years"))
+        if contract_end is None:
+            errors.append("Некорректная дата окончания договора")
+        if term_years is None:
+            errors.append("Некорректный срок договора")
+        if contract_end and term_years:
+            try:
+                calculate_contract_start(contract_end, term_years)
+            except ValueError as exc:
+                errors.append(str(exc))
 
     return errors, warnings
 
@@ -481,8 +520,12 @@ def _mark_row_result(row: ImportRow, result: str, message: str | None = None) ->
     row.result_message = message
 
 
-def _upsert_contract(employment: Employment, hire_date: date, contract_end: date) -> None:
-    term_years = calculate_term_years(hire_date, contract_end) if contract_end > hire_date else None
+def _upsert_contract(
+    employment: Employment,
+    contract_end: date,
+    term_years: float,
+) -> None:
+    start_date = calculate_contract_start(contract_end, term_years)
     existing_contract = Contract.query.filter_by(
         employment_id=employment.id,
         end_date=contract_end,
@@ -491,7 +534,7 @@ def _upsert_contract(employment: Employment, hire_date: date, contract_end: date
         db.session.add(
             Contract(
                 employment_id=employment.id,
-                start_date=hire_date,
+                start_date=start_date,
                 end_date=contract_end,
                 term_years=term_years,
                 is_active=True,
@@ -685,19 +728,12 @@ def confirm_import(
                     )
 
             contract_end = _parse_date(data.get("contract_end"))
-            term_years_raw = data.get("contract_term_years")
-            term_years: float | None = None
-            if term_years_raw is not None and str(term_years_raw).strip():
-                try:
-                    term_years = float(str(term_years_raw).replace(",", ".").strip())
-                except ValueError:
-                    term_years = None
+            term_years = _parse_contract_term_years(data.get("contract_term_years"))
 
-            if contract_end or term_years is not None:
+            if contract_end is not None or term_years is not None:
                 sync_active_contract(
                     employment,
                     contract_end,
-                    start_date=hire_date,
                     term_years=term_years,
                 )
 

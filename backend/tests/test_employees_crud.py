@@ -2,6 +2,7 @@ from datetime import date
 
 from app.extensions import db
 from app.models import (
+    Contract,
     EmployeeGradeHistory,
     Event,
     EventStatus,
@@ -39,6 +40,7 @@ def test_create_employee_creates_rule_events(hr_client, seed_company):
             "position_grade_id": senior_id,
             "actual_grade_id": middle_id,
             "grade_date": "2024-03-01",
+            "contract_term_years": 1,
             "contract_end": "2026-12-01",
             "passport_until": "2029-08-20",
         },
@@ -146,6 +148,7 @@ def test_update_contract_end_recalculates_events(hr_client, seed_company):
             "education_status": "no",
             "actual_grade_id": middle_id,
             "grade_date": "2023-01-01",
+            "contract_term_years": 1,
             "contract_end": "2026-12-01",
             "passport_until": "2030-01-01",
         },
@@ -163,7 +166,7 @@ def test_update_contract_end_recalculates_events(hr_client, seed_company):
 
     updated = hr_client.patch(
         f"/api/employees/{employment_id}",
-        json={"contract_end": "2027-06-01"},
+        json={"contract_term_years": 2, "contract_end": "2027-06-01"},
     )
     assert updated.status_code == 200
     assert updated.get_json()["data"]["contract_end"] == "2027-06-01"
@@ -194,6 +197,7 @@ def test_update_name_updates_event_titles(hr_client, seed_company):
             "title": "Инженер",
             "hire_date": "2022-01-01",
             "education_status": "no",
+            "contract_term_years": 1,
             "contract_end": "2026-12-01",
             "passport_until": "2028-01-01",
         },
@@ -227,6 +231,7 @@ def test_delete_employee_removes_events(hr_client, seed_company):
             "title": "Инженер",
             "hire_date": "2021-01-01",
             "education_status": "no",
+            "contract_term_years": 1,
             "contract_end": "2026-12-01",
             "passport_until": "2029-01-01",
         },
@@ -266,46 +271,49 @@ def test_viewer_cannot_mutate_employees(viewer_client, seed_company):
     assert viewer_client.delete(f"/api/employees/{employment_id}").status_code == 403
 
 
-def test_create_employee_with_contract_term_years(hr_client, seed_company):
+def test_create_employee_with_contract_fields(hr_client, seed_company):
     response = hr_client.post(
         "/api/employees",
         json={
             "company_id": seed_company.id,
             "full_name": "Контрактов Срок Срокович",
             "title": "Менеджер",
-            "hire_date": "2024-09-01",
+            "hire_date": "2020-01-01",
             "education_status": "no",
             "contract_term_years": 2,
+            "contract_end": "2027-06-01",
         },
     )
     assert response.status_code == 201
     data = response.get_json()["data"]
     assert data["contract_term_years"] == 2
-    assert data["contract_end"] == "2026-09-01"
+    assert data["contract_end"] == "2027-06-01"
 
     employment_id = data["id"]
     with hr_client.application.app_context():
+        contract = Contract.query.join(Employment).filter(Employment.id == employment_id).one()
+        assert contract.start_date == date(2025, 6, 1)
         report = Event.query.filter_by(
             employment_id=employment_id,
             event_type=EventType.REPORT.value,
         ).one()
-        assert report.event_date == date(2026, 5, 1)
+        assert report.event_date == date(2027, 2, 1)
 
     updated = hr_client.patch(
         f"/api/employees/{employment_id}",
-        json={"contract_term_years": 3},
+        json={"contract_term_years": 3, "contract_end": "2028-06-01"},
     )
     assert updated.status_code == 200
     assert updated.get_json()["data"]["contract_term_years"] == 3
-    assert updated.get_json()["data"]["contract_end"] == "2027-09-01"
+    assert updated.get_json()["data"]["contract_end"] == "2028-06-01"
 
     manual_end = hr_client.patch(
         f"/api/employees/{employment_id}",
-        json={"contract_end": "2029-09-01"},
+        json={"contract_term_years": 5, "contract_end": "2030-06-01"},
     )
     assert manual_end.status_code == 200
-    assert manual_end.get_json()["data"]["contract_term_years"] == 5.0
-    assert manual_end.get_json()["data"]["contract_end"] == "2029-09-01"
+    assert manual_end.get_json()["data"]["contract_term_years"] == 5
+    assert manual_end.get_json()["data"]["contract_end"] == "2030-06-01"
 
     with hr_client.application.app_context():
         report = Event.query.filter_by(
@@ -313,21 +321,33 @@ def test_create_employee_with_contract_term_years(hr_client, seed_company):
             event_type=EventType.REPORT.value,
             status=EventStatus.PLANNED.value,
         ).one()
-        assert report.event_date == date(2029, 5, 1)
+        assert report.event_date == date(2030, 2, 1)
 
 
-def test_create_employee_invalid_contract_end_rejected(hr_client, seed_company):
-    response = hr_client.post(
+def test_create_employee_rejects_partial_contract_fields(hr_client, seed_company):
+    only_end = hr_client.post(
         "/api/employees",
         json={
             "company_id": seed_company.id,
             "full_name": "Невалидов Дата",
             "hire_date": "2024-09-01",
             "education_status": "no",
-            "contract_end": "2024-08-01",
+            "contract_end": "2026-08-01",
         },
     )
-    assert response.status_code == 400
+    assert only_end.status_code == 400
+
+    only_term = hr_client.post(
+        "/api/employees",
+        json={
+            "company_id": seed_company.id,
+            "full_name": "Невалидов Срок",
+            "hire_date": "2024-09-01",
+            "education_status": "no",
+            "contract_term_years": 2,
+        },
+    )
+    assert only_term.status_code == 400
 
 
 def test_update_contract_directly(hr_client, seed_company):
@@ -338,6 +358,7 @@ def test_update_contract_directly(hr_client, seed_company):
             "full_name": "Прямов Контракт",
             "hire_date": "2024-01-01",
             "education_status": "no",
+            "contract_term_years": 1,
             "contract_end": "2025-01-01",
         },
     )
@@ -351,17 +372,19 @@ def test_update_contract_directly(hr_client, seed_company):
 
     updated = hr_client.patch(
         f"/api/contracts/{contract_id}",
-        json={"end_date": "2027-01-01"},
+        json={"end_date": "2027-01-01", "term_years": 3},
     )
     assert updated.status_code == 200
     data = updated.get_json()["data"]
     assert data["end_date"] == "2027-01-01"
     assert data["term_years"] == 3.0
+    assert data["start_date"] == "2024-01-01"
 
     invalid = hr_client.patch(
         f"/api/contracts/{contract_id}",
-        json={"end_date": "2023-01-01"},
+        json={"end_date": "2027-01-01"},
     )
+    assert invalid.status_code == 400
     assert invalid.status_code == 400
 
 

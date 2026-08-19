@@ -7,9 +7,29 @@ from datetime import date
 from marshmallow import Schema, ValidationError, fields, validate, validates_schema, EXCLUDE
 
 from app.models import EducationStatus, EventType, RoleName
+from app.utils.dates import calculate_contract_start
 
 
 EDUCATION_CHOICES = (EducationStatus.YES.value, EducationStatus.NO.value)
+
+
+def validate_contract_pair(data: dict, *, end_key: str = "contract_end", term_key: str = "contract_term_years") -> None:
+    contract_end = data.get(end_key)
+    contract_term = data.get(term_key)
+    has_end = contract_end is not None
+    has_term = contract_term is not None
+    if has_end != has_term:
+        raise ValidationError(
+            {end_key: ["Укажите срок договора и дату окончания"]},
+        )
+    if not has_end:
+        return
+    if contract_term is not None and contract_term <= 0:
+        raise ValidationError({term_key: ["Срок договора должен быть больше нуля"]})
+    try:
+        calculate_contract_start(contract_end, contract_term)
+    except ValueError as exc:
+        raise ValidationError({end_key: [str(exc)]}) from exc
 
 
 class BaseSchema(Schema):
@@ -79,10 +99,7 @@ class CreateEmployeeSchema(BaseSchema):
 
     @validates_schema
     def validate_dates(self, data, **kwargs):
-        hire_date = data.get("hire_date")
-        contract_end = data.get("contract_end")
-        if hire_date and contract_end and contract_end <= hire_date:
-            raise ValidationError({"contract_end": ["Дата окончания договора должна быть позже даты начала работы"]})
+        validate_contract_pair(data)
 
 
 class UpdateEmployeeSchema(BaseSchema):
@@ -100,10 +117,8 @@ class UpdateEmployeeSchema(BaseSchema):
 
     @validates_schema
     def validate_dates(self, data, **kwargs):
-        hire_date = data.get("hire_date")
-        contract_end = data.get("contract_end")
-        if hire_date and contract_end and contract_end <= hire_date:
-            raise ValidationError({"contract_end": ["Дата окончания договора должна быть позже даты начала работы"]})
+        if "contract_end" in data or "contract_term_years" in data:
+            validate_contract_pair(data)
 
 
 class DismissEmployeeSchema(BaseSchema):
@@ -123,10 +138,7 @@ class RehireEmployeeSchema(BaseSchema):
 
     @validates_schema
     def validate_dates(self, data, **kwargs):
-        hire_date = data.get("hire_date")
-        contract_end = data.get("contract_end")
-        if hire_date and contract_end and contract_end <= hire_date:
-            raise ValidationError({"contract_end": ["Дата окончания договора должна быть позже даты начала работы"]})
+        validate_contract_pair(data)
 
 
 class CreateUserSchema(BaseSchema):
@@ -172,31 +184,32 @@ class CreateGradeCatalogSchema(BaseSchema):
 
 class CreateContractSchema(BaseSchema):
     employment_id = fields.Int(required=True)
-    start_date = DateField(required=True)
-    end_date = DateField(allow_none=True)
-    term_years = fields.Float(allow_none=True)
+    end_date = DateField(required=True)
+    term_years = fields.Float(required=True)
     notes = fields.Str(allow_none=True)
 
     @validates_schema
     def validate_dates(self, data, **kwargs):
-        start_date = data.get("start_date")
-        end_date = data.get("end_date")
-        if start_date and end_date and end_date <= start_date:
-            raise ValidationError({"end_date": ["Дата окончания договора должна быть позже даты начала"]})
+        validate_contract_pair(
+            data,
+            end_key="end_date",
+            term_key="term_years",
+        )
 
 
 class UpdateContractSchema(BaseSchema):
-    start_date = DateField(allow_none=True)
     end_date = DateField(allow_none=True)
     term_years = fields.Float(allow_none=True)
     notes = fields.Str(allow_none=True)
 
     @validates_schema
     def validate_dates(self, data, **kwargs):
-        start_date = data.get("start_date")
-        end_date = data.get("end_date")
-        if start_date and end_date and end_date <= start_date:
-            raise ValidationError({"end_date": ["Дата окончания договора должна быть позже даты начала"]})
+        if "end_date" in data or "term_years" in data:
+            validate_contract_pair(
+                data,
+                end_key="end_date",
+                term_key="term_years",
+            )
 
 
 class CreatePassportSchema(BaseSchema):

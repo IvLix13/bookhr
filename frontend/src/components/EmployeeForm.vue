@@ -4,7 +4,6 @@ import GradeCreateModal from '@/components/GradeCreateModal.vue'
 import { api } from '@/api/client'
 import type { EducationStatus, Employee, Grade } from '@/types'
 import { useAuthStore } from '@/stores/auth'
-import { addYearsToIsoDate, calculateTermYears } from '@/utils/dates'
 
 type GradeField = 'position' | 'actual'
 
@@ -90,27 +89,11 @@ watch(
   { immediate: true },
 )
 
-function onTermYearsChange() {
-  if (!form.value.contract_term_years || !form.value.hire_date) return
-  const years = Number(form.value.contract_term_years)
-  if (years > 0) {
-    form.value.contract_end = addYearsToIsoDate(form.value.hire_date, years)
-  }
-}
-
-function onContractEndChange() {
-  if (!form.value.contract_end || !form.value.hire_date) return
-  const calculated = calculateTermYears(form.value.hire_date, form.value.contract_end)
-  if (calculated !== null && calculated > 0) {
-    form.value.contract_term_years = String(calculated)
-  }
-}
-
-function onHireDateChange() {
-  if (form.value.contract_term_years && form.value.hire_date) {
-    onTermYearsChange()
-  } else if (form.value.contract_end && form.value.hire_date) {
-    onContractEndChange()
+function validateContractFields() {
+  const hasEnd = Boolean(form.value.contract_end)
+  const hasTerm = Boolean(form.value.contract_term_years)
+  if (hasEnd !== hasTerm) {
+    throw new Error('Укажите срок договора и дату окончания')
   }
 }
 
@@ -161,13 +144,7 @@ async function submit() {
     if (!form.value.education_status) {
       throw new Error('Укажите наличие высшего образования')
     }
-    if (
-      form.value.hire_date &&
-      form.value.contract_end &&
-      form.value.contract_end <= form.value.hire_date
-    ) {
-      throw new Error('Дата окончания договора должна быть позже даты начала работы')
-    }
+    validateContractFields()
 
     const body = {
       full_name: form.value.full_name.trim(),
@@ -222,7 +199,6 @@ async function submit() {
           type="date"
           required
           :disabled="readonly"
-          @change="onHireDateChange"
         />
       </label>
       <label>
@@ -282,11 +258,7 @@ async function submit() {
       </label>
       <label>
         Срок договора (лет)
-        <select
-          v-model="form.contract_term_years"
-          :disabled="readonly"
-          @change="onTermYearsChange"
-        >
+        <select v-model="form.contract_term_years" :disabled="readonly">
           <option value="">Не указан</option>
           <option value="1">1 год</option>
           <option value="2">2 года</option>
@@ -305,12 +277,7 @@ async function submit() {
       </label>
       <label>
         Окончание договора
-        <input
-          v-model="form.contract_end"
-          type="date"
-          :disabled="readonly"
-          @change="onContractEndChange"
-        />
+        <input v-model="form.contract_end" type="date" :disabled="readonly" />
       </label>
       <label>
         Срок паспорта

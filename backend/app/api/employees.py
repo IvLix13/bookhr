@@ -121,7 +121,6 @@ def register_routes(bp):
         sync_active_contract(
             employment,
             payload.get("contract_end"),
-            start_date=hire_date,
             term_years=payload.get("contract_term_years"),
         )
         sync_actual_grade(
@@ -279,7 +278,6 @@ def register_routes(bp):
         sync_active_contract(
             employment,
             payload.get("contract_end"),
-            start_date=hire_date,
             term_years=payload.get("contract_term_years"),
         )
         sync_actual_grade(

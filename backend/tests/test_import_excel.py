@@ -48,13 +48,14 @@ def _write_workbook(
             "Грейд по должности",
             "Фактический грейд",
             "ВУЗ",
+            "Срок договора (лет)",
             "Окончание договора",
             "Дата получения текущего грейда",
             "Начало работы",
             "Срок окончания паспорта",
         ]
     )
-    head = ["Тестов Тест Тестович", "Инженер", position_grade, "Мидл", "Да"]
+    head = ["Тестов Тест Тестович", "Инженер", position_grade, "Мидл", "Да", "3"]
     if as_datetime_cells:
         dates = [
             datetime(2026, 12, 1),
@@ -446,6 +447,7 @@ def _write_grades_workbook(path: Path, rows: list[list]) -> None:
             "Грейд по должности",
             "Фактический грейд",
             "ВУЗ",
+            "Срок договора (лет)",
             "Окончание договора",
             "Дата получения текущего грейда",
             "Начало работы",
@@ -479,6 +481,7 @@ def test_dry_run_marks_unknown_grades(app, tmp_path):
                     "Лид",
                     "Лид",
                     "Да",
+                    "3",
                     "01.12.2026",
                     "01.03.2024",
                     "10.01.2021",
@@ -507,6 +510,7 @@ def test_unknown_grades_are_deduplicated_across_rows(app, tmp_path):
                     "Лид",
                     "лид",
                     "Да",
+                    "3",
                     "01.12.2026",
                     "01.03.2024",
                     "10.01.2021",
@@ -518,6 +522,7 @@ def test_unknown_grades_are_deduplicated_across_rows(app, tmp_path):
                     "Принципал",
                     "Лид",
                     "Нет",
+                    "3",
                     "01.12.2026",
                     "01.03.2024",
                     "10.01.2022",
@@ -555,6 +560,7 @@ def test_existing_and_inactive_grades_are_not_unknown(app, tmp_path):
                     "мидл",
                     "Архив",
                     "Да",
+                    "3",
                     "01.12.2026",
                     "01.03.2024",
                     "10.01.2021",
@@ -582,6 +588,7 @@ def test_error_rows_do_not_contribute_unknown_grades(app, tmp_path):
                     "Лид",
                     "Лид",
                     "Да",
+                    "3",
                     "01.12.2026",
                     "01.03.2024",
                     "10.01.2021",
@@ -612,6 +619,7 @@ def test_revalidate_and_confirm_after_creating_unknown_grade(app, tmp_path):
                     "Лид",
                     "Лид",
                     "Да",
+                    "3",
                     "01.12.2026",
                     "01.03.2024",
                     "10.01.2021",
@@ -657,6 +665,7 @@ def test_revalidate_api_clears_unknown_grades(admin_client, seed_company, app, t
                 "Лид",
                 "Лид",
                 "Да",
+                "3",
                 "01.12.2026",
                 "01.03.2024",
                 "10.01.2021",
@@ -703,7 +712,7 @@ def test_revalidate_api_clears_unknown_grades(admin_client, seed_company, app, t
         assert history.grade_id == grade.id
 
 
-def test_import_with_contract_term_years(admin_client, seed_company, app, tmp_path):
+def test_import_with_contract_fields(admin_client, seed_company, app, tmp_path):
     with app.app_context():
         db.session.add(GradeCatalog(name="Мидл", rank=1, min_years=1.5))
         db.session.commit()
@@ -720,6 +729,7 @@ def test_import_with_contract_term_years(admin_client, seed_company, app, tmp_pa
             "Фактический грейд",
             "ВУЗ",
             "Срок договора (лет)",
+            "Окончание договора",
             "Дата получения текущего грейда",
             "Начало работы",
             "Срок окончания паспорта",
@@ -733,8 +743,9 @@ def test_import_with_contract_term_years(admin_client, seed_company, app, tmp_pa
             "Мидл",
             "Да",
             "3",
+            "10.07.2027",
             "01.03.2024",
-            "10.01.2024",
+            "10.01.2020",
             "20.08.2029",
         ]
     )
@@ -761,10 +772,11 @@ def test_import_with_contract_term_years(admin_client, seed_company, app, tmp_pa
         contract = Contract.query.first()
         assert contract is not None
         assert contract.term_years == 3.0
-        assert contract.end_date == date(2027, 1, 10)
+        assert contract.end_date == date(2027, 7, 10)
+        assert contract.start_date == date(2024, 7, 10)
 
 
-def test_import_with_only_contract_end_calculates_term_years(admin_client, seed_company, app, tmp_path):
+def test_import_rejects_contract_end_without_term(admin_client, seed_company, app, tmp_path):
     with app.app_context():
         db.session.add(GradeCatalog(name="Мидл", rank=1, min_years=1.5))
         db.session.commit()
@@ -812,17 +824,9 @@ def test_import_with_only_contract_end_calculates_term_years(admin_client, seed_
             content_type="multipart/form-data",
         )
     assert upload.status_code == 201
-    job_id = upload.get_json()["data"]["id"]
-
-    confirm = admin_client.post(f"/api/import/{job_id}/confirm", json={"row_actions": {}})
-    assert confirm.status_code == 200
-
-    with app.app_context():
-        from app.models import Contract
-        contract = Contract.query.first()
-        assert contract is not None
-        assert contract.term_years == 2.0
-        assert contract.end_date == date(2026, 1, 10)
+    payload = upload.get_json()["data"]
+    assert payload["summary"]["error"] == 1
+    assert "срок договора" in payload["rows"][0]["errors"][0].lower()
 
 
 def test_validate_employment_periods_requires_dismissal_before_next():
