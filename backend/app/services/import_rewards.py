@@ -24,6 +24,8 @@ COLUMN_MAP = {
     "reward_type": "reward_type",
     "состояние": "status",
     "status": "status",
+    "дата изменения": "status_changed_date",
+    "status_changed_date": "status_changed_date",
     "указание на вручение": "directive_text",
     "directive_text": "directive_text",
     "дата вручения": "delivered_date",
@@ -34,7 +36,7 @@ COLUMN_MAP = {
     "row_num": "row_num",
 }
 
-DATE_FIELDS = {"delivered_date"}
+DATE_FIELDS = {"status_changed_date", "delivered_date"}
 
 STATUS_ALIASES = {
     "не вручено": RewardStatus.NOT_DELIVERED.value,
@@ -138,6 +140,11 @@ def validate_reward_row(data: dict[str, Any]) -> tuple[list[str], list[str]]:
     if raw_status is not None and str(raw_status).strip():
         if _parse_status(raw_status) is None:
             errors.append("Некорректное состояние поощрения")
+
+    changed_raw = data.get("status_changed_date")
+    if changed_raw is not None and str(changed_raw).strip():
+        if _parse_date(changed_raw) is None:
+            errors.append("Некорректная дата изменения")
 
     delivered_raw = data.get("delivered_date")
     if delivered_raw is not None and str(delivered_raw).strip():
@@ -317,6 +324,7 @@ def confirm_rewards_import(
                 continue
 
             status = _parse_status(data.get("status")) or RewardStatus.NOT_DELIVERED.value
+            status_changed_date = _parse_date(data.get("status_changed_date"))
             delivered_date = _parse_date(data.get("delivered_date"))
             directive_text = data.get("directive_text") or None
             notes = data.get("notes") or None
@@ -335,6 +343,9 @@ def confirm_rewards_import(
                         "reward_type": reward_type,
                         "status": status,
                         "directive_text": directive_text,
+                        "status_changed_date": (
+                            status_changed_date.isoformat() if status_changed_date else None
+                        ),
                         "delivered_date": (
                             delivered_date.isoformat() if delivered_date else None
                         ),
@@ -349,6 +360,7 @@ def confirm_rewards_import(
                     reward_type=reward_type,
                     status=status,
                     directive_text=directive_text,
+                    status_changed_date=status_changed_date,
                     delivered_date=delivered_date,
                     notes=notes,
                 )
@@ -380,6 +392,7 @@ def export_rewards_template(company_id: int, path: Path) -> None:
         "ФИО",
         "Вид поощрения",
         "Состояние",
+        "Дата изменения",
         "Указание на вручение",
         "Дата вручения",
         "Примечание",
@@ -404,6 +417,9 @@ def export_rewards_template(company_id: int, path: Path) -> None:
                     person_name,
                     reward.reward_type,
                     STATUS_LABELS.get(reward.status, reward.status),
+                    format_display_date_ru(reward.status_changed_date)
+                    if reward.status_changed_date
+                    else "",
                     reward.directive_text or "",
                     format_display_date_ru(reward.delivered_date) if reward.delivered_date else "",
                     reward.notes or "",
@@ -427,6 +443,7 @@ def export_rewards_template(company_id: int, path: Path) -> None:
                 example_name,
                 "Благодарность",
                 STATUS_LABELS[RewardStatus.NOT_DELIVERED.value],
+                "",
                 "",
                 "",
                 "",

@@ -31,6 +31,7 @@ def _write_rewards_workbook(path: Path, rows: list[list]) -> None:
             "ФИО",
             "Вид поощрения",
             "Состояние",
+            "Дата изменения",
             "Указание на вручение",
             "Дата вручения",
             "Примечание",
@@ -71,6 +72,7 @@ def test_parse_and_create_reward_import(app, tmp_path):
                     "Иванов Иван Иванович",
                     "Благодарность",
                     "В кадрах",
+                    "10.01.2026",
                     "Указ №1",
                     "15.01.2026",
                     "Тест",
@@ -94,6 +96,7 @@ def test_parse_and_create_reward_import(app, tmp_path):
         assert job.status == ImportStatus.VALIDATED.value
         assert job.summary["create"] == 1
         assert job.rows[0].action == "create"
+        assert job.rows[0].raw_data["status_changed_date"] == "2026-01-10"
 
         confirm_rewards_import(job)
 
@@ -102,6 +105,7 @@ def test_parse_and_create_reward_import(app, tmp_path):
         reward = Reward.query.filter_by(employment_id=employment.id).one()
         assert reward.reward_type == "Благодарность"
         assert reward.status == RewardStatus.IN_HR.value
+        assert reward.status_changed_date == date(2026, 1, 10)
         assert reward.directive_text == "Указ №1"
         assert reward.delivered_date == date(2026, 1, 15)
         assert reward.notes == "Тест"
@@ -127,6 +131,7 @@ def test_rewards_import_updates_existing_by_type(app, tmp_path):
                     "Иванов Иван Иванович",
                     "премия",
                     "Вручено",
+                    "20.02.2026",
                     "Указ №2",
                     "01.02.2026",
                     "новое",
@@ -151,6 +156,7 @@ def test_rewards_import_updates_existing_by_type(app, tmp_path):
         assert Reward.query.filter_by(employment_id=employment.id).count() == 1
         db.session.refresh(existing)
         assert existing.status == RewardStatus.DELIVERED.value
+        assert existing.status_changed_date == date(2026, 2, 20)
         assert existing.notes == "новое"
         assert existing.delivered_date == date(2026, 2, 1)
 
@@ -161,7 +167,7 @@ def test_rewards_import_unknown_employee_is_error(app, tmp_path):
         path = tmp_path / "rewards_missing.xlsx"
         _write_rewards_workbook(
             path,
-            [["Неизвестный Сотрудник", "Благодарность", "Не вручено", "", "", ""]],
+            [["Неизвестный Сотрудник", "Благодарность", "Не вручено", "", "", "", ""]],
         )
 
         job = ImportJob(
@@ -178,6 +184,40 @@ def test_rewards_import_unknown_employee_is_error(app, tmp_path):
         assert job.summary["error"] == 1
         assert job.rows[0].action == "error"
         assert "не найден" in (job.rows[0].errors or [""])[0].lower()
+
+
+def test_rewards_import_rejects_invalid_changed_date(app, tmp_path):
+    with app.app_context():
+        company, user, _person, _employment = _seed_company_with_employee()
+        path = tmp_path / "rewards_bad_date.xlsx"
+        _write_rewards_workbook(
+            path,
+            [
+                [
+                    "Иванов Иван Иванович",
+                    "Благодарность",
+                    "Не вручено",
+                    "не дата",
+                    "",
+                    "",
+                    "",
+                ]
+            ],
+        )
+
+        job = ImportJob(
+            company_id=company.id,
+            filename=path.name,
+            import_type=ImportType.REWARDS.value,
+            uploaded_by_id=user.id,
+        )
+        db.session.add(job)
+        db.session.flush()
+        dry_run_rewards_import(job, parse_rewards_workbook(path))
+        db.session.commit()
+
+        assert job.summary["error"] == 1
+        assert "дата изменения" in (job.rows[0].errors or [""])[0].lower()
 
 
 def test_rewards_import_api_upload_and_confirm(hr_client, seed_company, app, tmp_path):
@@ -200,6 +240,7 @@ def test_rewards_import_api_upload_and_confirm(hr_client, seed_company, app, tmp
                 "Иванов Иван Иванович",
                 "Грамота",
                 "Не вручено",
+                "05.03.2026",
                 "",
                 "",
                 "api",
@@ -230,6 +271,7 @@ def test_rewards_import_api_upload_and_confirm(hr_client, seed_company, app, tmp
     with app.app_context():
         reward = Reward.query.filter_by(employment_id=employment_id).one()
         assert reward.reward_type == "Грамота"
+        assert reward.status_changed_date == date(2026, 3, 5)
         assert reward.notes == "api"
 
 

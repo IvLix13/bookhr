@@ -150,6 +150,7 @@ class CreateRewardSchema(BaseSchema):
     employment_id = fields.Int(required=True)
     reward_type = fields.Str(required=True)
     directive_text = fields.Str(allow_none=True)
+    status_changed_date = DateField(allow_none=True)
     delivered_date = DateField(allow_none=True)
     status = fields.Str(allow_none=True)
     notes = fields.Str(allow_none=True)

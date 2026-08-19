@@ -139,6 +139,7 @@ export interface RewardRow {
   full_name: string | null
   reward_type: string
   status: RewardStatus
+  status_changed_date: string | null
   updated_at: string | null
   directive_text: string | null
   delivered_date: string | null

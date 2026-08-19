@@ -30,6 +30,7 @@ class Reward(db.Model, TimestampMixin):
         nullable=False,
     )
     directive_text = db.Column(db.Text, nullable=True)
+    status_changed_date = db.Column(db.Date, nullable=True)
     delivered_date = db.Column(db.Date, nullable=True)
     notes = db.Column(db.Text, nullable=True)
 

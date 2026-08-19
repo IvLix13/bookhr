@@ -16,6 +16,7 @@ const form = ref({
   employment_id: '',
   reward_type: '',
   status: 'not_delivered',
+  status_changed_date: '',
   directive_text: '',
   delivered_date: '',
   notes: '',
@@ -32,6 +33,7 @@ watch(
         employment_id: '',
         reward_type: '',
         status: 'not_delivered',
+        status_changed_date: '',
         directive_text: '',
         delivered_date: '',
         notes: '',
@@ -43,6 +45,7 @@ watch(
       employment_id: String(value.employment_id),
       reward_type: value.reward_type,
       status: value.status,
+      status_changed_date: value.status_changed_date ?? '',
       directive_text: value.directive_text ?? '',
       delivered_date: value.delivered_date ?? '',
       notes: value.notes ?? '',
@@ -64,6 +67,7 @@ async function submit() {
       employment_id: Number(form.value.employment_id),
       reward_type: form.value.reward_type.trim(),
       status: form.value.status,
+      status_changed_date: form.value.status_changed_date || undefined,
       directive_text: form.value.directive_text.trim() || undefined,
       delivered_date: form.value.delivered_date || undefined,
       notes: form.value.notes.trim() || undefined,
@@ -81,6 +85,7 @@ async function submit() {
         employment_id: '',
         reward_type: '',
         status: 'not_delivered',
+        status_changed_date: '',
         directive_text: '',
         delivered_date: '',
         notes: '',
@@ -120,6 +125,10 @@ async function submit() {
         <option value="extra_2">Доп. статус 2</option>
         <option value="extra_3">Доп. статус 3</option>
       </select>
+    </label>
+    <label>
+      Дата изменения
+      <input v-model="form.status_changed_date" type="date" />
     </label>
     <label>
       Указание на вручение

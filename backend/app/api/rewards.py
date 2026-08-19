@@ -29,6 +29,7 @@ from app.tenant import get_request_company_id
 REWARD_SORT_FIELDS = {
     "reward_type": Reward.reward_type,
     "status": Reward.status,
+    "status_changed_date": Reward.status_changed_date,
     "updated_at": Reward.updated_at,
     "delivered_date": Reward.delivered_date,
     "full_name": PersonNameHistory.full_name,
@@ -46,7 +47,7 @@ def register_routes(bp):
         q = parse_search_q()
         sort, direction = parse_sort_args(
             REWARD_SORT_FIELDS,
-            default_field="updated_at",
+            default_field="status_changed_date",
             default_direction="desc",
         )
 
@@ -76,6 +77,7 @@ def register_routes(bp):
                 reward_type=payload["reward_type"],
                 status=payload.get("status", "not_delivered"),
                 directive_text=payload.get("directive_text"),
+                status_changed_date=payload.get("status_changed_date"),
                 delivered_date=payload.get("delivered_date"),
                 notes=payload.get("notes"),
             )

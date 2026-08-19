@@ -19,7 +19,7 @@ const editing = ref<RewardRow | null>(null)
 const table = useServerTable<RewardRow>({
   tableId: 'rewards',
   fetcher: (params) => api.rewards(params) as Promise<Paginated<RewardRow>>,
-  defaultSort: { key: 'updated_at', direction: 'desc' },
+  defaultSort: { key: 'status_changed_date', direction: 'desc' },
 })
 
 const columns: ColumnDef<RewardRow>[] = [
@@ -32,10 +32,10 @@ const columns: ColumnDef<RewardRow>[] = [
     format: (value) => getRewardStatusMeta(value as string).label,
   },
   {
-    key: 'updated_at',
+    key: 'status_changed_date',
     label: 'Дата изменения',
-    getValue: (row) => row.updated_at,
-    format: (value) => formatShortDate((value as string | null)?.slice(0, 10) ?? null),
+    getValue: (row) => row.status_changed_date ?? row.updated_at?.slice(0, 10) ?? null,
+    format: (value) => formatShortDate(value as string | null),
   },
   {
     key: 'directive_text',

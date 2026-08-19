@@ -28,6 +28,7 @@ def create_reward(
     reward_type: str,
     status: str = RewardStatus.NOT_DELIVERED.value,
     directive_text: str | None = None,
+    status_changed_date: date | None = None,
     delivered_date: date | None = None,
     notes: str | None = None,
 ) -> Reward:
@@ -47,6 +48,14 @@ def create_reward(
         directive_text=directive_text,
         notes=notes,
     )
+
+    parsed_status_changed_date = (
+        _parse_date(status_changed_date)
+        if isinstance(status_changed_date, str)
+        else status_changed_date
+    )
+    if parsed_status_changed_date:
+        reward.status_changed_date = parsed_status_changed_date
 
     parsed_delivered_date = (
         _parse_date(delivered_date) if isinstance(delivered_date, str) else delivered_date
@@ -73,6 +82,9 @@ def update_reward(reward: Reward, payload: dict) -> Reward:
         "status": reward.status,
         "reward_type": reward.reward_type,
         "directive_text": reward.directive_text,
+        "status_changed_date": (
+            reward.status_changed_date.isoformat() if reward.status_changed_date else None
+        ),
         "delivered_date": reward.delivered_date.isoformat() if reward.delivered_date else None,
         "notes": reward.notes,
     }
@@ -89,11 +101,17 @@ def update_reward(reward: Reward, payload: dict) -> Reward:
     if "notes" in payload:
         reward.notes = payload["notes"]
 
+    if "status_changed_date" in payload:
+        reward.status_changed_date = _parse_date(payload["status_changed_date"])
+
     if "delivered_date" in payload:
         reward.delivered_date = _parse_date(payload["delivered_date"])
 
     if "status" in payload:
         new_status = _validate_status(payload["status"])
+        if new_status.value != reward.status:
+            if "status_changed_date" not in payload and reward.status_changed_date is None:
+                reward.status_changed_date = today_moscow()
         if new_status == RewardStatus.DELIVERED and reward.delivered_date is None:
             reward.delivered_date = today_moscow()
         reward.status = new_status.value
@@ -110,6 +128,9 @@ def update_reward(reward: Reward, payload: dict) -> Reward:
             "status": reward.status,
             "reward_type": reward.reward_type,
             "directive_text": reward.directive_text,
+            "status_changed_date": (
+                reward.status_changed_date.isoformat() if reward.status_changed_date else None
+            ),
             "delivered_date": reward.delivered_date.isoformat() if reward.delivered_date else None,
             "notes": reward.notes,
         },

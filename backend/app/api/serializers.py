@@ -258,6 +258,9 @@ def reward_to_dict(reward: Reward) -> dict:
         "reward_type": reward.reward_type,
         "status": reward.status,
         "directive_text": reward.directive_text,
+        "status_changed_date": (
+            reward.status_changed_date.isoformat() if reward.status_changed_date else None
+        ),
         "delivered_date": reward.delivered_date.isoformat() if reward.delivered_date else None,
         "notes": reward.notes,
         "updated_at": reward.updated_at.isoformat() if reward.updated_at else None,
