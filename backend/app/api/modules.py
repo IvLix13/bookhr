@@ -12,6 +12,7 @@ from app.api.helpers import (
     apply_employment_name_search,
     apply_sort,
     get_json,
+    join_current_grade_history,
     join_current_person_name,
     load_schema,
     paginate_query,
@@ -20,6 +21,7 @@ from app.api.helpers import (
     parse_search_q,
     parse_sort_args,
     require_roles,
+    sort_sequence_with_nulls_last,
 )
 from app.api.schemas import CreateContractSchema, UpdateContractSchema, UpdateTenureAwardSchema
 from app.api.serializers import (
@@ -54,7 +56,7 @@ from app.services.grade_catalog import (
 )
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.rule_engine import recalculate_employment_events
-from app.services.tenure import ensure_tenure_awards, total_tenure_years
+from app.services.tenure import ensure_tenure_awards, tenure_years, total_tenure_years
 from app.tenant import get_request_company_id
 from app.utils.dates import calculate_contract_start
 
@@ -62,7 +64,13 @@ from app.utils.dates import calculate_contract_start
 CONTRACT_SORT_FIELDS = {
     "end_date": Contract.end_date,
     "start_date": Contract.start_date,
+    "term_years": Contract.term_years,
+    "days_left": Contract.end_date,
     "full_name": PersonNameHistory.full_name,
+}
+
+CONTRACT_SORT_ALIASES = {
+    "days_left": "end_date",
 }
 
 EMPLOYEE_SORT_FIELDS = {
@@ -74,16 +82,25 @@ TENURE_SORT_FIELDS = {
     "full_name": PersonNameHistory.full_name,
     "hire_date": Employment.hire_date,
     "tenure_years": Employment.hire_date,
+    "continuous_tenure_years": Employment.hire_date,
 }
 
 PASSPORT_SORT_FIELDS = {
     "full_name": PersonNameHistory.full_name,
     "valid_until": Passport.valid_until,
+    "days_left": Passport.valid_until,
+    "status": Passport.valid_until,
+}
+
+PASSPORT_SORT_ALIASES = {
+    "days_left": "valid_until",
+    "status": "valid_until",
 }
 
 GRADE_SORT_FIELDS = {
     "full_name": PersonNameHistory.full_name,
     "hire_date": Employment.hire_date,
+    "grade": GradeCatalog.name,
     "grade_date": EmployeeGradeHistory.assigned_date,
     "eligible_date": Employment.hire_date,
     "days_left": Employment.hire_date,
@@ -106,11 +123,7 @@ def _sort_employments_by_grade_computed(
             return value.toordinal() if value is not None else None
         return value
 
-    ranked = [(employment, sort_value(employment)) for employment in employments]
-    with_values = [(employment, value) for employment, value in ranked if value is not None]
-    without_values = [employment for employment, value in ranked if value is None]
-    with_values.sort(key=lambda item: item[1], reverse=reverse)
-    employments[:] = [employment for employment, _ in with_values] + without_values
+    sort_sequence_with_nulls_last(employments, sort_value, reverse=reverse)
 
 
 def register_routes(bp):
@@ -124,6 +137,7 @@ def register_routes(bp):
             CONTRACT_SORT_FIELDS,
             default_field="end_date",
             default_direction="asc",
+            aliases=CONTRACT_SORT_ALIASES,
         )
 
         query = (
@@ -222,12 +236,13 @@ def register_routes(bp):
             rows = [grade_row_to_dict(employment) for employment in employments]
             return api_response(paginate_sequence(rows, page, per_page))
 
-        if sort == "grade_date":
-            query = query.outerjoin(
-                EmployeeGradeHistory,
-                (EmployeeGradeHistory.employment_id == Employment.id)
-                & (EmployeeGradeHistory.valid_to.is_(None)),
-            )
+        if sort == "grade_date" or sort == "grade":
+            query = join_current_grade_history(query)
+            if sort == "grade":
+                query = query.outerjoin(
+                    GradeCatalog,
+                    GradeCatalog.id == EmployeeGradeHistory.grade_id,
+                )
 
         query = apply_sort(query, GRADE_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, grade_row_to_dict, page, per_page))
@@ -339,6 +354,7 @@ def register_routes(bp):
             PASSPORT_SORT_FIELDS,
             default_field="valid_until",
             default_direction="asc",
+            aliases=PASSPORT_SORT_ALIASES,
         )
 
         query = Employment.query.filter_by(
@@ -425,8 +441,19 @@ def register_routes(bp):
 
         if sort == "tenure_years":
             employments = query.all()
-            employments.sort(
-                key=lambda row: total_tenure_years(row.person_id, row.company_id),
+            sort_sequence_with_nulls_last(
+                employments,
+                lambda row: total_tenure_years(row.person_id, row.company_id),
+                reverse=direction == "desc",
+            )
+            rows = [tenure_row_to_dict(employment) for employment in employments]
+            return api_response(paginate_sequence(rows, page, per_page))
+
+        if sort == "continuous_tenure_years":
+            employments = query.all()
+            sort_sequence_with_nulls_last(
+                employments,
+                lambda row: tenure_years(row.hire_date),
                 reverse=direction == "desc",
             )
             rows = [tenure_row_to_dict(employment) for employment in employments]

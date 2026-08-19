@@ -19,7 +19,7 @@ from app.api.helpers import (
 from app.api.schemas import CreateEventSchema, EventActionSchema, UpdateEventSchema, parse_query_date
 from app.api.serializers import event_to_dict
 from app.extensions import db
-from app.models import Event, EventStatus, RoleName
+from app.models import Event, EventStatus, Employment, PersonNameHistory, RoleName, User
 from app.services.event_completion import apply_completion_effects
 from app.services.events import (
     EventMutationError,
@@ -40,7 +40,25 @@ EVENT_SORT_FIELDS = {
     "title": Event.title,
     "status": Event.status,
     "event_type": Event.event_type,
+    "source": Event.source,
+    "employee_name": PersonNameHistory.full_name,
+    "created_by": User.full_name,
 }
+
+
+def _apply_event_list_sort_joins(query, sort: str):
+    if sort == "employee_name":
+        return (
+            query.outerjoin(Employment, Event.employment_id == Employment.id)
+            .outerjoin(
+                PersonNameHistory,
+                (PersonNameHistory.person_id == Employment.person_id)
+                & (PersonNameHistory.valid_to.is_(None)),
+            )
+        )
+    if sort == "created_by":
+        return query.outerjoin(User, Event.created_by_id == User.id)
+    return query
 
 
 def register_routes(bp):
@@ -70,6 +88,7 @@ def register_routes(bp):
             query = query.filter_by(event_type=event_type)
 
         query = apply_text_search(query, Event.title, q)
+        query = _apply_event_list_sort_joins(query, sort)
         query = apply_sort(query, EVENT_SORT_FIELDS, sort, direction)
 
         return api_response(paginate_query(query, event_to_dict, page, per_page))

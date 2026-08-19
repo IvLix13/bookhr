@@ -12,7 +12,16 @@ from sqlalchemy import exists
 from sqlalchemy.orm import Query, aliased
 from sqlalchemy.sql.elements import ColumnElement
 
-from app.models import Employment, Person, PersonNameHistory, RoleName
+from app.models import (
+    Contract,
+    EmployeeGradeHistory,
+    Employment,
+    Passport,
+    Person,
+    PersonNameHistory,
+    PositionHistory,
+    RoleName,
+)
 
 F = TypeVar("F", bound=Callable[..., Any])
 
@@ -62,8 +71,11 @@ def parse_sort_args(
     *,
     default_field: str,
     default_direction: str = "asc",
+    aliases: dict[str, str] | None = None,
 ) -> tuple[str, str]:
     sort = request.args.get("sort", default_field)
+    if aliases and sort in aliases:
+        sort = aliases[sort]
     direction = request.args.get("direction", default_direction).lower()
     if sort not in allowed:
         sort = default_field
@@ -163,3 +175,49 @@ def paginate_sequence(items: list[Any], page: int = 1, per_page: int = 50) -> di
         "total": total,
         "pages": pages,
     }
+
+
+def sort_sequence_with_nulls_last(
+    items: list[Any],
+    key_fn: Callable[[Any], Any],
+    *,
+    reverse: bool,
+) -> None:
+    ranked = [(item, key_fn(item)) for item in items]
+    with_values = [(item, value) for item, value in ranked if value is not None]
+    without_values = [item for item, value in ranked if value is None]
+    with_values.sort(key=lambda item: item[1], reverse=reverse)
+    items[:] = [item for item, _ in with_values] + without_values
+
+
+def join_current_position(query: Query[Any]) -> Query[Any]:
+    return query.outerjoin(
+        PositionHistory,
+        (PositionHistory.employment_id == Employment.id) & (PositionHistory.valid_to.is_(None)),
+    )
+
+
+def join_person(query: Query[Any]) -> Query[Any]:
+    return query.join(Person, Employment.person_id == Person.id)
+
+
+def join_active_contract(query: Query[Any]) -> Query[Any]:
+    return query.outerjoin(
+        Contract,
+        (Contract.employment_id == Employment.id) & (Contract.is_active.is_(True)),
+    )
+
+
+def join_current_grade_history(query: Query[Any]) -> Query[Any]:
+    return query.outerjoin(
+        EmployeeGradeHistory,
+        (EmployeeGradeHistory.employment_id == Employment.id)
+        & (EmployeeGradeHistory.valid_to.is_(None)),
+    )
+
+
+def join_active_passport(query: Query[Any]) -> Query[Any]:
+    return query.outerjoin(
+        Passport,
+        (Passport.person_id == Employment.person_id) & (Passport.is_active.is_(True)),
+    )

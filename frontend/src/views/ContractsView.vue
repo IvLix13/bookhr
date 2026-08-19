@@ -42,12 +42,14 @@ const columns: ColumnDef<ContractRow>[] = [
   {
     key: 'report_date',
     label: 'Дата рапорта',
+    sortable: false,
     getValue: (row) => reportDate(row),
     format: (value) => formatShortDate(value as string | null),
   },
   {
     key: 'report_status',
     label: 'Статус рапорта',
+    sortable: false,
     getValue: (row) => row.renewal_report_event?.status ?? null,
     format: (value, row) =>
       getContractReportDisplayMeta(

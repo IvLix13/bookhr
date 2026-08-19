@@ -49,16 +49,19 @@ const columns: ColumnDef<TenureRow>[] = [
   {
     key: 'award_10',
     label: '10 лет',
+    sortable: false,
     getValue: (row) => awardLabel(row, '10'),
   },
   {
     key: 'award_15',
     label: '15 лет',
+    sortable: false,
     getValue: (row) => awardLabel(row, '15'),
   },
   {
     key: 'award_20',
     label: '20 лет',
+    sortable: false,
     getValue: (row) => awardLabel(row, '20'),
   },
   {
