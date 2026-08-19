@@ -9,6 +9,7 @@ from app.extensions import db
 from app.models import Company, Event, EventStatus, Role, RoleName, User
 from app.services.demo_data import seed_demo_data
 from app.services.notifications import process_pending_notifications, queue_notifications_for_event
+from app.services.purge_employees import purge_all_employees
 from app.services.rule_engine import run_rule_engine
 
 
@@ -81,3 +82,26 @@ def register_commands(app: Flask) -> None:
         stats = process_pending_notifications()
         db.session.commit()
         click.echo(f"Notifications: {stats}")
+
+    @app.cli.command("purge-employees")
+    @click.option(
+        "--yes",
+        is_flag=True,
+        help="Подтвердить полное удаление всех сотрудников",
+    )
+    def purge_employees(yes: bool):
+        """Delete all employees and related data. Grade catalog is kept."""
+        if not yes:
+            raise click.ClickException(
+                "Операция необратима. Запустите с флагом --yes, "
+                "например: flask purge-employees --yes",
+            )
+
+        result = purge_all_employees()
+        click.echo(
+            "Purge completed: "
+            f"employments={result.employments_deleted}, "
+            f"persons={result.persons_deleted}, "
+            f"import_jobs={result.import_jobs_deleted}, "
+            f"grade_catalog={result.grade_catalog_after}",
+        )
