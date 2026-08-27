@@ -32,7 +32,7 @@ from app.services.tenure import (
     ensure_tenure_awards,
     is_tenure_award_pending,
 )
-from app.utils.dates import subtract_months
+from app.utils.dates import subtract_months, today_moscow
 
 
 RULE_VERSION = 1
@@ -107,6 +107,14 @@ def tenure_award_rule_key(award: TenureAward) -> str:
     return (
         f"{TENURE_AWARD_RULE_PREFIX}:{award.id}:{award.milestone_years}"
     )
+
+
+def tenure_award_event_date(milestone_date: date) -> date:
+    """Use milestone date, or today when the milestone is already due (for calendar/upcoming)."""
+    today = today_moscow()
+    if milestone_date < today:
+        return today
+    return milestone_date
 
 
 def _upsert_rule_event(
@@ -367,7 +375,7 @@ def process_tenure_rules(employment: Employment) -> int:
             rule_key=tenure_award_rule_key(award),
             title=f"Поощрение за {award.milestone_years} лет: {name}",
             event_type=EventType.AWARD,
-            event_date=award.milestone_date,
+            event_date=tenure_award_event_date(award.milestone_date),
             description=(
                 f"Плановая дата по суммарному стажу: {award.milestone_date.isoformat()}. "
                 f"{continuous_note}."

@@ -234,6 +234,7 @@ def test_rehire_keeps_person_uuid(app):
 
 def test_rule_engine_creates_tenure_award_event(app, monkeypatch):
     monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+    monkeypatch.setattr("app.services.rule_engine.today_moscow", lambda: date(2026, 1, 1))
 
     with app.app_context():
         company = Company(name="Tenure Co")
@@ -260,12 +261,13 @@ def test_rule_engine_creates_tenure_award_event(app, monkeypatch):
         assert event.event_type == "award"
         assert event.reference_type == "tenure_award"
         assert event.reference_id == ten_year_award.id
-        assert event.event_date == date(2020, 1, 1)
+        assert event.event_date == date(2026, 1, 1)
         assert "10 лет" in event.title
 
 
 def test_rule_engine_creates_tenure_event_for_cumulative_milestone(app, monkeypatch):
     monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+    monkeypatch.setattr("app.services.rule_engine.today_moscow", lambda: date(2026, 1, 1))
 
     with app.app_context():
         company = Company(name="Tenure Cumulative Co")
@@ -297,12 +299,13 @@ def test_rule_engine_creates_tenure_event_for_cumulative_milestone(app, monkeypa
             Event.event_type == "award",
         ).first()
         assert event is not None
-        assert event.event_date == date(2010, 1, 1)
+        assert event.event_date == date(2026, 1, 1)
         assert event.reference_type == "tenure_award"
 
 
 def test_complete_tenure_award_event_marks_received(hr_client, seed_company, monkeypatch):
     monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+    monkeypatch.setattr("app.services.rule_engine.today_moscow", lambda: date(2026, 1, 1))
     monkeypatch.setattr("app.services.event_completion.today_moscow", lambda: date(2026, 1, 1))
 
     with hr_client.application.app_context():
