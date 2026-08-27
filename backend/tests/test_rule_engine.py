@@ -264,6 +264,43 @@ def test_rule_engine_creates_tenure_award_event(app, monkeypatch):
         assert "10 лет" in event.title
 
 
+def test_rule_engine_creates_tenure_event_for_cumulative_milestone(app, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+
+    with app.app_context():
+        company = Company(name="Tenure Cumulative Co")
+        db.session.add(company)
+        db.session.commit()
+
+        person, first = create_person_with_employment(
+            company_id=company.id,
+            full_name="Суммарный Ветеран",
+            hire_date=date(2000, 1, 1),
+            title="Инженер",
+        )
+        first.status = "dismissed"
+        first.dismissal_date = date(2010, 1, 1)
+        second = Employment(
+            person_id=person.id,
+            company_id=company.id,
+            hire_date=date(2020, 1, 1),
+            status="active",
+        )
+        db.session.add(second)
+        db.session.commit()
+
+        stats = run_rule_engine(company.id)
+        assert stats["tenure"] >= 1
+
+        event = Event.query.filter(
+            Event.employment_id == second.id,
+            Event.event_type == "award",
+        ).first()
+        assert event is not None
+        assert event.event_date == date(2010, 1, 1)
+        assert event.reference_type == "tenure_award"
+
+
 def test_complete_tenure_award_event_marks_received(hr_client, seed_company, monkeypatch):
     monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
     monkeypatch.setattr("app.services.event_completion.today_moscow", lambda: date(2026, 1, 1))

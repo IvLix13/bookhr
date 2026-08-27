@@ -30,7 +30,7 @@ from app.services.passports import PASSPORT_PREP_MONTHS
 from app.services.tenure import (
     continuous_milestone_reached_date,
     ensure_tenure_awards,
-    is_tenure_award_auto_eligible,
+    is_tenure_award_pending,
 )
 from app.utils.dates import subtract_months
 
@@ -190,6 +190,23 @@ def find_contract_renewal_event(contract_id: int) -> Event | None:
     )
 
 
+def _tenure_awards_by_years(awards: list[TenureAward]) -> dict[int, TenureAward]:
+    return {award.milestone_years: award for award in awards}
+
+
+def _pending_tenure_awards(
+    person_id: int,
+    company_id: int,
+) -> list[TenureAward]:
+    awards = ensure_tenure_awards(person_id, company_id)
+    by_years = _tenure_awards_by_years(awards)
+    return [
+        award
+        for award in awards
+        if is_tenure_award_pending(award, by_years)
+    ]
+
+
 def _active_passport(employment: Employment) -> Passport | None:
     return (
         Passport.query.filter_by(person_id=employment.person_id, is_active=True)
@@ -218,12 +235,8 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
     if passport:
         keys.add(passport_rule_key(passport))
 
-    awards = ensure_tenure_awards(employment.person_id, employment.company_id)
-    for award in awards:
-        if award.is_received:
-            continue
-        if is_tenure_award_auto_eligible(award):
-            keys.add(tenure_award_rule_key(award))
+    for award in _pending_tenure_awards(employment.person_id, employment.company_id):
+        keys.add(tenure_award_rule_key(award))
 
     return keys
 
@@ -335,28 +348,29 @@ def process_passport_rules(employment: Employment) -> int:
 
 
 def process_tenure_rules(employment: Employment) -> int:
-    awards = ensure_tenure_awards(employment.person_id, employment.company_id)
     created = 0
     name = get_current_name(employment.person) or "Сотрудник"
-    for award in awards:
-        if award.is_received or not is_tenure_award_auto_eligible(award):
-            continue
+    for award in _pending_tenure_awards(employment.person_id, employment.company_id):
         reached_on = continuous_milestone_reached_date(
             award.person_id,
             award.company_id,
             award.milestone_years,
         )
-        event_date = reached_on or award.milestone_date
+        continuous_note = (
+            f"Непрерывный стаж текущего периода: с {reached_on.isoformat()}"
+            if reached_on
+            else "Непрерывный стаж текущего периода ещё не достиг вехи"
+        )
         _upsert_rule_event(
             company_id=employment.company_id,
             employment_id=employment.id,
             rule_key=tenure_award_rule_key(award),
             title=f"Поощрение за {award.milestone_years} лет: {name}",
             event_type=EventType.AWARD,
-            event_date=event_date,
+            event_date=award.milestone_date,
             description=(
-                f"Награда за {award.milestone_years} лет непрерывного стажа "
-                f"(плановая дата по суммарному стажу: {award.milestone_date.isoformat()})"
+                f"Плановая дата по суммарному стажу: {award.milestone_date.isoformat()}. "
+                f"{continuous_note}."
             ),
             reference_type="tenure_award",
             reference_id=award.id,

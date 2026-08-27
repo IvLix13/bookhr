@@ -15,7 +15,7 @@ from app.services.employees import get_active_contract, get_active_passport, get
 from app.services.events import effectively_overdue_filter
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status
-from app.services.tenure import active_employment, is_tenure_award_auto_eligible
+from app.services.tenure import active_employment, is_tenure_award_pending
 from app.utils.dates import today_moscow
 
 ALL_CATEGORIES = ("events", "contracts", "passports", "grades", "tenure")
@@ -225,8 +225,14 @@ def _collect_tenure_items(company_id: int, limit: int) -> list[dict]:
     )
     items: list[dict] = []
     today = today_moscow()
+    awards_by_person: dict[tuple[int, int], dict[int, TenureAward]] = {}
     for award in awards:
-        if not is_tenure_award_auto_eligible(award, today):
+        key = (award.person_id, award.company_id)
+        awards_by_person.setdefault(key, {})[award.milestone_years] = award
+
+    for award in awards:
+        person_awards = awards_by_person[(award.person_id, award.company_id)]
+        if not is_tenure_award_pending(award, person_awards, today):
             continue
         employment = active_employment(award.person_id, award.company_id)
         if not employment:
