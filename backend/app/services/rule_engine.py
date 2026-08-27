@@ -28,7 +28,6 @@ from app.services.events import (
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import PASSPORT_PREP_MONTHS
 from app.services.tenure import (
-    continuous_milestone_reached_date,
     ensure_tenure_awards,
     is_tenure_award_pending,
 )
@@ -359,16 +358,6 @@ def process_tenure_rules(employment: Employment) -> int:
     created = 0
     name = get_current_name(employment.person) or "Сотрудник"
     for award in _pending_tenure_awards(employment.person_id, employment.company_id):
-        reached_on = continuous_milestone_reached_date(
-            award.person_id,
-            award.company_id,
-            award.milestone_years,
-        )
-        continuous_note = (
-            f"Непрерывный стаж текущего периода: с {reached_on.isoformat()}"
-            if reached_on
-            else "Непрерывный стаж текущего периода ещё не достиг вехи"
-        )
         _upsert_rule_event(
             company_id=employment.company_id,
             employment_id=employment.id,
@@ -377,8 +366,7 @@ def process_tenure_rules(employment: Employment) -> int:
             event_type=EventType.AWARD,
             event_date=tenure_award_event_date(award.milestone_date),
             description=(
-                f"Плановая дата по суммарному стажу: {award.milestone_date.isoformat()}. "
-                f"{continuous_note}."
+                f"Плановая дата по суммарному стажу: {award.milestone_date.isoformat()}."
             ),
             reference_type="tenure_award",
             reference_id=award.id,
