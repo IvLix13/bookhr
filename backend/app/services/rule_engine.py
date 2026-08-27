@@ -17,6 +17,7 @@ from app.models import (
     EventStatus,
     EventType,
     Passport,
+    TenureAward,
 )
 from app.services.employees import get_active_contract, get_current_grade, get_current_name
 from app.services.events import (
@@ -26,6 +27,11 @@ from app.services.events import (
 )
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import PASSPORT_PREP_MONTHS
+from app.services.tenure import (
+    continuous_milestone_reached_date,
+    ensure_tenure_awards,
+    is_tenure_award_auto_eligible,
+)
 from app.utils.dates import subtract_months
 
 
@@ -38,6 +44,7 @@ GRADE_PROMOTION_RULE_PREFIX = "grade-promotion"
 # Legacy prefix kept for backward compatibility with existing events.
 LEGACY_GRADE_RULE_PREFIX = "grade-review"
 PASSPORT_RULE_PREFIX = "passport-preparation"
+TENURE_AWARD_RULE_PREFIX = "tenure-award"
 
 
 def contract_rule_key(contract: Contract) -> str:
@@ -84,8 +91,22 @@ def is_passport_preparation_event(event: Event) -> bool:
     return event.reference_type == "passport"
 
 
+def is_tenure_award_event(event: Event) -> bool:
+    if event.event_type != EventType.AWARD.value:
+        return False
+    if event.rule_key and event.rule_key.startswith(f"{TENURE_AWARD_RULE_PREFIX}:"):
+        return True
+    return event.reference_type == "tenure_award"
+
+
 def passport_rule_key(passport: Passport) -> str:
     return f"{PASSPORT_RULE_PREFIX}:{passport.id}:{passport.valid_until.isoformat()}"
+
+
+def tenure_award_rule_key(award: TenureAward) -> str:
+    return (
+        f"{TENURE_AWARD_RULE_PREFIX}:{award.id}:{award.milestone_years}"
+    )
 
 
 def _upsert_rule_event(
@@ -197,6 +218,13 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
     if passport:
         keys.add(passport_rule_key(passport))
 
+    awards = ensure_tenure_awards(employment.person_id, employment.company_id)
+    for award in awards:
+        if award.is_received:
+            continue
+        if is_tenure_award_auto_eligible(award):
+            keys.add(tenure_award_rule_key(award))
+
     return keys
 
 
@@ -306,11 +334,43 @@ def process_passport_rules(employment: Employment) -> int:
     return 1
 
 
+def process_tenure_rules(employment: Employment) -> int:
+    awards = ensure_tenure_awards(employment.person_id, employment.company_id)
+    created = 0
+    name = get_current_name(employment.person) or "Сотрудник"
+    for award in awards:
+        if award.is_received or not is_tenure_award_auto_eligible(award):
+            continue
+        reached_on = continuous_milestone_reached_date(
+            award.person_id,
+            award.company_id,
+            award.milestone_years,
+        )
+        event_date = reached_on or award.milestone_date
+        _upsert_rule_event(
+            company_id=employment.company_id,
+            employment_id=employment.id,
+            rule_key=tenure_award_rule_key(award),
+            title=f"Поощрение за {award.milestone_years} лет: {name}",
+            event_type=EventType.AWARD,
+            event_date=event_date,
+            description=(
+                f"Награда за {award.milestone_years} лет непрерывного стажа "
+                f"(плановая дата по суммарному стажу: {award.milestone_date.isoformat()})"
+            ),
+            reference_type="tenure_award",
+            reference_id=award.id,
+        )
+        created += 1
+    return created
+
+
 # Registry of rule processors keyed by stats field name.
 RULE_PROCESSORS: list[tuple[str, Callable[[Employment], int]]] = [
     ("contracts", process_contract_rules),
     ("grades", process_grade_rules),
     ("passports", process_passport_rules),
+    ("tenure", process_tenure_rules),
 ]
 
 
@@ -318,7 +378,13 @@ def recalculate_employment_events(employment: Employment) -> dict[str, int]:
     """Create/update current rule events and cancel superseded open ones."""
     if employment.status != EmploymentStatus.ACTIVE.value:
         cancelled = cancel_stale_rule_events(employment, set())
-        return {"contracts": 0, "grades": 0, "passports": 0, "cancelled": cancelled}
+        return {
+            "contracts": 0,
+            "grades": 0,
+            "passports": 0,
+            "tenure": 0,
+            "cancelled": cancelled,
+        }
 
     stats = {name: processor(employment) for name, processor in RULE_PROCESSORS}
     stats["cancelled"] = cancel_stale_rule_events(
@@ -333,7 +399,13 @@ def run_rule_engine(company_id: int | None = None) -> dict[str, int]:
     if company_id:
         query = query.filter_by(company_id=company_id)
 
-    stats = {"contracts": 0, "grades": 0, "passports": 0, "cancelled": 0}
+    stats = {
+        "contracts": 0,
+        "grades": 0,
+        "passports": 0,
+        "tenure": 0,
+        "cancelled": 0,
+    }
     for employment in query.all():
         result = recalculate_employment_events(employment)
         for key, value in result.items():

@@ -231,6 +231,17 @@ def _collect_tenure_items(company_id: int, limit: int) -> list[dict]:
         employment = active_employment(award.person_id, award.company_id)
         if not employment:
             continue
+        related_event = (
+            Event.query.filter_by(
+                company_id=company_id,
+                employment_id=employment.id,
+                reference_type="tenure_award",
+                reference_id=award.id,
+            )
+            .filter(Event.status.in_(_OPEN_EVENT_STATUSES))
+            .order_by(Event.event_date.asc(), Event.id.asc())
+            .first()
+        )
         items.append(
             _attention_item(
                 category="tenure",
@@ -239,7 +250,8 @@ def _collect_tenure_items(company_id: int, limit: int) -> list[dict]:
                 subtitle=f"Поощрение за {award.milestone_years} лет",
                 due_date=award.milestone_date.isoformat(),
                 severity="warning",
-                route="/awards",
+                route=f"/?event={related_event.id}" if related_event else "/awards",
+                event_id=related_event.id if related_event else None,
             )
         )
         if len(items) >= limit:
