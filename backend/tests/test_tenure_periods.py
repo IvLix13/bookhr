@@ -9,7 +9,6 @@ from app.services.employees import create_person_with_employment, rehire_person
 from app.services.tenure import (
     auto_mark_reached_awards,
     compute_milestone_date,
-    continuous_milestone_reached_date,
     ensure_tenure_awards,
     is_tenure_award_auto_eligible,
     is_tenure_award_pending,
@@ -39,12 +38,12 @@ def test_total_tenure_sums_employment_periods(seed_company):
     assert compute_milestone_date(person.id, seed_company.id, 10) == date(2023, 1, 1)
 
 
-def test_auto_mark_requires_continuous_tenure(seed_company, monkeypatch):
+def test_auto_mark_requires_cumulative_tenure(seed_company, monkeypatch):
     monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
 
     person, first = create_person_with_employment(
         company_id=seed_company.id,
-        full_name="Стаж Непрерывный",
+        full_name="Стаж Суммарный Авто",
         hire_date=date(2010, 1, 1),
         title="Инженер",
     )
@@ -61,8 +60,10 @@ def test_auto_mark_requires_continuous_tenure(seed_company, monkeypatch):
 
     awards = ensure_tenure_awards(person.id, seed_company.id)
     marked = auto_mark_reached_awards(awards)
-    assert marked == 0
-    assert all(not award.is_received for award in awards)
+    assert marked == 1
+    ten_year = next(award for award in awards if award.milestone_years == 10)
+    assert ten_year.is_received is True
+    assert ten_year.received_date == ten_year.milestone_date
 
     long_term, _ = create_person_with_employment(
         company_id=seed_company.id,
@@ -75,7 +76,7 @@ def test_auto_mark_requires_continuous_tenure(seed_company, monkeypatch):
     assert auto_mark_reached_awards(long_awards) == 2
 
 
-def test_auto_mark_sets_received_date_from_continuous_period(seed_company, monkeypatch):
+def test_auto_mark_sets_received_date_from_cumulative_milestone(seed_company, monkeypatch):
     monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2031, 1, 1))
 
     person, first = create_person_with_employment(
@@ -91,13 +92,9 @@ def test_auto_mark_sets_received_date_from_continuous_period(seed_company, monke
 
     awards = ensure_tenure_awards(person.id, seed_company.id)
     assert is_tenure_award_auto_eligible(awards[0]) is True
-    assert auto_mark_reached_awards(awards) == 1
-    assert awards[0].received_date == date(2031, 1, 1)
-    assert awards[0].received_date == continuous_milestone_reached_date(
-        person.id,
-        seed_company.id,
-        10,
-    )
+    assert auto_mark_reached_awards(awards) == 3
+    assert awards[0].received_date == date(2010, 1, 1)
+    assert awards[0].received_date == awards[0].milestone_date
     assert compute_milestone_date(person.id, seed_company.id, 10) == date(2010, 1, 1)
 
 

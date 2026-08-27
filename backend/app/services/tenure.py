@@ -155,21 +155,15 @@ def is_tenure_award_auto_eligible(
     award: TenureAward,
     reference: date | None = None,
 ) -> bool:
-    """Award can be granted automatically only on continuous active tenure."""
+    """Award can be granted automatically when cumulative tenure reaches the milestone."""
     if award.is_received:
         return False
 
     ref = reference or today_moscow()
-    continuous = continuous_tenure_years(award.person_id, award.company_id, ref)
-    if continuous < award.milestone_years:
+    if award.milestone_date > ref:
         return False
 
-    reached_on = continuous_milestone_reached_date(
-        award.person_id,
-        award.company_id,
-        award.milestone_years,
-    )
-    return reached_on is not None and reached_on <= ref
+    return total_tenure_years(award.person_id, award.company_id, ref) >= award.milestone_years
 
 
 def ensure_tenure_awards(person_id: int, company_id: int) -> list[TenureAward]:
@@ -205,24 +199,15 @@ def auto_mark_reached_awards(
     awards: list[TenureAward],
     reference: date | None = None,
 ) -> int:
-    """Mark tenure milestones when continuous active tenure reaches the milestone.
-
-    ``milestone_date`` is still based on cumulative tenure across all periods and
-    is shown to HR, but automatic receipt requires uninterrupted tenure in the
-    current employment period.
-    """
+    """Mark tenure milestones when cumulative tenure reaches the milestone date."""
     ref = reference or today_moscow()
+    by_years = {award.milestone_years: award for award in awards}
     marked = 0
     for award in awards:
-        if not is_tenure_award_auto_eligible(award, ref):
+        if not is_tenure_award_pending(award, by_years, ref):
             continue
         award.is_received = True
         if award.received_date is None:
-            reached_on = continuous_milestone_reached_date(
-                award.person_id,
-                award.company_id,
-                award.milestone_years,
-            )
-            award.received_date = reached_on or award.milestone_date
+            award.received_date = award.milestone_date
         marked += 1
     return marked

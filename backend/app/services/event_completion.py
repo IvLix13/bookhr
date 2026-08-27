@@ -15,7 +15,6 @@ from app.services.audit import _current_user_id, log_audit
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.passports import calculate_passport_renewal_date
-from app.services.tenure import continuous_milestone_reached_date
 from app.services.rule_engine import (
     grade_preparation_rule_key,
     is_grade_preparation_event,
@@ -258,12 +257,7 @@ def _mark_tenure_award_after_completion(event: Event) -> TenureAward | None:
     today = today_moscow()
     award.is_received = True
     if award.received_date is None:
-        reached_on = continuous_milestone_reached_date(
-            award.person_id,
-            award.company_id,
-            award.milestone_years,
-        )
-        award.received_date = reached_on or award.milestone_date or today
+        award.received_date = award.milestone_date or today
 
     log_audit(
         "tenure_award_received",

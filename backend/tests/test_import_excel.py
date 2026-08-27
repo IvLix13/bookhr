@@ -909,12 +909,12 @@ def test_confirm_import_creates_three_employment_periods(app, tmp_path):
         assert job.summary["tenure_marked"] == 0
 
 
-def test_confirm_import_tenure_received_date_uses_continuous_period(app, tmp_path, monkeypatch):
+def test_confirm_import_tenure_received_date_uses_cumulative_milestone(app, tmp_path, monkeypatch):
     monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
 
     with app.app_context():
         company, user = _seed_import_company()
-        path = tmp_path / "periods-continuous.xlsx"
+        path = tmp_path / "periods-cumulative.xlsx"
         wb = Workbook()
         ws = wb.active
         ws.append(
@@ -954,11 +954,12 @@ def test_confirm_import_tenure_received_date_uses_continuous_period(app, tmp_pat
 
         assert awards[10].milestone_date == date(2015, 1, 1)
         assert awards[10].is_received is True
-        assert awards[10].received_date == date(2020, 1, 1)
+        assert awards[10].received_date == date(2015, 1, 1)
         assert awards[15].milestone_date == date(2020, 1, 1)
         assert awards[15].is_received is True
-        assert awards[15].received_date == date(2025, 1, 1)
-        assert awards[20].is_received is False
-        assert awards[20].received_date is None
-        assert job.summary["tenure_marked"] == 2
+        assert awards[15].received_date == date(2020, 1, 1)
+        assert awards[20].milestone_date == date(2025, 1, 1)
+        assert awards[20].is_received is True
+        assert awards[20].received_date == date(2025, 1, 1)
+        assert job.summary["tenure_marked"] == 3
 
