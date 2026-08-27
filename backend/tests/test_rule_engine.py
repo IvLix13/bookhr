@@ -26,7 +26,9 @@ from app.services.rule_engine import (
     process_contract_rules,
     recalculate_employment_events,
     run_rule_engine,
+    tenure_award_rule_key,
 )
+from app.services.tenure import ensure_tenure_awards
 
 
 def test_rule_engine_creates_contract_event(app):
@@ -228,3 +230,72 @@ def test_rehire_keeps_person_uuid(app):
 
         assert Person.query.filter_by(uuid=person_uuid).count() == 1
         assert Employment.query.filter_by(person_id=person.id).count() == 2
+
+
+def test_rule_engine_creates_tenure_award_event(app, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+
+    with app.app_context():
+        company = Company(name="Tenure Co")
+        db.session.add(company)
+        db.session.commit()
+
+        _, employment = create_person_with_employment(
+            company_id=company.id,
+            full_name="Ветеран Ветеранов",
+            hire_date=date(2010, 1, 1),
+            title="Инженер",
+        )
+        awards = ensure_tenure_awards(employment.person_id, employment.company_id)
+        db.session.commit()
+        ten_year_award = next(a for a in awards if a.milestone_years == 10)
+
+        stats = run_rule_engine(company.id)
+        assert stats["tenure"] >= 1
+
+        event = Event.query.filter_by(
+            rule_key=tenure_award_rule_key(ten_year_award),
+        ).first()
+        assert event is not None
+        assert event.event_type == "award"
+        assert event.reference_type == "tenure_award"
+        assert event.reference_id == ten_year_award.id
+        assert event.event_date == date(2020, 1, 1)
+        assert "10 лет" in event.title
+
+
+def test_complete_tenure_award_event_marks_received(hr_client, seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+    monkeypatch.setattr("app.services.event_completion.today_moscow", lambda: date(2026, 1, 1))
+
+    with hr_client.application.app_context():
+        from app.models import TenureAward
+
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Награда Событие",
+            hire_date=date(2010, 1, 1),
+            title="Инженер",
+        )
+        awards = ensure_tenure_awards(employment.person_id, employment.company_id)
+        db.session.commit()
+        award = next(a for a in awards if a.milestone_years == 10)
+        award_id = award.id
+
+        run_rule_engine(seed_company.id)
+        db.session.commit()
+
+        event = Event.query.filter_by(
+            rule_key=tenure_award_rule_key(award),
+        ).first()
+        event_id = event.id
+
+    response = hr_client.post(f"/api/events/{event_id}/complete", json={})
+    assert response.status_code == 200
+
+    with hr_client.application.app_context():
+        award = db.session.get(TenureAward, award_id)
+        assert award.is_received is True
+        assert award.received_date == date(2020, 1, 1)
+        event = db.session.get(Event, event_id)
+        assert event.status == EventStatus.COMPLETED.value

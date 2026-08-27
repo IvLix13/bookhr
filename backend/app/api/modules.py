@@ -56,7 +56,12 @@ from app.services.grade_catalog import (
 )
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.rule_engine import recalculate_employment_events
-from app.services.tenure import ensure_tenure_awards, tenure_years, total_tenure_years
+from app.services.tenure import (
+    active_employment,
+    ensure_tenure_awards,
+    tenure_years,
+    total_tenure_years,
+)
 from app.tenant import get_request_company_id
 from app.utils.dates import calculate_contract_start
 
@@ -429,6 +434,7 @@ def register_routes(bp):
         ).all()
         for employment in active_employments:
             ensure_tenure_awards(employment.person_id, employment.company_id)
+            recalculate_employment_events(employment)
         db.session.commit()
 
         query = Employment.query.filter_by(
@@ -490,6 +496,10 @@ def register_routes(bp):
                 award.received_date = date.fromisoformat(str(value))
         elif raw.get("is_received") and award.received_date is None:
             award.received_date = award.milestone_date
+
+        employment = active_employment(award.person_id, award.company_id)
+        if employment:
+            recalculate_employment_events(employment)
 
         db.session.commit()
         return api_response(tenure_award_to_dict(award))

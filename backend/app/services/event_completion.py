@@ -10,16 +10,18 @@ from __future__ import annotations
 from datetime import date
 
 from app.extensions import db
-from app.models import Contract, EmployeeGradeHistory, Event, EventStatus, EventType, Passport
+from app.models import Contract, EmployeeGradeHistory, Event, EventStatus, EventType, Passport, TenureAward
 from app.services.audit import _current_user_id, log_audit
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.passports import calculate_passport_renewal_date
+from app.services.tenure import continuous_milestone_reached_date
 from app.services.rule_engine import (
     grade_preparation_rule_key,
     is_grade_preparation_event,
     is_grade_promotion_event,
     is_passport_preparation_event,
+    is_tenure_award_event,
     recalculate_employment_events,
 )
 from app.utils.dates import calculate_contract_end, today_moscow
@@ -236,6 +238,47 @@ def _renew_passport_after_preparation(
     return passport
 
 
+def _mark_tenure_award_after_completion(event: Event) -> TenureAward | None:
+    """Mark tenure milestone received when the award event is completed."""
+    if not is_tenure_award_event(event):
+        return None
+
+    award = None
+    if event.reference_type == "tenure_award" and event.reference_id:
+        award = db.session.get(TenureAward, event.reference_id)
+    if award is None and event.rule_key:
+        award_id = event.rule_key.split(":")[1]
+        try:
+            award = db.session.get(TenureAward, int(award_id))
+        except (TypeError, ValueError):
+            award = None
+    if award is None:
+        return None
+
+    today = today_moscow()
+    award.is_received = True
+    if award.received_date is None:
+        reached_on = continuous_milestone_reached_date(
+            award.person_id,
+            award.company_id,
+            award.milestone_years,
+        )
+        award.received_date = reached_on or award.milestone_date or today
+
+    log_audit(
+        "tenure_award_received",
+        "tenure_award",
+        award.id,
+        {"is_received": False, "received_date": None},
+        {
+            "is_received": True,
+            "received_date": award.received_date.isoformat(),
+            "event_id": event.id,
+        },
+    )
+    return award
+
+
 def apply_completion_effects(
     event: Event,
     term_years: float | None = None,
@@ -247,6 +290,7 @@ def apply_completion_effects(
     assigned_grade = None
     extended_contract = None
     renewed_passport = None
+    tenure_award = None
     if event.event_type == EventType.GRADE.value:
         if is_grade_preparation_event(event):
             assigned_grade = None
@@ -286,6 +330,8 @@ def apply_completion_effects(
             event,
             resolved_valid_until,
         )
+    elif is_tenure_award_event(event):
+        tenure_award = _mark_tenure_award_after_completion(event)
 
     if event.employment:
         recalculate_employment_events(event.employment)
@@ -294,4 +340,5 @@ def apply_completion_effects(
         "assigned_grade": assigned_grade,
         "extended_contract": extended_contract,
         "renewed_passport": renewed_passport,
+        "tenure_award": tenure_award,
     }
