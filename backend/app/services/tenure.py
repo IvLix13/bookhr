@@ -196,6 +196,8 @@ def ensure_tenure_awards(person_id: int, company_id: int) -> list[TenureAward]:
         )
         db.session.add(award)
         awards.append(award)
+    if awards:
+        db.session.flush()
     return awards
 
 

@@ -69,11 +69,12 @@ def test_attention_summary_pending_tenure(admin_client, seed_company, monkeypatc
     assert data["items"][0]["category"] == "tenure"
 
 
-def test_attention_excludes_tenure_when_only_cumulative_qualifies(
+def test_attention_includes_tenure_when_cumulative_milestone_due(
     admin_client,
     seed_company,
     monkeypatch,
 ):
+    """Cumulative milestone due creates tenure attention even if current period is shorter."""
     monkeypatch.setattr("app.services.attention.today_moscow", lambda: date(2026, 7, 24))
 
     person, first = create_person_with_employment(
@@ -107,8 +108,8 @@ def test_attention_excludes_tenure_when_only_cumulative_qualifies(
     )
     assert response.status_code == 200
     data = response.get_json()["data"]
-    assert data["counts"]["tenure"] == 0
-    assert data["items"] == []
+    assert data["counts"]["tenure"] == 1
+    assert data["items"][0]["category"] == "tenure"
 
 
 def test_attention_excludes_max_grade_without_next(admin_client, seed_company, monkeypatch):
