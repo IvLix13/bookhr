@@ -29,7 +29,7 @@ from app.services.grades import compute_grade_eligibility
 from app.services.passports import PASSPORT_PREP_MONTHS
 from app.services.tenure import (
     ensure_tenure_awards,
-    is_tenure_award_pending,
+    is_tenure_award_scheduled,
 )
 from app.utils.dates import subtract_months, today_moscow
 
@@ -201,7 +201,7 @@ def _tenure_awards_by_years(awards: list[TenureAward]) -> dict[int, TenureAward]
     return {award.milestone_years: award for award in awards}
 
 
-def _pending_tenure_awards(
+def _scheduled_tenure_awards(
     person_id: int,
     company_id: int,
 ) -> list[TenureAward]:
@@ -210,7 +210,7 @@ def _pending_tenure_awards(
     return [
         award
         for award in awards
-        if is_tenure_award_pending(award, by_years)
+        if is_tenure_award_scheduled(award, by_years)
     ]
 
 
@@ -242,7 +242,7 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
     if passport:
         keys.add(passport_rule_key(passport))
 
-    for award in _pending_tenure_awards(employment.person_id, employment.company_id):
+    for award in _scheduled_tenure_awards(employment.person_id, employment.company_id):
         keys.add(tenure_award_rule_key(award))
 
     return keys
@@ -357,7 +357,7 @@ def process_passport_rules(employment: Employment) -> int:
 def process_tenure_rules(employment: Employment) -> int:
     created = 0
     name = get_current_name(employment.person) or "Сотрудник"
-    for award in _pending_tenure_awards(employment.person_id, employment.company_id):
+    for award in _scheduled_tenure_awards(employment.person_id, employment.company_id):
         _upsert_rule_event(
             company_id=employment.company_id,
             employment_id=employment.id,

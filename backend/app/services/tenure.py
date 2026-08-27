@@ -17,6 +17,7 @@ LOWER_MILESTONES: dict[int, tuple[int, ...]] = {
     20: (10, 15),
 }
 MAX_EMPLOYMENT_PERIODS = 3
+TENURE_AWARD_EVENT_HORIZON_YEARS = 3
 
 
 def is_tenure_award_pending(
@@ -30,6 +31,29 @@ def is_tenure_award_pending(
 
     ref = reference or today_moscow()
     if award.milestone_date > ref:
+        return False
+
+    for lower_years in LOWER_MILESTONES.get(award.milestone_years, ()):
+        lower_award = person_awards.get(lower_years)
+        if not lower_award or not lower_award.is_received:
+            return False
+
+    return True
+
+
+def is_tenure_award_scheduled(
+    award: TenureAward,
+    person_awards: dict[int, TenureAward],
+    reference: date | None = None,
+    horizon_years: int = TENURE_AWARD_EVENT_HORIZON_YEARS,
+) -> bool:
+    """Eligible for rule-engine event: unreceived, lower milestones received, within horizon."""
+    if award.is_received:
+        return False
+
+    ref = reference or today_moscow()
+    horizon_end = ref + relativedelta(years=horizon_years)
+    if award.milestone_date > horizon_end:
         return False
 
     for lower_years in LOWER_MILESTONES.get(award.milestone_years, ()):

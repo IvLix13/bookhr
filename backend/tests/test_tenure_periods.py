@@ -12,6 +12,7 @@ from app.services.tenure import (
     ensure_tenure_awards,
     is_tenure_award_auto_eligible,
     is_tenure_award_pending,
+    is_tenure_award_scheduled,
     total_tenure_years,
 )
 
@@ -166,6 +167,52 @@ def test_tenure_award_pending_requires_lower_milestones(seed_company, monkeypatc
     assert is_tenure_award_pending(by_years[20], by_years) is False
     by_years[15].is_received = True
     assert is_tenure_award_pending(by_years[20], by_years) is False
+
+
+def test_tenure_award_scheduled_within_horizon_and_chain(seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+
+    person, _employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Scheduled Logic",
+        hire_date=date(2017, 1, 1),
+        title="Инженер",
+    )
+    awards = ensure_tenure_awards(person.id, seed_company.id)
+    by_years = {award.milestone_years: award for award in awards}
+
+    assert by_years[10].milestone_date == date(2027, 1, 1)
+    assert is_tenure_award_scheduled(by_years[10], by_years) is True
+    assert is_tenure_award_pending(by_years[10], by_years) is False
+    assert is_tenure_award_scheduled(by_years[15], by_years) is False
+
+    person2, _employment2 = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Scheduled Chain",
+        hire_date=date(2012, 1, 1),
+        title="Инженер",
+    )
+    awards2 = ensure_tenure_awards(person2.id, seed_company.id)
+    by_years2 = {award.milestone_years: award for award in awards2}
+    by_years2[10].is_received = True
+    assert by_years2[15].milestone_date == date(2027, 1, 1)
+    assert is_tenure_award_scheduled(by_years2[15], by_years2) is True
+
+
+def test_tenure_award_scheduled_beyond_horizon(seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+
+    person, _employment = create_person_with_employment(
+        company_id=seed_company.id,
+        full_name="Far Future",
+        hire_date=date(2020, 1, 1),
+        title="Инженер",
+    )
+    awards = ensure_tenure_awards(person.id, seed_company.id)
+    by_years = {award.milestone_years: award for award in awards}
+
+    assert by_years[10].milestone_date == date(2030, 1, 1)
+    assert is_tenure_award_scheduled(by_years[10], by_years) is False
 
 
 def test_rehire_limited_to_three_periods(hr_client, seed_company, app):

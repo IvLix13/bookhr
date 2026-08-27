@@ -303,6 +303,92 @@ def test_rule_engine_creates_tenure_event_for_cumulative_milestone(app, monkeypa
         assert event.reference_type == "tenure_award"
 
 
+def test_rule_engine_creates_future_tenure_event_within_horizon(app, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+    monkeypatch.setattr("app.services.rule_engine.today_moscow", lambda: date(2026, 1, 1))
+
+    with app.app_context():
+        company = Company(name="Future Tenure Co")
+        db.session.add(company)
+        db.session.commit()
+
+        _, employment = create_person_with_employment(
+            company_id=company.id,
+            full_name="Будущий Ветеран",
+            hire_date=date(2017, 1, 1),
+            title="Инженер",
+        )
+        awards = ensure_tenure_awards(employment.person_id, employment.company_id)
+        db.session.commit()
+        ten_year_award = next(a for a in awards if a.milestone_years == 10)
+
+        stats = run_rule_engine(company.id)
+        assert stats["tenure"] >= 1
+
+        event = Event.query.filter_by(
+            rule_key=tenure_award_rule_key(ten_year_award),
+        ).first()
+        assert event is not None
+        assert event.event_date == date(2027, 1, 1)
+        assert event.status == EventStatus.PLANNED.value
+
+
+def test_rule_engine_skips_tenure_event_beyond_horizon(app, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+    monkeypatch.setattr("app.services.rule_engine.today_moscow", lambda: date(2026, 1, 1))
+
+    with app.app_context():
+        company = Company(name="Far Tenure Co")
+        db.session.add(company)
+        db.session.commit()
+
+        _, employment = create_person_with_employment(
+            company_id=company.id,
+            full_name="Далёкий Ветеран",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+        )
+        awards = ensure_tenure_awards(employment.person_id, employment.company_id)
+        db.session.commit()
+        ten_year_award = next(a for a in awards if a.milestone_years == 10)
+
+        stats = run_rule_engine(company.id)
+        assert stats["tenure"] == 0
+
+        event = Event.query.filter_by(
+            rule_key=tenure_award_rule_key(ten_year_award),
+        ).first()
+        assert event is None
+
+
+def test_rule_engine_skips_higher_milestone_until_lower_received(app, monkeypatch):
+    monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
+    monkeypatch.setattr("app.services.rule_engine.today_moscow", lambda: date(2026, 1, 1))
+
+    with app.app_context():
+        company = Company(name="Chain Tenure Co")
+        db.session.add(company)
+        db.session.commit()
+
+        _, employment = create_person_with_employment(
+            company_id=company.id,
+            full_name="Цепочка Ветеран",
+            hire_date=date(2010, 1, 1),
+            title="Инженер",
+        )
+        awards = ensure_tenure_awards(employment.person_id, employment.company_id)
+        db.session.commit()
+        fifteen_year_award = next(a for a in awards if a.milestone_years == 15)
+
+        stats = run_rule_engine(company.id)
+        assert stats["tenure"] >= 1
+
+        event_15 = Event.query.filter_by(
+            rule_key=tenure_award_rule_key(fifteen_year_award),
+        ).first()
+        assert event_15 is None
+
+
 def test_complete_tenure_award_event_marks_received(hr_client, seed_company, monkeypatch):
     monkeypatch.setattr("app.services.tenure.today_moscow", lambda: date(2026, 1, 1))
     monkeypatch.setattr("app.services.rule_engine.today_moscow", lambda: date(2026, 1, 1))
