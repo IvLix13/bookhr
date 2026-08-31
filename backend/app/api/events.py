@@ -10,7 +10,9 @@ from app.api.helpers import (
     apply_sort,
     apply_text_search,
     load_schema,
+    nearest_event_date_sort_key,
     paginate_query,
+    paginate_sequence,
     parse_pagination_args,
     parse_search_q,
     parse_sort_args,
@@ -35,7 +37,10 @@ from app.services.events import (
 from app.tenant import get_request_company_id
 
 
+EVENT_NEAREST_SORT = "nearest_date"
+
 EVENT_SORT_FIELDS = {
+    EVENT_NEAREST_SORT: Event.event_date,
     "event_date": Event.event_date,
     "title": Event.title,
     "status": Event.status,
@@ -74,7 +79,7 @@ def register_routes(bp):
         q = parse_search_q()
         sort, direction = parse_sort_args(
             EVENT_SORT_FIELDS,
-            default_field="event_date",
+            default_field=EVENT_NEAREST_SORT,
             default_direction="asc",
         )
 
@@ -88,6 +93,19 @@ def register_routes(bp):
             query = query.filter_by(event_type=event_type)
 
         query = apply_text_search(query, Event.title, q)
+
+        if sort == EVENT_NEAREST_SORT:
+            events = query.all()
+            events.sort(
+                key=lambda event: nearest_event_date_sort_key(
+                    event.event_date,
+                    tie_breaker=event.id,
+                )
+            )
+            return api_response(
+                paginate_sequence([event_to_dict(event) for event in events], page, per_page)
+            )
+
         query = _apply_event_list_sort_joins(query, sort)
         query = apply_sort(query, EVENT_SORT_FIELDS, sort, direction)
 

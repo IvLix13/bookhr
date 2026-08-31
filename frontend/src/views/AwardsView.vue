@@ -14,22 +14,54 @@ import { useAuthStore } from '@/stores/auth'
 const auth = useAuthStore()
 const editing = ref<TenureRow | null>(null)
 
+type AwardYears = '10' | '15' | '20'
+
 const table = useServerTable<TenureRow>({
   tableId: 'awards',
   fetcher: (params) => api.tenure(params) as Promise<Paginated<TenureRow>>,
   defaultSort: { key: 'tenure_years', direction: 'desc' },
 })
 
-function awardLabel(row: TenureRow, years: '10' | '15' | '20'): string {
+function awardReceived(row: TenureRow, years: AwardYears): boolean {
+  return Boolean(row.awards[years]?.is_received)
+}
+
+function awardCellClass(row: TenureRow, years: AwardYears) {
+  if (awardReceived(row, years)) return 'award-cell-received'
+  return undefined
+}
+
+function awardDisplayText(row: TenureRow, years: AwardYears): string {
   const award = row.awards[years]
   if (!award) return '—'
   if (award.is_received) {
-    return award.received_date
-      ? `Получено ${formatNumericDate(award.received_date)}`
-      : 'Получено'
+    return award.received_date ? formatNumericDate(award.received_date) : '—'
   }
   if (award.milestone_date) return formatNumericDate(award.milestone_date)
   return '—'
+}
+
+function awardAriaLabel(row: TenureRow, years: AwardYears): string {
+  const award = row.awards[years]
+  if (!award) return `${years} лет: нет данных`
+  if (award.is_received) {
+    const date = award.received_date ? formatNumericDate(award.received_date) : 'дата не указана'
+    return `${years} лет: получено ${date}`
+  }
+  if (award.milestone_date) {
+    return `${years} лет: ${formatNumericDate(award.milestone_date)}`
+  }
+  return `${years} лет: нет данных`
+}
+
+function makeAwardColumn(years: AwardYears, label: string): ColumnDef<TenureRow> {
+  return {
+    key: `award_${years}`,
+    label,
+    sortable: false,
+    getValue: (row) => awardDisplayText(row, years),
+    cellClass: (row) => awardCellClass(row, years),
+  }
 }
 
 const columns: ColumnDef<TenureRow>[] = [
@@ -46,24 +78,9 @@ const columns: ColumnDef<TenureRow>[] = [
     getValue: (row) => row.continuous_tenure_years ?? row.tenure_years,
     format: (value) => `${value} лет`,
   },
-  {
-    key: 'award_10',
-    label: '10 лет',
-    sortable: false,
-    getValue: (row) => awardLabel(row, '10'),
-  },
-  {
-    key: 'award_15',
-    label: '15 лет',
-    sortable: false,
-    getValue: (row) => awardLabel(row, '15'),
-  },
-  {
-    key: 'award_20',
-    label: '20 лет',
-    sortable: false,
-    getValue: (row) => awardLabel(row, '20'),
-  },
+  makeAwardColumn('10', '10 лет'),
+  makeAwardColumn('15', '15 лет'),
+  makeAwardColumn('20', '20 лет'),
   {
     key: 'actions',
     label: '',
@@ -102,7 +119,10 @@ async function handleSaved() {
     />
 
     <PageState
+      :loading="table.loading.value"
+      :refreshing="table.refreshing.value"
       :error="table.error.value"
+      :has-data="table.rows.value.length > 0"
       @retry="table.reload()"
     >
       <DataTable
@@ -122,6 +142,24 @@ async function handleSaved() {
         search-placeholder="Поиск по наградам за стаж..."
         @update:query="onQueryUpdate"
       >
+        <template #cell-award_10="{ row, display }">
+          <span class="award-cell" :aria-label="awardAriaLabel(row, '10')">
+            <span v-if="awardReceived(row, '10')" class="award-check" aria-hidden="true">✓</span>
+            <span>{{ display }}</span>
+          </span>
+        </template>
+        <template #cell-award_15="{ row, display }">
+          <span class="award-cell" :aria-label="awardAriaLabel(row, '15')">
+            <span v-if="awardReceived(row, '15')" class="award-check" aria-hidden="true">✓</span>
+            <span>{{ display }}</span>
+          </span>
+        </template>
+        <template #cell-award_20="{ row, display }">
+          <span class="award-cell" :aria-label="awardAriaLabel(row, '20')">
+            <span v-if="awardReceived(row, '20')" class="award-check" aria-hidden="true">✓</span>
+            <span>{{ display }}</span>
+          </span>
+        </template>
         <template #cell-actions="{ row }">
           <button
             v-if="auth.canEdit()"
@@ -144,8 +182,24 @@ async function handleSaved() {
   gap: 1rem;
 }
 
-.page-header h2,
 header h2 {
   margin: 0;
+}
+
+:deep(.award-cell-received) {
+  background: #e8f7ef;
+}
+
+.award-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.award-check {
+  color: var(--success);
+  font-weight: 700;
+  line-height: 1;
 }
 </style>

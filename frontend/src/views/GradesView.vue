@@ -17,8 +17,9 @@ const editing = ref<GradeRow | null>(null)
 
 const table = useServerTable<GradeRow>({
   tableId: 'grades',
+  schemaVersion: 2,
   fetcher: (params) => api.grades(params) as Promise<Paginated<GradeRow>>,
-  defaultSort: { key: 'full_name', direction: 'asc' },
+  defaultSort: { key: 'eligible_date_nearest', direction: 'asc' },
 })
 
 const columns: ColumnDef<GradeRow>[] = [
@@ -46,6 +47,7 @@ const columns: ColumnDef<GradeRow>[] = [
   {
     key: 'eligible_date',
     label: 'Дата доступности',
+    sortKey: 'eligible_date_nearest',
     getValue: (row) => row.eligible_date,
     format: (value) => formatShortDate(value as string | null),
   },
@@ -106,7 +108,10 @@ async function handleSaved() {
     />
 
     <PageState
+      :loading="table.loading.value"
+      :refreshing="table.refreshing.value"
       :error="table.error.value"
+      :has-data="table.rows.value.length > 0"
       @retry="table.reload()"
     >
       <DataTable
@@ -123,6 +128,8 @@ async function handleSaved() {
         :sort-dir="table.query.value.direction"
         :search="table.query.value.q"
         :column-filters="table.query.value.columnFilters"
+        default-sort-key="eligible_date_nearest"
+        default-sort-dir="asc"
         search-placeholder="Поиск по ФИО..."
         @update:query="onQueryUpdate"
       >

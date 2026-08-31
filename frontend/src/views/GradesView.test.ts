@@ -54,6 +54,21 @@ function rowText(wrapper: ReturnType<typeof mount>, name: string): string {
 }
 
 describe('GradesView', () => {
+  it('requests nearest eligible date sort by default', async () => {
+    const { api } = await import('@/api/client')
+    mount(GradesView, {
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, GradeAssignForm: true } },
+    })
+    await flushPromises()
+
+    expect(api.grades).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sort: 'eligible_date_nearest',
+        direction: 'asc',
+      }),
+    )
+  })
+
   it('marks rows where the next grade is already available', async () => {
     const wrapper = mount(GradesView, {
       global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, GradeAssignForm: true } },

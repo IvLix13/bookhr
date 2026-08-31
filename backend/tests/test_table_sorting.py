@@ -179,6 +179,88 @@ def test_rewards_sort_by_notes(admin_client, seed_company):
     assert notes == ["alpha", "beta"]
 
 
+def test_events_sort_by_nearest_date(admin_client, seed_company):
+    with admin_client.application.app_context():
+        _, employment = create_person_with_employment(
+            seed_company.id,
+            "Событие Сотрудник",
+            date(2020, 1, 1),
+            "Инженер",
+            education_status="yes",
+        )
+        db.session.add_all(
+            [
+                Event(
+                    company_id=seed_company.id,
+                    employment_id=employment.id,
+                    title="Прошлое",
+                    event_type=EventType.MANUAL.value,
+                    event_date=date(2020, 1, 1),
+                    source=EventSource.MANUAL.value,
+                ),
+                Event(
+                    company_id=seed_company.id,
+                    employment_id=employment.id,
+                    title="Будущее ближе",
+                    event_type=EventType.MANUAL.value,
+                    event_date=date(2030, 1, 1),
+                    source=EventSource.MANUAL.value,
+                ),
+                Event(
+                    company_id=seed_company.id,
+                    employment_id=employment.id,
+                    title="Будущее дальше",
+                    event_type=EventType.MANUAL.value,
+                    event_date=date(2035, 1, 1),
+                    source=EventSource.MANUAL.value,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    response = admin_client.get("/api/events?sort=nearest_date&direction=asc")
+    assert response.status_code == 200
+    titles = [item["title"] for item in response.get_json()["data"]["items"]]
+    assert titles[:3] == ["Будущее ближе", "Будущее дальше", "Прошлое"]
+
+
+def test_grades_sort_by_eligible_date_nearest(admin_client, seed_company):
+    from app.models import GradeCatalog
+    from app.services.grades import assign_grade_to_employment
+
+    with admin_client.application.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=1, is_active=True)
+        senior = GradeCatalog(name="Senior", rank=2, min_years=2, is_active=True)
+        db.session.add_all([junior, senior])
+        db.session.flush()
+
+        _, available_employment = create_person_with_employment(
+            seed_company.id,
+            "Доступный",
+            date(2020, 1, 1),
+            "Инженер",
+            education_status="yes",
+            position_grade_id=senior.id,
+        )
+        _, future_employment = create_person_with_employment(
+            seed_company.id,
+            "Будущий",
+            date(2020, 1, 1),
+            "Инженер",
+            education_status="yes",
+            position_grade_id=senior.id,
+        )
+        assign_grade_to_employment(available_employment, junior, date(2020, 1, 1))
+        assign_grade_to_employment(future_employment, junior, date(2026, 6, 1))
+        db.session.commit()
+
+    response = admin_client.get("/api/grades?sort=eligible_date_nearest&direction=asc")
+    assert response.status_code == 200
+    names = [item["full_name"] for item in response.get_json()["data"]["items"]]
+    assert names[0] == "Доступный"
+    assert names.index("Будущий") > names.index("Доступный")
+
+
 def test_tenure_sort_by_continuous_tenure_years(admin_client, seed_company):
     with admin_client.application.app_context():
         create_person_with_employment(

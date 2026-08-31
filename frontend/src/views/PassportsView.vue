@@ -46,7 +46,10 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
   <section class="card page">
     <header><h2>Паспорта</h2></header>
     <PageState
+      :loading="table.loading.value"
+      :refreshing="table.refreshing.value"
       :error="table.error.value"
+      :has-data="table.rows.value.length > 0"
       @retry="table.reload()"
     >
       <DataTable

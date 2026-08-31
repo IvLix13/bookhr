@@ -97,4 +97,13 @@ describe('AwardsView', () => {
     expect(updateTenureAward).toHaveBeenCalled()
     expect(tenure).toHaveBeenCalledTimes(2)
   })
+
+  it('shows received awards with checkmark and date without the word Получено', async () => {
+    const wrapper = await mountView('hr')
+    const row = wrapper.find('.data-table-row')
+    expect(row.text()).toContain('✓')
+    expect(row.text()).toContain('01.06.2025')
+    expect(row.text()).not.toContain('Получено')
+    expect(row.find('.award-cell-received').exists()).toBe(true)
+  })
 })

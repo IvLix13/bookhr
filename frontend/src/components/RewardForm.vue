@@ -5,6 +5,7 @@ import type { Employee, RewardRow } from '@/types'
 
 const props = defineProps<{
   initial?: RewardRow | null
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -101,7 +102,7 @@ async function submit() {
 
 <template>
   <form class="form" @submit.prevent="submit">
-    <h3>{{ initial ? 'Редактирование поощрения' : 'Новое поощрение' }}</h3>
+    <h3 v-if="!compact">{{ initial ? 'Редактирование поощрения' : 'Новое поощрение' }}</h3>
     <label>
       Сотрудник
       <select v-model="form.employment_id" required>
@@ -146,7 +147,7 @@ async function submit() {
       <button class="btn" type="submit" :disabled="submitting">
         {{ submitting ? 'Сохранение...' : 'Сохранить' }}
       </button>
-      <button v-if="initial" class="btn ghost" type="button" @click="emit('cancel')">
+      <button class="btn ghost" type="button" @click="emit('cancel')">
         Отмена
       </button>
     </div>

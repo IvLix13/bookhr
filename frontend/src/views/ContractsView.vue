@@ -97,7 +97,10 @@ async function onReportChanged() {
   <section class="card page">
     <header><h2>{{ MODULE_LABELS.contracts }}</h2></header>
     <PageState
+      :loading="table.loading.value"
+      :refreshing="table.refreshing.value"
       :error="table.error.value"
+      :has-data="table.rows.value.length > 0"
       @retry="table.reload()"
     >
       <DataTable

@@ -15,6 +15,7 @@ from app.api.helpers import (
     join_current_grade_history,
     join_current_person_name,
     load_schema,
+    nearest_eligible_date_sort_key,
     paginate_query,
     paginate_sequence,
     parse_pagination_args,
@@ -102,16 +103,19 @@ PASSPORT_SORT_ALIASES = {
     "status": "valid_until",
 }
 
+GRADE_ELIGIBLE_NEAREST_SORT = "eligible_date_nearest"
+
 GRADE_SORT_FIELDS = {
     "full_name": PersonNameHistory.full_name,
     "hire_date": Employment.hire_date,
     "grade": GradeCatalog.name,
     "grade_date": EmployeeGradeHistory.assigned_date,
+    GRADE_ELIGIBLE_NEAREST_SORT: Employment.hire_date,
     "eligible_date": Employment.hire_date,
     "days_left": Employment.hire_date,
 }
 
-GRADE_COMPUTED_SORTS = frozenset({"days_left", "eligible_date"})
+GRADE_COMPUTED_SORTS = frozenset({"days_left", "eligible_date", GRADE_ELIGIBLE_NEAREST_SORT})
 
 
 def _sort_employments_by_grade_computed(
@@ -119,6 +123,18 @@ def _sort_employments_by_grade_computed(
     sort: str,
     direction: str,
 ) -> None:
+    if sort == GRADE_ELIGIBLE_NEAREST_SORT:
+        def nearest_key(employment: Employment) -> tuple:
+            eligibility = compute_grade_eligibility(employment)
+            return nearest_eligible_date_sort_key(
+                eligibility.get("eligible_date"),
+                is_available=bool(eligibility.get("is_available")),
+                tie_breaker=employment.id,
+            )
+
+        employments.sort(key=nearest_key)
+        return
+
     reverse = direction == "desc"
 
     def sort_value(employment: Employment) -> int | None:
@@ -223,7 +239,7 @@ def register_routes(bp):
         q = parse_search_q()
         sort, direction = parse_sort_args(
             GRADE_SORT_FIELDS,
-            default_field="full_name",
+            default_field=GRADE_ELIGIBLE_NEAREST_SORT,
             default_direction="asc",
         )
 

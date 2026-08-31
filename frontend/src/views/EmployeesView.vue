@@ -176,7 +176,10 @@ async function removeEmployee() {
     <p v-if="actionError" class="error">{{ actionError }}</p>
 
     <PageState
+      :loading="table.loading.value"
+      :refreshing="table.refreshing.value"
       :error="table.error.value"
+      :has-data="table.rows.value.length > 0"
       @retry="table.reload()"
     >
       <DataTable

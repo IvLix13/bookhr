@@ -26,6 +26,8 @@ const props = withDefaults(
     rowClass?: (row: T) => string | Record<string, boolean> | undefined
     rowAttrs?: (row: T) => Record<string, string | number | undefined>
     rowClickable?: boolean
+    defaultSortKey?: string | null
+    defaultSortDir?: SortDirection
   }>(),
   {
     mode: 'client',
@@ -123,13 +125,24 @@ function resolveRowKey(row: T, index: number): string | number {
   return value == null ? index : (value as string | number)
 }
 
-function sortIndicator(key: string): string {
-  if (displaySortKey.value !== key) return '↕'
+function resolveColumnSortField(column: ColumnDef<T>): string {
+  return column.sortKey ?? column.key
+}
+
+function columnMatchesSort(column: ColumnDef<T>): boolean {
+  const active = displaySortKey.value
+  if (!active) return false
+  const field = resolveColumnSortField(column)
+  return active === field || active === column.key
+}
+
+function sortIndicator(column: ColumnDef<T>): string {
+  if (!columnMatchesSort(column)) return '↕'
   return displaySortDir.value === 'asc' ? '↑' : '↓'
 }
 
-function ariaSortValue(key: string): 'ascending' | 'descending' | 'none' {
-  if (displaySortKey.value !== key) return 'none'
+function ariaSortValue(column: ColumnDef<T>): 'ascending' | 'descending' | 'none' {
+  if (!columnMatchesSort(column)) return 'none'
   return displaySortDir.value === 'asc' ? 'ascending' : 'descending'
 }
 
@@ -151,23 +164,36 @@ function onSearchInput(value: string) {
   clientTable.search.value = value
 }
 
-function onToggleSort(key: string) {
+function onToggleSort(column: ColumnDef<T>) {
   if (isServer.value) {
-    if (props.sortKey === key) {
+    const sortField = resolveColumnSortField(column)
+    const active = props.sortKey
+
+    if (active === sortField && column.sortKey && column.sortKey !== column.key) {
+      emitQuery({
+        sort: column.key,
+        direction: 'asc',
+        page: 1,
+      })
+      return
+    }
+
+    if (active === column.key || active === sortField) {
       emitQuery({
         direction: props.sortDir === 'asc' ? 'desc' : 'asc',
         page: 1,
       })
-    } else {
-      emitQuery({
-        sort: key,
-        direction: 'asc',
-        page: 1,
-      })
+      return
     }
+
+    emitQuery({
+      sort: sortField,
+      direction: 'asc',
+      page: 1,
+    })
     return
   }
-  clientTable.toggleSort(key)
+  clientTable.toggleSort(column.key)
 }
 
 function onColumnFilter(key: string, value: string) {
@@ -188,8 +214,8 @@ function onResetFilters() {
   if (isServer.value) {
     emitQuery({
       q: '',
-      sort: null,
-      direction: 'asc',
+      sort: props.defaultSortKey ?? null,
+      direction: props.defaultSortDir ?? 'asc',
       columnFilters: {},
       page: 1,
     })
@@ -286,16 +312,16 @@ watch(
               v-for="column in columns"
               :key="column.key"
               :class="{ sortable: column.sortable !== false }"
-              :aria-sort="column.sortable !== false ? ariaSortValue(column.key) : undefined"
+              :aria-sort="column.sortable !== false ? ariaSortValue(column) : undefined"
             >
               <button
                 v-if="column.sortable !== false"
                 type="button"
                 class="th-button"
-                @click="onToggleSort(column.key)"
+                @click="onToggleSort(column)"
               >
                 <span>{{ column.label }}</span>
-                <span class="sort-indicator">{{ sortIndicator(column.key) }}</span>
+                <span class="sort-indicator">{{ sortIndicator(column) }}</span>
               </button>
               <span v-else>{{ column.label }}</span>
               <input
@@ -329,7 +355,11 @@ watch(
             v-bind="rowAttrs?.(row)"
             @click="onRowClick(row)"
           >
-            <td v-for="column in columns" :key="column.key">
+            <td
+              v-for="column in columns"
+              :key="column.key"
+              :class="column.cellClass?.(row)"
+            >
               <slot
                 :name="`cell-${column.key}`"
                 :row="row"

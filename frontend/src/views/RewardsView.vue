@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import DataTable from '@/components/DataTable.vue'
 import PageState from '@/components/PageState.vue'
 import RewardForm from '@/components/RewardForm.vue'
@@ -15,6 +15,7 @@ import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 const editing = ref<RewardRow | null>(null)
+const modalOpen = ref(false)
 
 const table = useServerTable<RewardRow>({
   tableId: 'rewards',
@@ -65,33 +66,58 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
   table.setQuery(patch)
 }
 
-function startEdit(row: RewardRow) {
-  editing.value = row
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && modalOpen.value) {
+    closeModal()
+  }
 }
 
-function cancelEdit() {
+window.addEventListener('keydown', onKeydown)
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
+
+function openCreate() {
+  if (!auth.canEdit()) return
+  editing.value = null
+  modalOpen.value = true
+}
+
+function startEdit(row: RewardRow) {
+  editing.value = row
+  modalOpen.value = true
+}
+
+function closeModal() {
+  modalOpen.value = false
   editing.value = null
 }
 
 async function handleSaved() {
-  editing.value = null
+  closeModal()
   await table.reload()
 }
 </script>
 
 <template>
   <section class="card page">
-    <header><h2>{{ MODULE_LABELS.rewards }}</h2></header>
-
-    <RewardForm
-      v-if="auth.canEdit()"
-      :initial="editing"
-      @saved="handleSaved"
-      @cancel="cancelEdit"
-    />
+    <header class="page-header">
+      <h2>{{ MODULE_LABELS.rewards }}</h2>
+      <button
+        v-if="auth.canEdit()"
+        class="btn"
+        type="button"
+        @click="openCreate"
+      >
+        Добавить новое поощрение
+      </button>
+    </header>
 
     <PageState
+      :loading="table.loading.value"
+      :refreshing="table.refreshing.value"
       :error="table.error.value"
+      :has-data="table.rows.value.length > 0"
       @retry="table.reload()"
     >
       <DataTable
@@ -108,6 +134,8 @@ async function handleSaved() {
         :sort-dir="table.query.value.direction"
         :search="table.query.value.q"
         :column-filters="table.query.value.columnFilters"
+        default-sort-key="status_changed_date"
+        default-sort-dir="desc"
         search-placeholder="Поиск по поощрениям..."
         @update:query="onQueryUpdate"
       >
@@ -129,6 +157,34 @@ async function handleSaved() {
         </template>
       </DataTable>
     </PageState>
+
+    <Teleport to="body">
+      <div
+        v-if="modalOpen"
+        class="overlay"
+        @click.self="closeModal"
+      >
+        <section
+          class="card modal"
+          role="dialog"
+          aria-modal="true"
+          :aria-label="editing ? 'Редактирование поощрения' : 'Новое поощрение'"
+        >
+          <header class="modal-header">
+            <h3>{{ editing ? 'Редактирование поощрения' : 'Новое поощрение' }}</h3>
+            <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">
+              ×
+            </button>
+          </header>
+          <RewardForm
+            compact
+            :initial="editing"
+            @saved="handleSaved"
+            @cancel="closeModal"
+          />
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -137,5 +193,50 @@ async function handleSaved() {
   padding: 1rem;
   display: grid;
   gap: 1rem;
+}
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.page-header h2 {
+  margin: 0;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 1000;
+}
+
+.modal {
+  width: min(560px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+:deep(.form h3) {
+  display: none;
 }
 </style>

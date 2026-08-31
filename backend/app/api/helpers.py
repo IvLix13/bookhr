@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import date
 from functools import wraps
 from math import ceil
 from typing import Any, Callable, TypeVar
@@ -188,6 +189,32 @@ def sort_sequence_with_nulls_last(
     without_values = [item for item, value in ranked if value is None]
     with_values.sort(key=lambda item: item[1], reverse=reverse)
     items[:] = [item for item, _ in with_values] + without_values
+
+
+def nearest_event_date_sort_key(event_date: date | None, *, tie_breaker: int = 0) -> tuple:
+    """Today/future first (asc), then past (desc). Null dates last."""
+    if event_date is None:
+        return (2, 0, tie_breaker)
+    today = date.today()
+    ordinal = event_date.toordinal()
+    if event_date >= today:
+        return (0, ordinal, tie_breaker)
+    return (1, -ordinal, tie_breaker)
+
+
+def nearest_eligible_date_sort_key(
+    eligible_date: date | None,
+    *,
+    is_available: bool,
+    tie_breaker: int = 0,
+) -> tuple:
+    """Available first (most recent eligible date), then future (nearest), nulls last."""
+    if eligible_date is None:
+        return (2, 0, tie_breaker)
+    ordinal = eligible_date.toordinal()
+    if is_available:
+        return (0, -ordinal, tie_breaker)
+    return (1, ordinal, tie_breaker)
 
 
 def join_current_position(query: Query[Any]) -> Query[Any]:

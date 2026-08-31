@@ -178,6 +178,16 @@ describe('EventsView event modal', () => {
     expect(wrapper.find('header .btn').exists()).toBe(false)
   })
 
+  it('requests nearest date sort by default', async () => {
+    await mountView('hr')
+    expect(events).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sort: 'nearest_date',
+        direction: 'asc',
+      }),
+    )
+  })
+
   it('opens create form from create query', async () => {
     routeState.query = { create: '1' }
     await mountView('hr')

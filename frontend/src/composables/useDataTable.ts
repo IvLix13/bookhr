@@ -8,9 +8,12 @@ export interface ColumnDef<T> {
   label: string
   sortable?: boolean
   filterable?: boolean
+  /** Server-side sort field when it differs from column key (e.g. nearest_date). */
+  sortKey?: string
   getValue?: (row: T) => unknown
   format?: (value: unknown, row: T) => string
   sortValue?: (row: T) => string | number | null
+  cellClass?: (row: T) => string | Record<string, boolean> | undefined
 }
 
 function defaultGetValue<T>(row: T, key: string): unknown {
@@ -67,6 +70,11 @@ export function useDataTable<T>(
     }
     return map
   })
+
+  function resolveSortKey(columnKey: string): string {
+    const column = columnByKey.value.get(columnKey)
+    return column?.sortKey ?? columnKey
+  }
 
   function getCellValue(row: T, column: ColumnDef<T>): unknown {
     if (column.getValue) return column.getValue(row)
@@ -188,5 +196,6 @@ export function useDataTable<T>(
     resetFilters,
     hasActiveFilters,
     getDisplayValue,
+    resolveSortKey,
   }
 }
