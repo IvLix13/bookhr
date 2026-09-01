@@ -98,6 +98,32 @@ def effectively_overdue_filter(reference: date | None = None):
     )
 
 
+_PLANNED_NEAREST_STATUS_ORDER = {
+    EventStatus.PLANNED.value: 0,
+    EventStatus.OVERDUE.value: 1,
+    EventStatus.COMPLETED.value: 2,
+    EventStatus.CANCELLED.value: 3,
+}
+
+
+def planned_nearest_event_sort_key(event: Event, reference: date | None = None) -> tuple:
+    """Planned first (nearest date to farthest), then other statuses by date desc."""
+    today = reference or today_moscow()
+    effective = effective_event_status(event, today)
+    group = _PLANNED_NEAREST_STATUS_ORDER.get(effective, 99)
+
+    if event.event_date is None:
+        return (group, 999999999, event.id)
+
+    ordinal = event.event_date.toordinal()
+    if effective == EventStatus.PLANNED.value:
+        date_key = ordinal
+    else:
+        date_key = -ordinal
+
+    return (group, date_key, event.id)
+
+
 def transition_event_status(
     event: Event,
     new_status: EventStatus,

@@ -29,6 +29,7 @@ from app.services.events import (
     apply_status_filter,
     create_manual_event,
     delete_manual_event,
+    planned_nearest_event_sort_key,
     refresh_events_after_mutation,
     refresh_overdue_events,
     transition_event_status,
@@ -38,8 +39,10 @@ from app.tenant import get_request_company_id
 
 
 EVENT_NEAREST_SORT = "nearest_date"
+EVENT_PLANNED_NEAREST_SORT = "planned_nearest"
 
 EVENT_SORT_FIELDS = {
+    EVENT_PLANNED_NEAREST_SORT: Event.event_date,
     EVENT_NEAREST_SORT: Event.event_date,
     "event_date": Event.event_date,
     "title": Event.title,
@@ -79,7 +82,7 @@ def register_routes(bp):
         q = parse_search_q()
         sort, direction = parse_sort_args(
             EVENT_SORT_FIELDS,
-            default_field=EVENT_NEAREST_SORT,
+            default_field=EVENT_PLANNED_NEAREST_SORT,
             default_direction="asc",
         )
 
@@ -94,14 +97,17 @@ def register_routes(bp):
 
         query = apply_text_search(query, Event.title, q)
 
-        if sort == EVENT_NEAREST_SORT:
+        if sort in (EVENT_NEAREST_SORT, EVENT_PLANNED_NEAREST_SORT):
             events = query.all()
-            events.sort(
-                key=lambda event: nearest_event_date_sort_key(
-                    event.event_date,
-                    tie_breaker=event.id,
+            if sort == EVENT_PLANNED_NEAREST_SORT:
+                events.sort(key=planned_nearest_event_sort_key)
+            else:
+                events.sort(
+                    key=lambda event: nearest_event_date_sort_key(
+                        event.event_date,
+                        tie_breaker=event.id,
+                    )
                 )
-            )
             return api_response(
                 paginate_sequence([event_to_dict(event) for event in events], page, per_page)
             )

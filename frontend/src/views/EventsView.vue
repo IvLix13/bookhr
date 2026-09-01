@@ -25,9 +25,9 @@ const completingId = ref<number | null>(null)
 
 const table = useServerTable<EventItem>({
   tableId: 'events',
-  schemaVersion: 2,
+  schemaVersion: 3,
   fetcher: (params) => api.events(params) as Promise<Paginated<EventItem>>,
-  defaultSort: { key: 'nearest_date', direction: 'asc' },
+  defaultSort: { key: 'planned_nearest', direction: 'asc' },
 })
 
 const initialSearch = computed(() =>
@@ -75,7 +75,7 @@ const columns: ColumnDef<EventItem>[] = [
   {
     key: 'event_date',
     label: 'Дата',
-    sortKey: 'nearest_date',
+    sortKey: 'planned_nearest',
     getValue: (row) => row.event_date,
     format: (value) => formatShortDate(value as string | null),
   },
@@ -226,7 +226,7 @@ async function onCreated() {
         :sort-dir="table.query.value.direction"
         :search="table.query.value.q"
         :column-filters="table.query.value.columnFilters"
-        default-sort-key="nearest_date"
+        default-sort-key="planned_nearest"
         default-sort-dir="asc"
         search-placeholder="Поиск по мероприятиям..."
         @update:query="onQueryUpdate"

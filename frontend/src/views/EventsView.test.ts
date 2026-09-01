@@ -178,11 +178,11 @@ describe('EventsView event modal', () => {
     expect(wrapper.find('header .btn').exists()).toBe(false)
   })
 
-  it('requests nearest date sort by default', async () => {
+  it('requests planned-nearest sort by default', async () => {
     await mountView('hr')
     expect(events).toHaveBeenCalledWith(
       expect.objectContaining({
-        sort: 'nearest_date',
+        sort: 'planned_nearest',
         direction: 'asc',
       }),
     )
