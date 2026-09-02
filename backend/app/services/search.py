@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.api.serializers import contract_to_dict, employment_to_dict
 from app.models import Contract, Employment, EmploymentStatus, Event, Person, PersonNameHistory
 from app.services.employees import get_current_name
+from app.utils.dates import format_long_date_ru
 
 
 def _employee_search_query(company_id: int, pattern: str, limit: int):
@@ -72,7 +73,7 @@ def search_all(company_id: int, q: str, limit: int = 20) -> dict:
             "type": "event",
             "id": event.id,
             "title": event.title,
-            "subtitle": event.event_date.isoformat(),
+            "subtitle": format_long_date_ru(event.event_date),
             "route": f"/events?event={event.id}",
         }
         for event in events
@@ -82,7 +83,7 @@ def search_all(company_id: int, q: str, limit: int = 20) -> dict:
             "type": "contract",
             "id": contract.id,
             "title": get_current_name(contract.employment.person) or "",
-            "subtitle": contract_to_dict(contract)["end_date"],
+            "subtitle": format_long_date_ru(contract.end_date),
             "route": f"/contracts?q={get_current_name(contract.employment.person) or ''}",
         }
         for contract in contracts

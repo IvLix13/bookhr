@@ -16,7 +16,7 @@ from app.services.events import effectively_overdue_filter
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status
 from app.services.tenure import active_employment, is_tenure_award_pending
-from app.utils.dates import today_moscow
+from app.utils.dates import format_long_date_ru, today_moscow
 
 ALL_CATEGORIES = ("events", "contracts", "passports", "grades", "tenure")
 _OPEN_EVENT_STATUSES = (EventStatus.PLANNED.value, EventStatus.OVERDUE.value)
@@ -110,7 +110,7 @@ def _collect_contract_items(company_id: int, limit: int, today) -> list[dict]:
                     category="contracts",
                     item_id=contract.id,
                     title=get_current_name(employment.person) or "Сотрудник",
-                    subtitle=f"Договор до {contract.end_date.isoformat()}",
+                    subtitle=f"Договор до {format_long_date_ru(contract.end_date)}",
                     due_date=contract.end_date.isoformat(),
                     severity=severity,
                     route="/contracts",
@@ -163,7 +163,7 @@ def _collect_passport_items(company_id: int, limit: int, today) -> list[dict]:
                     category="passports",
                     item_id=employment.person_id,
                     title=get_current_name(employment.person) or "Сотрудник",
-                    subtitle=f"Паспорт до {passport.valid_until.isoformat()}",
+                    subtitle=f"Паспорт до {format_long_date_ru(passport.valid_until)}",
                     due_date=passport.valid_until.isoformat(),
                     severity=severity,
                     route="/passports",
@@ -204,7 +204,10 @@ def _collect_grade_items(company_id: int, limit: int, today) -> list[dict]:
                     category="grades",
                     item_id=related_event.id if related_event else employment.id,
                     title=get_current_name(employment.person) or "Сотрудник",
-                    subtitle=f"Грейд {grade.grade.name}, eligible {eligible_date.isoformat()}",
+                    subtitle=(
+                        f"Грейд {grade.grade.name}, доступен с "
+                        f"{format_long_date_ru(eligible_date)}"
+                    ),
                     due_date=eligible_date.isoformat(),
                     severity="warning" if days_left > 0 else "danger",
                     route=f"/?event={related_event.id}" if related_event else "/grades",

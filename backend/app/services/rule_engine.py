@@ -31,7 +31,7 @@ from app.services.tenure import (
     ensure_tenure_awards,
     is_tenure_award_scheduled,
 )
-from app.utils.dates import subtract_months, today_moscow
+from app.utils.dates import format_long_date_ru, subtract_months, today_moscow
 
 
 RULE_VERSION = 1
@@ -284,7 +284,7 @@ def process_contract_rules(employment: Employment) -> int:
         title=f"Подготовить рапорт на продление Договора: {name}",
         event_type=EventType.REPORT,
         event_date=event_date,
-        description=f"Договор истекает {contract.end_date.isoformat()}",
+        description=f"Договор истекает {format_long_date_ru(contract.end_date)}",
         reference_type="contract",
         reference_id=contract.id,
     )
@@ -306,7 +306,7 @@ def process_grade_rules(employment: Employment) -> int:
     name = get_current_name(employment.person) or "Сотрудник"
     candidate_names = ", ".join(grade.name for grade in candidates)
     description = (
-        f"Доступны грейды «{candidate_names}» с {eligible_date.isoformat()}"
+        f"Доступны грейды «{candidate_names}» с {format_long_date_ru(eligible_date)}"
     )
     _upsert_rule_event(
         company_id=employment.company_id,
@@ -347,7 +347,7 @@ def process_passport_rules(employment: Employment) -> int:
         title=f"Подготовка документов для паспорта: {name}",
         event_type=EventType.PASSPORT,
         event_date=prep_date,
-        description=f"Паспорт действителен до {passport.valid_until.isoformat()}",
+        description=f"Паспорт действителен до {format_long_date_ru(passport.valid_until)}",
         reference_type="passport",
         reference_id=passport.id,
     )
@@ -366,7 +366,7 @@ def process_tenure_rules(employment: Employment) -> int:
             event_type=EventType.AWARD,
             event_date=tenure_award_event_date(award.milestone_date),
             description=(
-                f"Плановая дата по суммарному стажу: {award.milestone_date.isoformat()}."
+                f"Плановая дата по суммарному стажу: {format_long_date_ru(award.milestone_date)}."
             ),
             reference_type="tenure_award",
             reference_id=award.id,

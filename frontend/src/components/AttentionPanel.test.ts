@@ -119,6 +119,13 @@ function categoryChip(wrapper: ReturnType<typeof mount>, label: string) {
 }
 
 describe('AttentionPanel', () => {
+  it('formats due_date as human-readable Russian date', async () => {
+    const { wrapper } = await mountPanel()
+    const button = itemButton(wrapper, 'Просроченное мероприятие')
+    expect(button).toBeTruthy()
+    expect(button!.text()).toContain('1 июля 2026 г.')
+  })
+
   it('opens an event in a modal without navigating away', async () => {
     const { wrapper, replaceSpy, pushSpy } = await mountPanel()
 

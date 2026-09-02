@@ -9,6 +9,7 @@ import {
   attentionItemKey,
   type BackendAttentionItem,
 } from '@/utils/attention'
+import { formatShortDate } from '@/utils/dates'
 
 withDefaults(
   defineProps<{
@@ -231,7 +232,7 @@ defineExpose({ reload: loadAttention })
               <span class="badge" :class="severityClass(item.severity)">
                 {{ categoryLabel(item.category) }}
               </span>
-              <time v-if="item.due_date">{{ item.due_date }}</time>
+              <time v-if="item.due_date">{{ formatShortDate(item.due_date) }}</time>
             </div>
           </button>
         </li>

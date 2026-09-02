@@ -18,7 +18,7 @@ from app.models import (
 from app.models.base import utcnow
 from app.services.employees import get_current_name
 from app.services.events import effective_event_status
-from app.utils.dates import MOSCOW, today_moscow
+from app.utils.dates import MOSCOW, format_long_date_ru, today_moscow
 from sqlalchemy.exc import IntegrityError
 
 
@@ -42,7 +42,7 @@ def _build_message(event: Event, *, escalated: bool = False) -> str:
     else:
         parts = [f"**{event.title}**"]
 
-    parts.append(f"Дата: {event.event_date.isoformat()}")
+    parts.append(f"Дата: {format_long_date_ru(event.event_date)}")
     if employee_name:
         parts.append(f"Сотрудник: {employee_name}")
     if event.description:

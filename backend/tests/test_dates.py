@@ -8,11 +8,18 @@ from app.utils.dates import (
     add_years,
     calculate_contract_end,
     calculate_term_years,
+    format_long_date_ru,
     subtract_months,
     today_moscow,
 )
 from app.services.passports import compute_passport_status
 from app.models import PassportStatus
+
+
+def test_format_long_date_ru():
+    assert format_long_date_ru(date(2025, 8, 11)) == "11 августа 2025 г."
+    assert format_long_date_ru(date(2026, 1, 1)) == "1 января 2026 г."
+    assert format_long_date_ru(None) == "—"
 
 
 def test_subtract_months_calendar():

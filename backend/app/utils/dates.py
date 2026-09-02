@@ -26,6 +26,21 @@ _RU_MONTHS = {
     "декабря": 12,
 }
 
+_RU_MONTH_NAMES = (
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
+)
+
 _RU_LONG_DATE_RE = re.compile(
     r"^(\d{1,2})\s+([а-яё]+)\s+(\d{4})$",
     re.IGNORECASE,
@@ -92,6 +107,13 @@ def normalize_full_name(name: str) -> str:
 
 def format_display_date_ru(value: date) -> str:
     return value.strftime("%d.%m.%Y")
+
+
+def format_long_date_ru(value: date | None) -> str:
+    """Format as «11 августа 2025 г.» for user-facing Russian text."""
+    if value is None:
+        return "—"
+    return f"{value.day} {_RU_MONTH_NAMES[value.month - 1]} {value.year} г."
 
 
 def parse_flexible_date(value: Any) -> date | None:

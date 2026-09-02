@@ -48,7 +48,9 @@ def test_search_finds_event_by_title(admin_client, seed_company):
     )
     assert response.status_code == 200
     data = response.get_json()["data"]
-    assert any(item["type"] == "event" for item in data["results"])
+    event_items = [item for item in data["results"] if item["type"] == "event"]
+    assert event_items
+    assert event_items[0]["subtitle"] == "15 августа 2026 г."
 
 
 def test_search_rejects_short_query(admin_client, seed_company):
