@@ -49,7 +49,7 @@ def test_create_grade_catalog_rejects_invalid_min_years(admin_client):
         json={"name": "Lead", "rank": 1, "min_years": 1.25},
     )
     assert response.status_code == 400
-    assert "0.5 year steps" in response.get_json()["message"]
+    assert "0.1 year steps" in response.get_json()["message"]
 
 
 def test_update_grade_catalog_as_admin(admin_client, app):

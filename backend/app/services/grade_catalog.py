@@ -14,9 +14,9 @@ def validate_min_years(value) -> Decimal:
     years = Decimal(str(value))
     if years <= 0:
         raise ValueError("min_years must be positive")
-    doubled = years * 2
-    if doubled != doubled.to_integral_value():
-        raise ValueError("min_years must use 0.5 year steps")
+    scaled = years * 10
+    if scaled != scaled.to_integral_value():
+        raise ValueError("min_years must use 0.1 year steps")
     return years
 
 

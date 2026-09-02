@@ -149,7 +149,7 @@ function cancel() {
     </label>
     <label>
       Мин. лет до следующего грейда
-      <input v-model.number="form.min_years" type="number" min="0.5" step="0.5" required />
+      <input v-model.number="form.min_years" type="number" min="0.1" step="0.1" required />
     </label>
     <label class="checkbox">
       <input v-model="form.extra_year_without_university" type="checkbox" />
