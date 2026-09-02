@@ -13,6 +13,21 @@ const RUSSIAN_MONTHS = [
   'декабря',
 ] as const
 
+const RUSSIAN_MONTHS_NOMINATIVE = [
+  'январь',
+  'февраль',
+  'март',
+  'апрель',
+  'май',
+  'июнь',
+  'июль',
+  'август',
+  'сентябрь',
+  'октябрь',
+  'ноябрь',
+  'декабрь',
+] as const
+
 export function formatLocalDate(value: Date): string {
   const year = value.getFullYear()
   const month = String(value.getMonth() + 1).padStart(2, '0')
@@ -55,6 +70,14 @@ export function formatNumericDate(iso: string | null | undefined): string {
   const [year, month, day] = datePart.split('-').map(Number)
   if (!year || !month || !day) return iso
   return `${String(day).padStart(2, '0')}.${String(month).padStart(2, '0')}.${year}`
+}
+
+/** Заголовок календаря: «Месяц ГГГГ г.» без сдвига часового пояса. */
+export function formatMonthYearLabel(value: Date): string {
+  const monthName = RUSSIAN_MONTHS_NOMINATIVE[value.getMonth()]
+  const year = value.getFullYear()
+  const capitalizedMonth = monthName.charAt(0).toUpperCase() + monthName.slice(1)
+  return `${capitalizedMonth} ${year} г.`
 }
 
 /** Формат «ДД месяц ГГГГ г.» без сдвига часового пояса. */

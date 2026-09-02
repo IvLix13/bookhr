@@ -5,6 +5,7 @@ import {
   defaultStatsPeriod,
   formatDisplayDate,
   formatLocalDate,
+  formatMonthYearLabel,
   formatNumericDate,
   formatShortDate,
   isSameLocalDate,
@@ -37,6 +38,11 @@ describe('dates utils', () => {
   it('formats numeric date as DD.MM.YYYY', () => {
     expect(formatNumericDate('2026-07-24')).toBe('24.07.2026')
     expect(formatNumericDate(null)).toBe('—')
+  })
+
+  it('formats month year label with lowercase г.', () => {
+    expect(formatMonthYearLabel(new Date(2026, 6, 1))).toBe('Июль 2026 г.')
+    expect(formatMonthYearLabel(new Date(2026, 0, 1))).toBe('Январь 2026 г.')
   })
 
   it('formats short date as DD month YYYY г.', () => {

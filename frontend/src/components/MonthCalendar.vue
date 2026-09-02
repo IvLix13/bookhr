@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { EventItem } from '@/types'
-import { formatLocalDate } from '@/utils/dates'
+import { formatLocalDate, formatMonthYearLabel } from '@/utils/dates'
 
 const props = defineProps<{
   events: EventItem[]
@@ -17,9 +17,7 @@ const emit = defineEmits<{
 const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const todayIso = formatLocalDate(new Date())
 
-const monthLabel = computed(() =>
-  props.month.toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' }),
-)
+const monthLabel = computed(() => formatMonthYearLabel(props.month))
 
 const days = computed(() => {
   const year = props.month.getFullYear()
@@ -121,7 +119,6 @@ header {
 
 header h2 {
   margin: 0;
-  text-transform: capitalize;
 }
 
 .weekdays,

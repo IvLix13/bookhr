@@ -23,6 +23,17 @@ const sampleEvents: EventItem[] = [
 ]
 
 describe('MonthCalendar', () => {
+  it('renders month label with lowercase г.', () => {
+    const wrapper = mount(MonthCalendar, {
+      props: {
+        events: [],
+        month: new Date(2026, 6, 1),
+      },
+    })
+
+    expect(wrapper.find('header h2').text()).toBe('Июль 2026 г.')
+  })
+
   it('emits selected day on click', async () => {
     const wrapper = mount(MonthCalendar, {
       props: {
