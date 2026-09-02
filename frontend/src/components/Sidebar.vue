@@ -1,20 +1,15 @@
 <script setup lang="ts">
 import NavItem from '@/components/NavItem.vue'
 import {
-  IconAward,
-  IconCalendar,
-  IconContract,
-  IconEmployees,
-  IconEvent,
-  IconGrade,
-  IconImport,
-  IconPassport,
-  IconSettings,
-  IconStats,
-} from '@/components/icons'
-import IconCake from '@/components/icons/IconCake.vue'
+  isSidebarNavItemActive,
+  isSidebarNavItemVisible,
+  resolveSidebarNavName,
+  sidebarNavItems,
+  sidebarToggleBackground,
+} from '@/config/sidebarNav'
 import { MODULE_LABELS } from '@/utils/labels'
 import { useAuthStore } from '@/stores/auth'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 defineProps<{
@@ -28,6 +23,14 @@ defineEmits<{
 
 const route = useRoute()
 const auth = useAuthStore()
+
+const visibleNavItems = computed(() =>
+  sidebarNavItems.filter((item) => isSidebarNavItemVisible(item, auth)),
+)
+
+const toggleStyle = computed(() =>
+  sidebarToggleBackground ? { '--toggle-btn-bg': `url(${sidebarToggleBackground})` } : undefined,
+)
 </script>
 
 <template>
@@ -43,93 +46,16 @@ const auth = useAuthStore()
 
     <nav id="sidebar-nav" class="sidebar-nav">
       <NavItem
-        name="calendar"
-        :label="MODULE_LABELS.calendar"
+        v-for="item in visibleNavItems"
+        :key="resolveSidebarNavName(item, auth)"
+        :name="resolveSidebarNavName(item, auth)"
+        :label="MODULE_LABELS[item.labelKey]"
         :expanded="expanded"
-        :active="route.name === 'calendar'"
+        :active="isSidebarNavItemActive(item, route)"
+        :background="item.background"
+        :background-active="item.backgroundActive"
       >
-        <IconCalendar />
-      </NavItem>
-      <NavItem
-        name="events"
-        :label="MODULE_LABELS.events"
-        :expanded="expanded"
-        :active="route.name === 'events'"
-      >
-        <IconEvent />
-      </NavItem>
-      <NavItem
-        name="employees"
-        :label="MODULE_LABELS.employees"
-        :expanded="expanded"
-        :active="route.name === 'employees'"
-      >
-        <IconEmployees />
-      </NavItem>
-      <NavItem
-        name="contracts"
-        :label="MODULE_LABELS.contracts"
-        :expanded="expanded"
-        :active="route.name === 'contracts'"
-      >
-        <IconContract />
-      </NavItem>
-      <NavItem
-        name="grades"
-        :label="MODULE_LABELS.grades"
-        :expanded="expanded"
-        :active="route.name === 'grades' || route.name === 'grade-catalog'"
-      >
-        <IconGrade />
-      </NavItem>
-      <NavItem
-        name="rewards"
-        :label="MODULE_LABELS.rewards"
-        :expanded="expanded"
-        :active="route.name === 'rewards'"
-      >
-        <IconAward />
-      </NavItem>
-      <NavItem
-        name="awards"
-        :label="MODULE_LABELS.awards"
-        :expanded="expanded"
-        :active="route.name === 'awards'"
-      >
-        <IconCake />
-      </NavItem>
-      <NavItem
-        name="passports"
-        :label="MODULE_LABELS.passports"
-        :expanded="expanded"
-        :active="route.name === 'passports'"
-      >
-        <IconPassport />
-      </NavItem>
-      <NavItem
-        name="import-employees"
-        :label="MODULE_LABELS.import"
-        :expanded="expanded"
-        :active="route.name === 'import-employees' || route.name === 'import-rewards'"
-      >
-        <IconImport />
-      </NavItem>
-      <NavItem
-        name="statistics"
-        :label="MODULE_LABELS.statistics"
-        :expanded="expanded"
-        :active="route.name === 'statistics'"
-      >
-        <IconStats />
-      </NavItem>
-      <NavItem
-        v-if="auth.canManageNotifications()"
-        :name="auth.isAdmin() ? 'settings-users' : 'settings-notifications'"
-        :label="MODULE_LABELS.settings"
-        :expanded="expanded"
-        :active="typeof route.name === 'string' && route.name.startsWith('settings')"
-      >
-        <IconSettings />
+        <component :is="item.icon" />
       </NavItem>
     </nav>
 
@@ -137,6 +63,8 @@ const auth = useAuthStore()
       <button
         type="button"
         class="toggle-btn"
+        :class="{ 'has-bg': expanded }"
+        :style="expanded ? toggleStyle : undefined"
         :aria-expanded="expanded"
         aria-controls="sidebar-nav"
         :aria-label="expanded ? 'Свернуть меню' : 'Развернуть меню'"
@@ -178,6 +106,7 @@ const auth = useAuthStore()
   display: grid;
   place-items: center;
   font-weight: 700;
+  transition: transform var(--transition-slow) var(--ease-out);
 }
 
 .brand-label {
@@ -212,23 +141,35 @@ const auth = useAuthStore()
   place-items: center;
   font-weight: 700;
   cursor: pointer;
-  transition: background var(--transition), transform var(--transition),
-    box-shadow var(--transition);
+  transition:
+    background var(--transition),
+    transform var(--transition),
+    box-shadow var(--transition),
+    filter var(--transition);
+}
+
+.toggle-btn.has-bg {
+  background-color: transparent;
+  background-image: var(--toggle-btn-bg);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
 }
 
 .toggle-btn:hover {
-  background: #2f6fed;
+  background-color: #2f6fed;
   transform: translateY(-1px);
   box-shadow: 0 6px 16px rgba(47, 111, 237, 0.28);
+}
+
+.toggle-btn.has-bg:hover {
+  background-color: transparent;
+  filter: brightness(1.03);
 }
 
 .toggle-btn:active {
   transform: scale(0.94);
   box-shadow: none;
-}
-
-.brand {
-  transition: transform var(--transition-slow) var(--ease-out);
 }
 
 .sidebar:hover .brand {

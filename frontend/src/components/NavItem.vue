@@ -1,17 +1,34 @@
 <script setup lang="ts">
-defineProps<{
+import { computed } from 'vue'
+
+const props = defineProps<{
   name: string
   label: string
   active?: boolean
   expanded?: boolean
+  background?: string
+  backgroundActive?: string
 }>()
+
+const navStyle = computed(() => {
+  if (!props.expanded || !props.background) return undefined
+
+  const image = props.active && props.backgroundActive
+    ? props.backgroundActive
+    : props.background
+
+  return {
+    '--nav-item-bg': `url(${image})`,
+  }
+})
 </script>
 
 <template>
   <RouterLink
     :to="{ name }"
     class="nav-item"
-    :class="{ active, expanded }"
+    :class="{ active, expanded, 'has-bg': expanded && background }"
+    :style="navStyle"
     :title="expanded ? undefined : label"
     :aria-current="active ? 'page' : undefined"
   >
@@ -29,7 +46,13 @@ defineProps<{
   padding: 0.85rem 0.35rem;
   border-radius: var(--radius-lg);
   color: var(--muted);
-  transition: background var(--transition), color var(--transition), transform var(--transition);
+  background-color: transparent;
+  background-image: none;
+  transition:
+    background-color var(--transition),
+    color var(--transition),
+    transform var(--transition),
+    filter var(--transition);
 }
 
 .nav-item::before {
@@ -65,6 +88,13 @@ defineProps<{
   gap: 0.65rem;
 }
 
+.nav-item.expanded.has-bg {
+  background-image: var(--nav-item-bg);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+}
+
 .nav-item :deep(.icon) {
   width: 22px;
   height: 22px;
@@ -72,10 +102,17 @@ defineProps<{
   display: block;
 }
 
-.nav-item:hover,
-.nav-item.active {
-  background: var(--accent-soft);
+.nav-item:not(.expanded):hover,
+.nav-item:not(.expanded).active {
+  background-color: var(--accent-soft);
   color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.nav-item.expanded.has-bg:hover,
+.nav-item.expanded.has-bg.active {
+  color: var(--accent);
+  filter: brightness(1.03);
   transform: translateY(-1px);
 }
 
