@@ -131,15 +131,10 @@ def register_routes(bp):
         company_id = get_request_company_id()
         limit = request.args.get("limit", 10, type=int)
 
-        events = (
-            Event.query.filter_by(company_id=company_id)
-            .filter(
-                Event.status.in_([EventStatus.PLANNED.value, EventStatus.OVERDUE.value])
-            )
-            .order_by(Event.event_date.asc())
-            .limit(limit)
-            .all()
-        )
+        query = Event.query.filter_by(company_id=company_id)
+        # Only future/today planned — overdue belong in attention, not upcoming.
+        query = apply_status_filter(query, EventStatus.PLANNED.value)
+        events = query.order_by(Event.event_date.asc()).limit(limit).all()
         return api_response([event_to_dict(e) for e in events])
 
     @bp.post("/events")

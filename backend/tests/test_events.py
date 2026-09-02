@@ -398,3 +398,44 @@ def test_reopen_event_triggers_recalc(hr_client, seed_company, monkeypatch):
     response = hr_client.post(f"/api/events/{event.id}/reopen", json={})
     assert response.status_code == 200
     assert called["count"] == 1
+
+
+def test_upcoming_events_excludes_overdue(admin_client, seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.events.today_moscow", lambda: date(2026, 7, 24))
+
+    create_manual_event(
+        company_id=seed_company.id,
+        title="Virtual overdue",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 1),
+    )
+    materialized = create_manual_event(
+        company_id=seed_company.id,
+        title="Materialized overdue",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 10),
+    )
+    transition_event_status(materialized, EventStatus.OVERDUE, "past due")
+    create_manual_event(
+        company_id=seed_company.id,
+        title="Today planned",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+    )
+    create_manual_event(
+        company_id=seed_company.id,
+        title="Future planned",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 8, 1),
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/events/upcoming?company_id={seed_company.id}&limit=20"
+    )
+    assert response.status_code == 200
+    titles = [item["title"] for item in response.get_json()["data"]]
+
+    assert "Virtual overdue" not in titles
+    assert "Materialized overdue" not in titles
+    assert titles == ["Today planned", "Future planned"]
