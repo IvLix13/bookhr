@@ -91,6 +91,19 @@ OFFLINE_MODE=1 ./scripts/dev-offline.sh
 
 Конфигурации: `.env.dev`, `.env.prod`
 
+### Копирование данных dev → prod
+
+Полная замена содержимого `bookuchet_prod` данными из `bookuchet_dev` (с бэкапом prod):
+
+```bash
+./scripts/copy-db-dev-to-prod.sh --dry-run   # проверка подключений и счётчиков
+./scripts/copy-db-dev-to-prod.sh --yes       # выполнить копирование
+./scripts/copy-db-dev-to-prod.sh --yes --stop-services   # остановить systemd на время restore
+./scripts/copy-db-dev-to-prod.sh --yes --with-uploads    # также скопировать UPLOAD_DIR, если пути разные
+```
+
+Подробности: [docs/deployment.md](docs/deployment.md#копирование-бд-dev--prod).
+
 ## Фоновые задачи
 
 ```bash

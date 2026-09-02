@@ -94,6 +94,30 @@ LDAP_LOCAL_ADMIN_USERNAME=admin
 
 При `LDAP_ENABLED=true` обычные пользователи проходят LDAP-проверку и создаются в БД при первом входе с ролью `LDAP_DEFAULT_ROLE`. Локальный пароль сохраняется только для пользователя `LDAP_LOCAL_ADMIN_USERNAME` (аварийный администратор).
 
+## Копирование БД: dev → prod
+
+Скрипт `./scripts/copy-db-dev-to-prod.sh` полностью заменяет содержимое PostgreSQL из `.env.prod` данными из `.env.dev`.
+
+Что делает:
+
+1. Проверяет доступность обеих БД и печатает счётчики строк
+2. Делает бэкап prod в `backups/bookuchet_prod_pre_copy_<TS>.sql`
+3. Делает dump dev и восстанавливает его в prod (`--clean --if-exists`, без owner/ACL — объекты принадлежат prod-пользователю)
+4. Опционально копирует `UPLOAD_DIR` и останавливает systemd-сервисы
+
+```bash
+./scripts/copy-db-dev-to-prod.sh --dry-run
+./scripts/copy-db-dev-to-prod.sh --yes
+./scripts/copy-db-dev-to-prod.sh --yes --stop-services --with-uploads
+```
+
+Важно:
+
+- Операция **разрушающая** для prod: все текущие данные prod будут заменены
+- Перед запуском желательно, чтобы оба контура были на одной схеме (`./scripts/migrate.sh dev` и `./scripts/migrate.sh prod`); иначе prod станет копией схемы/данных из source dump
+- Секреты из `.env.prod` (SECRET_KEY, Nextcloud, LDAP) **не** копируются — меняются только таблицы PostgreSQL
+- Пользователи и пароли из таблицы `users` тоже приедут из сdev
+
 ## Резервное копирование
 
 `deploy/backup.sh` — ежедневный pg_dump с ротацией 14 дней.
