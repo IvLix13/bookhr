@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 const props = defineProps<{
   name: string
@@ -10,29 +10,73 @@ const props = defineProps<{
   backgroundActive?: string
 }>()
 
+const showBackground = computed(() => Boolean(props.expanded && props.active && props.background))
+
+/**
+ * The image stays declared for every expanded item so the background can also
+ * slide back out when the item stops being the active one.
+ */
 const navStyle = computed(() => {
   if (!props.expanded || !props.background) return undefined
 
-  const image = props.active && props.backgroundActive
-    ? props.backgroundActive
-    : props.background
-
   return {
-    '--nav-item-bg': `url(${image})`,
+    '--nav-item-bg': `url(${props.backgroundActive ?? props.background})`,
   }
 })
+
+/**
+ * The slide-in animation must only play when the active route changes, never
+ * when the sidebar itself expands or collapses. Transitions stay switched off
+ * until the layout settled after an `expanded` change.
+ */
+const animated = ref(false)
+let pendingFrames: number[] = []
+
+function cancelPendingFrames() {
+  pendingFrames.forEach((handle) => cancelAnimationFrame(handle))
+  pendingFrames = []
+}
+
+function enableAnimationAfterLayout() {
+  cancelPendingFrames()
+  void nextTick(() => {
+    pendingFrames.push(
+      requestAnimationFrame(() => {
+        pendingFrames.push(
+          requestAnimationFrame(() => {
+            animated.value = true
+          }),
+        )
+      }),
+    )
+  })
+}
+
+watch(
+  () => props.expanded,
+  () => {
+    animated.value = false
+    enableAnimationAfterLayout()
+  },
+)
+
+onMounted(enableAnimationAfterLayout)
+onBeforeUnmount(cancelPendingFrames)
 </script>
 
 <template>
   <RouterLink
     :to="{ name }"
     class="nav-item"
-    :class="{ active, expanded, 'has-bg': expanded && background }"
+    :class="{ active, expanded, 'has-bg': showBackground, animated }"
     :style="navStyle"
     :title="expanded ? undefined : label"
     :aria-current="active ? 'page' : undefined"
   >
-    <slot />
+    <span class="nav-bg" aria-hidden="true" />
+    <span class="nav-icon">
+      <slot />
+    </span>
     <span v-if="expanded" class="nav-label">{{ label }}</span>
   </RouterLink>
 </template>
@@ -40,6 +84,7 @@ const navStyle = computed(() => {
 <style scoped>
 .nav-item {
   position: relative;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -47,7 +92,6 @@ const navStyle = computed(() => {
   border-radius: var(--radius-lg);
   color: var(--muted);
   background-color: transparent;
-  background-image: none;
   transition:
     background-color var(--transition),
     color var(--transition),
@@ -67,13 +111,55 @@ const navStyle = computed(() => {
   transform: translateY(-50%) scaleY(0);
   transform-origin: center;
   transition: transform var(--transition-slow) var(--ease-out);
+  z-index: 2;
 }
 
 .nav-item.active::before {
   transform: translateY(-50%) scaleY(1);
 }
 
+/* PNG layer that slides in from the right edge of the button. */
+.nav-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--nav-item-bg, none);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 100%;
+  opacity: 0;
+  transform: translateX(100%);
+}
+
+.nav-item.has-bg .nav-bg {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.nav-item.animated .nav-bg {
+  transition:
+    transform var(--transition-slow) var(--ease-out),
+    opacity var(--transition-slow) var(--ease-out);
+}
+
+.nav-icon {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  overflow: hidden;
+}
+
 .nav-item :deep(.icon) {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  display: block;
   transition: transform var(--transition);
 }
 
@@ -85,21 +171,26 @@ const navStyle = computed(() => {
 .nav-item.expanded {
   justify-content: flex-start;
   padding-left: 1.25rem;
-  gap: 0.65rem;
 }
 
-.nav-item.expanded.has-bg {
-  background-image: var(--nav-item-bg);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 100% 100%;
+.nav-item.expanded .nav-icon {
+  margin-right: 0.65rem;
 }
 
-.nav-item :deep(.icon) {
-  width: 22px;
-  height: 22px;
-  flex-shrink: 0;
-  display: block;
+/* Active + expanded: the icon collapses to the left and the label follows it. */
+.nav-item.expanded.has-bg .nav-icon {
+  width: 0;
+  margin-right: 0;
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+.nav-item.animated .nav-icon {
+  transition:
+    width var(--transition-slow) var(--ease-out),
+    margin-right var(--transition-slow) var(--ease-out),
+    opacity var(--transition) var(--ease-out),
+    transform var(--transition-slow) var(--ease-out);
 }
 
 .nav-item:not(.expanded):hover,
@@ -109,14 +200,29 @@ const navStyle = computed(() => {
   transform: translateY(-1px);
 }
 
-.nav-item.expanded.has-bg:hover,
-.nav-item.expanded.has-bg.active {
+.nav-item.expanded:hover {
+  background-color: var(--accent-soft);
   color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.nav-item.expanded.has-bg,
+.nav-item.expanded.has-bg:hover {
+  background-color: transparent;
+}
+
+.nav-item.expanded.has-bg {
+  color: var(--accent);
+}
+
+.nav-item.expanded.has-bg:hover {
   filter: brightness(1.03);
   transform: translateY(-1px);
 }
 
 .nav-label {
+  position: relative;
+  z-index: 1;
   font-size: 0.9rem;
   line-height: 1.2;
   white-space: nowrap;
