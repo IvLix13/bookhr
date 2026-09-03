@@ -8,6 +8,7 @@ from app.utils.dates import (
     add_years,
     calculate_contract_end,
     calculate_term_years,
+    format_iso_date_ru,
     format_long_date_ru,
     humanize_dates_in_text,
     subtract_months,
@@ -21,6 +22,13 @@ def test_format_long_date_ru():
     assert format_long_date_ru(date(2025, 8, 11)) == "11 августа 2025 г."
     assert format_long_date_ru(date(2026, 1, 1)) == "1 января 2026 г."
     assert format_long_date_ru(None) == "—"
+
+
+def test_format_iso_date_ru():
+    assert format_iso_date_ru("2025-09-11") == "11 сентября 2025 г."
+    assert format_iso_date_ru("2025-09-11T00:00:00") == "11 сентября 2025 г."
+    assert format_iso_date_ru("11 сентября 2025 г.") == "11 сентября 2025 г."
+    assert format_iso_date_ru(None) is None
 
 
 def test_humanize_dates_in_text():
