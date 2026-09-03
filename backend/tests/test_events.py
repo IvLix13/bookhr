@@ -36,6 +36,27 @@ def test_list_events_filters_by_day(admin_client, seed_company):
     assert items[0]["title"] == "Day event"
 
 
+def test_event_title_iso_dates_are_humanized(admin_client, seed_company):
+    create_manual_event(
+        company_id=seed_company.id,
+        title="Подготовка документов до 2026-05-25",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 5, 25),
+        description="Договор истекает 2026-05-25T00:00:00",
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/events?company_id={seed_company.id}&from=2026-05-25&to=2026-05-25"
+    )
+    assert response.status_code == 200
+    items = response.get_json()["data"]["items"]
+    assert len(items) == 1
+    assert items[0]["title"] == "Подготовка документов до 25 мая 2026 г."
+    assert items[0]["description"] == "Договор истекает 25 мая 2026 г."
+    assert items[0]["event_date"] == "2026-05-25"
+
+
 def test_complete_event_hr_only(hr_client, seed_company):
     event = create_manual_event(
         company_id=seed_company.id,

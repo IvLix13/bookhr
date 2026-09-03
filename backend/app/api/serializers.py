@@ -41,7 +41,7 @@ from app.services.rule_engine import (
     is_passport_preparation_event,
 )
 from app.services.tenure import tenure_years, total_tenure_years
-from app.utils.dates import today_moscow
+from app.utils.dates import humanize_user_text_fields, today_moscow
 
 
 def user_to_dict(user: User) -> dict:
@@ -312,7 +312,7 @@ def event_to_dict(event: Event) -> dict:
             "requires_new_date": True,
         }
 
-    return {
+    payload = {
         "id": event.id,
         "title": event.title,
         "event_type": event.event_type,
@@ -335,6 +335,7 @@ def event_to_dict(event: Event) -> dict:
         "grade_completion": grade_completion,
         "passport_completion": passport_completion,
     }
+    return humanize_user_text_fields(payload)
 
 
 def import_job_to_dict(job: ImportJob) -> dict:

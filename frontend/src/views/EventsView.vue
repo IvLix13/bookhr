@@ -11,7 +11,7 @@ import { useServerTable } from '@/composables/useServerTable'
 import { useToast } from '@/composables/useToast'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { EventItem, Paginated, TableQueryState } from '@/types'
-import { formatLocalDate, formatShortDate } from '@/utils/dates'
+import { formatLocalDate, formatShortDate, humanizeDatesInText } from '@/utils/dates'
 import { MODULE_LABELS, labelEventSource, labelEventType } from '@/utils/labels'
 import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
@@ -71,7 +71,11 @@ const createOpen = computed(() => auth.canEdit() && route.query.create === '1')
 const createInitialDate = formatLocalDate(new Date())
 
 const columns: ColumnDef<EventItem>[] = [
-  { key: 'title', label: 'Название' },
+  {
+    key: 'title',
+    label: 'Название',
+    format: (value) => humanizeDatesInText(value as string | null),
+  },
   {
     key: 'event_date',
     label: 'Дата',

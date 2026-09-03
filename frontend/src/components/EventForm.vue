@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { Employee, EventItem, Paginated } from '@/types'
+import { humanizeDatesInText } from '@/utils/dates'
 
 const props = defineProps<{
   initialDate: string
@@ -42,10 +43,10 @@ watch(
   (event) => {
     if (!event) return
     form.value = {
-      title: event.title,
+      title: humanizeDatesInText(event.title),
       event_type: event.event_type,
       event_date: event.event_date,
-      description: event.description ?? '',
+      description: humanizeDatesInText(event.description),
       employment_id: event.employment_id != null ? String(event.employment_id) : '',
     }
   },

@@ -2,7 +2,7 @@
 import { ref } from 'vue'
 import EventDetailModal from '@/components/EventDetailModal.vue'
 import type { EventItem } from '@/types'
-import { formatShortDate } from '@/utils/dates'
+import { formatShortDate, humanizeDatesInText } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
 
 withDefaults(
@@ -44,7 +44,7 @@ function onEventChanged() {
       <li v-for="event in events" :key="event.id">
         <button type="button" class="item" @click="openEvent(event.id)">
           <div>
-            <strong>{{ event.title }}</strong>
+            <strong>{{ humanizeDatesInText(event.title) }}</strong>
             <p>{{ event.employee_name ?? 'Без сотрудника' }}</p>
           </div>
           <div class="meta">

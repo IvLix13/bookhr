@@ -91,6 +91,17 @@ export function formatShortDate(iso: string | null | undefined): string {
   return `${day} ${monthName} ${year} г.`
 }
 
+/** Replace ISO dates inside user-facing text with «11 августа 2025 г.». */
+export function humanizeDatesInText(text: string | null | undefined): string {
+  if (!text) return text ?? ''
+  const pattern =
+    /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?(?!\d)/g
+  return text.replace(pattern, (match, year: string, month: string, day: string) => {
+    const formatted = formatShortDate(`${year}-${month}-${day}`)
+    return formatted === '—' || formatted === `${year}-${month}-${day}` ? match : formatted
+  })
+}
+
 /** Подпись оси/ключа «ГГГГ-ММ»: «Июль 2026 г.» */
 export function formatMonthKey(value: string | null | undefined): string {
   if (!value) return '—'

@@ -16,7 +16,7 @@ from app.services.events import effectively_overdue_filter
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status
 from app.services.tenure import active_employment, is_tenure_award_pending
-from app.utils.dates import format_long_date_ru, today_moscow
+from app.utils.dates import format_long_date_ru, humanize_dates_in_text, today_moscow
 
 ALL_CATEGORIES = ("events", "contracts", "passports", "grades", "tenure")
 _OPEN_EVENT_STATUSES = (EventStatus.PLANNED.value, EventStatus.OVERDUE.value)
@@ -49,8 +49,8 @@ def _attention_item(
     return {
         "category": category,
         "id": item_id,
-        "title": title,
-        "subtitle": subtitle,
+        "title": humanize_dates_in_text(title) or title,
+        "subtitle": humanize_dates_in_text(subtitle),
         "due_date": due_date,
         "severity": severity,
         "route": route,

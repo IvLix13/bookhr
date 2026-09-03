@@ -5,7 +5,7 @@ from __future__ import annotations
 from app.api.serializers import contract_to_dict, employment_to_dict
 from app.models import Contract, Employment, EmploymentStatus, Event, Person, PersonNameHistory
 from app.services.employees import get_current_name
-from app.utils.dates import format_long_date_ru
+from app.utils.dates import format_long_date_ru, humanize_user_text_fields
 
 
 def _employee_search_query(company_id: int, pattern: str, limit: int):
@@ -98,6 +98,9 @@ def search_all(company_id: int, q: str, limit: int = 20) -> dict:
     flat.sort(key=lambda item: item["title"].lower())
     if limit > 0:
         flat = flat[:limit]
+
+    for item in employee_items + event_items + contract_items:
+        humanize_user_text_fields(item)
 
     return {
         "query": q,

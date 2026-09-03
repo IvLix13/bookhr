@@ -53,6 +53,27 @@ def test_search_finds_event_by_title(admin_client, seed_company):
     assert event_items[0]["subtitle"] == "15 августа 2026 г."
 
 
+def test_search_humanizes_iso_dates_in_event_title(admin_client, seed_company):
+    create_manual_event(
+        company_id=seed_company.id,
+        title="Рапорт до 2026-05-25",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 8, 15),
+    )
+    db.session.commit()
+
+    response = admin_client.get(
+        f"/api/search?company_id={seed_company.id}&q=Рапорт"
+    )
+    assert response.status_code == 200
+    event_items = [
+        item for item in response.get_json()["data"]["results"] if item["type"] == "event"
+    ]
+    assert event_items
+    assert event_items[0]["title"] == "Рапорт до 25 мая 2026 г."
+    assert "2026-05-25" not in event_items[0]["title"]
+
+
 def test_search_rejects_short_query(admin_client, seed_company):
     response = admin_client.get(f"/api/search?company_id={seed_company.id}&q=a")
     assert response.status_code == 400

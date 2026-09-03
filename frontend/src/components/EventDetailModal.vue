@@ -7,7 +7,7 @@ import { normalizeError } from '@/api/errors'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import { useAuthStore } from '@/stores/auth'
 import type { EventItem } from '@/types'
-import { formatDisplayDate, formatShortDate } from '@/utils/dates'
+import { formatDisplayDate, formatShortDate, humanizeDatesInText } from '@/utils/dates'
 import { labelEventSource, labelEventType } from '@/utils/labels'
 import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 
@@ -262,11 +262,11 @@ async function onUpdated() {
           class="modal card"
           role="dialog"
           aria-modal="true"
-          :aria-label="event?.title ?? 'Мероприятие'"
+          :aria-label="humanizeDatesInText(event?.title) || 'Мероприятие'"
         >
           <header class="modal-header">
             <div>
-              <h2>{{ event?.title ?? 'Мероприятие' }}</h2>
+              <h2>{{ humanizeDatesInText(event?.title) || 'Мероприятие' }}</h2>
               <p v-if="event">{{ formatDisplayDate(event.event_date) }}</p>
             </div>
             <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">
@@ -323,11 +323,11 @@ async function onUpdated() {
               </div>
               <div v-if="event.completion_comment" class="full">
                 <dt>Комментарий</dt>
-                <dd>{{ event.completion_comment }}</dd>
+                <dd>{{ humanizeDatesInText(event.completion_comment) }}</dd>
               </div>
               <div v-if="event.description" class="full">
                 <dt>Описание</dt>
-                <dd>{{ event.description }}</dd>
+                <dd>{{ humanizeDatesInText(event.description) }}</dd>
               </div>
             </dl>
 
