@@ -5,6 +5,7 @@ import type { Grade, GradeRow } from '@/types'
 
 const props = defineProps<{
   initial?: GradeRow | null
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -69,8 +70,8 @@ async function submit() {
 </script>
 
 <template>
-  <form v-if="initial" class="form card" @submit.prevent="submit">
-    <header class="form-header">
+  <form v-if="initial" class="form" :class="{ card: !compact, compact }" @submit.prevent="submit">
+    <header v-if="!compact" class="form-header">
       <h3>{{ initial.grade ? 'Изменить грейд' : 'Назначить грейд' }}</h3>
       <p>{{ initial.full_name }}</p>
     </header>
@@ -110,6 +111,10 @@ async function submit() {
   padding: 1rem;
   display: grid;
   gap: 0.75rem;
+}
+
+.form.compact {
+  padding: 0;
 }
 
 .form-header h3 {

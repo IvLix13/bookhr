@@ -534,6 +534,7 @@ async function saveReportDate() {
 .modal-header h2 {
   margin: 0;
   font-size: 1.25rem;
+  text-transform: none;
 }
 
 .modal-header p {

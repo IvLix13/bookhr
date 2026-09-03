@@ -70,6 +70,7 @@ describe('ContractsView', () => {
     setActivePinia(createPinia())
     contracts.mockClear()
     updateContract.mockClear()
+    document.body.innerHTML = ''
   })
 
   async function mountView(role: 'admin' | 'hr' | 'viewer' = 'hr') {
@@ -92,9 +93,10 @@ describe('ContractsView', () => {
     const pushSpy = vi.spyOn(router, 'push')
 
     const wrapper = mount(ContractsView, {
+      attachTo: document.body,
       global: {
         plugins: [router],
-        stubs: { EventDetailModal: modalStub },
+        stubs: { EventDetailModal: modalStub, teleport: true },
       },
     })
     await flushPromises()
@@ -134,9 +136,14 @@ describe('ContractsView', () => {
     expect(contracts).toHaveBeenCalled()
   })
 
-  it('shows edit button for hr and hides it for viewer', async () => {
+  it('opens the contract form from a row click and hides the edit button', async () => {
     const hrView = await mountView('hr')
-    expect(hrView.wrapper.findAll('button').some((item) => item.text() === 'Изменить')).toBe(true)
+    expect(hrView.wrapper.findAll('button').some((item) => item.text() === 'Изменить')).toBe(false)
+    expect(hrView.wrapper.find('form').exists()).toBe(false)
+
+    await hrView.wrapper.get('.data-table-row').trigger('click')
+    await flushPromises()
+    expect(hrView.wrapper.text()).toContain('Редактирование договора: Иван Иванов')
     hrView.wrapper.unmount()
 
     const viewerView = await mountView('viewer')
@@ -146,19 +153,30 @@ describe('ContractsView', () => {
     expect(viewerView.wrapper.findAll('button').some((item) => item.text() === 'Мероприятие')).toBe(
       true,
     )
+    await viewerView.wrapper.get('.data-table-row').trigger('click')
+    await flushPromises()
+    expect(viewerView.wrapper.find('form').exists()).toBe(false)
+  })
+
+  it('does not open the contract form when the report button is clicked', async () => {
+    const { wrapper } = await mountView('hr')
+    const button = wrapper.findAll('button').find((item) => item.text() === 'Мероприятие')
+    await button!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.modal-event-id').text()).toBe('55')
+    expect(wrapper.find('form').exists()).toBe(false)
   })
 
   it('opens the contract form and saves term plus end date', async () => {
     const { wrapper } = await mountView('hr')
-    const editButton = wrapper.findAll('button').find((item) => item.text() === 'Изменить')
-    expect(editButton).toBeTruthy()
-    await editButton!.trigger('click')
+    await wrapper.get('.data-table-row').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Редактирование договора: Иван Иванов')
     expect(wrapper.text()).toContain('1 декабря 2024 г.')
 
-    await wrapper.get('select').setValue('2')
+    await wrapper.get('form select').setValue('2')
     await wrapper.get('input[name="end_date"]').setValue('2027-06-01')
     expect(wrapper.text()).toContain('1 июня 2025 г.')
     await wrapper.get('input[name="report_date"]').setValue('2027-01-15')
