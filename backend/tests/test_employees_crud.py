@@ -439,23 +439,24 @@ def test_update_contract_directly_recalculates_renewal_report(hr_client, seed_co
         assert new_report.event_date == date(2027, 2, 1)
 
 
-def test_viewer_cannot_update_contract(viewer_client, hr_client, seed_company):
-    created = hr_client.post(
-        "/api/employees",
-        json={
-            "company_id": seed_company.id,
-            "full_name": "Зрителев Договор",
-            "hire_date": "2024-01-01",
-            "education_status": "no",
-            "contract_term_years": 1,
-            "contract_end": "2025-01-01",
-        },
-    )
-    assert created.status_code == 201
-    employment_id = created.get_json()["data"]["id"]
-
-    contracts = hr_client.get(f"/api/contracts?company_id={seed_company.id}").get_json()["data"]["items"]
-    contract_id = next(c["id"] for c in contracts if c["employment_id"] == employment_id)
+def test_viewer_cannot_update_contract(viewer_client, seed_company):
+    with viewer_client.application.app_context():
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Зрителев Договор",
+            hire_date=date(2024, 1, 1),
+            title="Инженер",
+        )
+        contract = Contract(
+            employment_id=employment.id,
+            start_date=date(2024, 1, 1),
+            end_date=date(2025, 1, 1),
+            term_years=1,
+            is_active=True,
+        )
+        db.session.add(contract)
+        db.session.commit()
+        contract_id = contract.id
 
     response = viewer_client.patch(
         f"/api/contracts/{contract_id}",
