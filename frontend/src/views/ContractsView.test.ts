@@ -12,7 +12,7 @@ const { contracts, updateContract } = vi.hoisted(() => ({
         id: 1,
         employment_id: 4,
         full_name: 'Иван Иванов',
-        start_date: '2025-01-01',
+        start_date: '2024-12-01',
         end_date: '2027-12-01',
         term_years: 3,
         days_left: 100,
@@ -29,7 +29,7 @@ const { contracts, updateContract } = vi.hoisted(() => ({
         id: 2,
         employment_id: 5,
         full_name: 'Пётр Петров',
-        start_date: '2025-01-01',
+        start_date: '2025-10-01',
         end_date: '2027-10-01',
         term_years: 2,
         days_left: 60,
@@ -156,7 +156,7 @@ describe('ContractsView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Редактирование договора: Иван Иванов')
-    expect(wrapper.text()).toContain('1 января 2025 г.')
+    expect(wrapper.text()).toContain('1 декабря 2024 г.')
 
     await wrapper.get('select').setValue('2')
     await wrapper.get('input[type="date"]').setValue('2027-06-01')
