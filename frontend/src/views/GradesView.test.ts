@@ -122,10 +122,11 @@ describe('GradesView', () => {
 
   it('opens the grade form from a row click for hr and hides the action button', async () => {
     const wrapper = await mountView('hr')
-    expect(wrapper.findAll('button').some((item) => item.text().includes('грейд'))).toBe(false)
+    expect(wrapper.findAll('button').some((item) => item.text() === 'Изменить грейд')).toBe(false)
+    expect(wrapper.findAll('button').some((item) => item.text() === 'Назначить грейд')).toBe(false)
     expect(wrapper.find('form').exists()).toBe(false)
 
-    await wrapper.get('tbody tr').trigger('click')
+    await wrapper.get('.data-table-row').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Изменить грейд')
@@ -135,17 +136,17 @@ describe('GradesView', () => {
 
   it('does not open the grade form for a viewer row click', async () => {
     const wrapper = await mountView('viewer')
-    await wrapper.get('tbody tr').trigger('click')
+    await wrapper.get('.data-table-row').trigger('click')
     await flushPromises()
     expect(wrapper.find('form').exists()).toBe(false)
   })
 
   it('saves a grade assignment from the row modal', async () => {
     const wrapper = await mountView('hr')
-    await wrapper.get('tbody tr').trigger('click')
+    await wrapper.get('.data-table-row').trigger('click')
     await flushPromises()
 
-    await wrapper.get('select').setValue('2')
+    await wrapper.get('form select').setValue('2')
     await wrapper.get('input[type="date"]').setValue('2026-09-01')
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()

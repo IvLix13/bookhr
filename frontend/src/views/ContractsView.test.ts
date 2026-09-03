@@ -141,7 +141,7 @@ describe('ContractsView', () => {
     expect(hrView.wrapper.findAll('button').some((item) => item.text() === 'Изменить')).toBe(false)
     expect(hrView.wrapper.find('form').exists()).toBe(false)
 
-    await hrView.wrapper.get('tbody tr').trigger('click')
+    await hrView.wrapper.get('.data-table-row').trigger('click')
     await flushPromises()
     expect(hrView.wrapper.text()).toContain('Редактирование договора: Иван Иванов')
     hrView.wrapper.unmount()
@@ -153,7 +153,7 @@ describe('ContractsView', () => {
     expect(viewerView.wrapper.findAll('button').some((item) => item.text() === 'Мероприятие')).toBe(
       true,
     )
-    await viewerView.wrapper.get('tbody tr').trigger('click')
+    await viewerView.wrapper.get('.data-table-row').trigger('click')
     await flushPromises()
     expect(viewerView.wrapper.find('form').exists()).toBe(false)
   })
@@ -170,13 +170,13 @@ describe('ContractsView', () => {
 
   it('opens the contract form and saves term plus end date', async () => {
     const { wrapper } = await mountView('hr')
-    await wrapper.get('tbody tr').trigger('click')
+    await wrapper.get('.data-table-row').trigger('click')
     await flushPromises()
 
     expect(wrapper.text()).toContain('Редактирование договора: Иван Иванов')
     expect(wrapper.text()).toContain('1 декабря 2024 г.')
 
-    await wrapper.get('select').setValue('2')
+    await wrapper.get('form select').setValue('2')
     await wrapper.get('input[name="end_date"]').setValue('2027-06-01')
     expect(wrapper.text()).toContain('1 июня 2025 г.')
     await wrapper.get('input[name="report_date"]').setValue('2027-01-15')
