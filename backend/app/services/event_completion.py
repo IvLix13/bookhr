@@ -23,7 +23,7 @@ from app.services.rule_engine import (
     is_tenure_award_event,
     recalculate_employment_events,
 )
-from app.utils.dates import calculate_contract_end, today_moscow
+from app.utils.dates import calculate_contract_end, format_long_date_ru, today_moscow
 
 
 def grade_promotion_blocked_reason(event: Event) -> str | None:
@@ -208,7 +208,7 @@ def _renew_passport_after_preparation(
     if new_valid_until != expected_valid_until:
         raise ValueError(
             "Новый срок паспорта должен быть на 5 лет позже текущего "
-            f"({expected_valid_until.isoformat()})"
+            f"({format_long_date_ru(expected_valid_until)})"
         )
 
     old_valid_until = active.valid_until.isoformat() if active else None

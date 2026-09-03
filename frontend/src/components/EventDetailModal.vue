@@ -315,11 +315,11 @@ async function onUpdated() {
               </div>
               <div>
                 <dt>Создано</dt>
-                <dd>{{ event.created_at ? formatShortDate(event.created_at.slice(0, 10)) : '—' }}</dd>
+                <dd>{{ formatShortDate(event.created_at) }}</dd>
               </div>
               <div v-if="event.completed_at">
                 <dt>Выполнено</dt>
-                <dd>{{ formatShortDate(event.completed_at.slice(0, 10)) }}</dd>
+                <dd>{{ formatShortDate(event.completed_at) }}</dd>
               </div>
               <div v-if="event.completion_comment" class="full">
                 <dt>Комментарий</dt>

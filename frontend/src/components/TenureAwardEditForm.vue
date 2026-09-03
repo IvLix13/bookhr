@@ -2,7 +2,7 @@
 import { ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { TenureRow } from '@/types'
-import { formatNumericDate } from '@/utils/dates'
+import { formatShortDate } from '@/utils/dates'
 
 const MILESTONES = ['10', '15', '20'] as const
 
@@ -94,7 +94,7 @@ async function submit() {
       <section v-for="key in MILESTONES" :key="key" class="award-block">
         <h4>{{ key }} лет</h4>
         <p v-if="form[key].milestone_date" class="hint">
-          Плановая дата (суммарный стаж): {{ formatNumericDate(form[key].milestone_date) }}
+          Плановая дата (суммарный стаж): {{ formatShortDate(form[key].milestone_date) }}
         </p>
         <label class="checkbox">
           <input v-model="form[key].is_received" type="checkbox" :disabled="form[key].id == null" />

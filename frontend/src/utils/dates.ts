@@ -83,11 +83,20 @@ export function formatMonthYearLabel(value: Date): string {
 /** Формат «ДД месяц ГГГГ г.» без сдвига часового пояса. */
 export function formatShortDate(iso: string | null | undefined): string {
   if (!iso) return '—'
-  const [year, month, day] = iso.split('-').map(Number)
+  const datePart = iso.slice(0, 10)
+  const [year, month, day] = datePart.split('-').map(Number)
   if (!year || !month || !day) return iso
   const monthName = RUSSIAN_MONTHS[month - 1]
   if (!monthName) return iso
   return `${day} ${monthName} ${year} г.`
+}
+
+/** Подпись оси/ключа «ГГГГ-ММ»: «Июль 2026 г.» */
+export function formatMonthKey(value: string | null | undefined): string {
+  if (!value) return '—'
+  const [year, month] = value.split('-').map(Number)
+  if (!year || !month) return value
+  return formatMonthYearLabel(new Date(year, month - 1, 1))
 }
 
 export function isSameLocalDate(left: Date, right: Date): boolean {

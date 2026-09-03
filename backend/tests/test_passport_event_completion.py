@@ -121,9 +121,10 @@ def test_completing_passport_event_rejects_non_five_year_extension(
 
     response = hr_client.post(
         f"/api/events/{event.id}/complete",
-        json={"new_passport_valid_until": "2026-01-01"},
+        json={"new_passport_valid_until": "2032-09-01"},
     )
     assert response.status_code == 400
+    assert "1 сентября 2031 г." in response.get_json()["message"]
 
 
 def test_passport_preparation_event_is_four_months_before_expiry(app, seed_company):

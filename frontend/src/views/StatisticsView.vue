@@ -7,7 +7,7 @@ import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/compon
 import VChart from 'vue-echarts'
 import { api } from '@/api/client'
 import type { DashboardStats } from '@/types'
-import { defaultStatsPeriod } from '@/utils/dates'
+import { defaultStatsPeriod, formatMonthKey } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
 
 use([CanvasRenderer, BarChart, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent])
@@ -54,7 +54,7 @@ const eventsStatusChart = computed(() => {
 
 const eventsMonthlyChart = computed(() => {
   if (!stats.value) return null
-  const months = stats.value.events.monthly.map((item) => item.month)
+  const months = stats.value.events.monthly.map((item) => formatMonthKey(item.month))
   return {
     tooltip: { trigger: 'axis' },
     legend: { top: 0 },

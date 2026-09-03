@@ -93,6 +93,7 @@ describe('EventDetailModal', () => {
     expect(document.body.textContent).toContain('Подготовить рапорт')
     expect(document.body.textContent).toContain('Иванов Иван')
     expect(document.body.textContent).toContain('Описание')
+    expect(document.body.textContent).toContain('1 июля 2026 г.')
     expect(getEvent).toHaveBeenCalledWith(7)
   })
 
