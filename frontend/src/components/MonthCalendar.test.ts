@@ -32,6 +32,8 @@ describe('MonthCalendar', () => {
     })
 
     expect(wrapper.find('header h2').text()).toBe('Июль 2026 г.')
+    expect(wrapper.find('header h2').text()).not.toContain('Г.')
+    expect(wrapper.get('.year-abbr').text()).toBe('г.')
   })
 
   it('emits selected day on click', async () => {

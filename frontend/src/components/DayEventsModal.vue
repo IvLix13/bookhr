@@ -33,6 +33,7 @@ const openEventId = ref<number | null>(null)
 const { activate, deactivate } = useFocusTrap(modalRef, () => props.open)
 
 const title = computed(() => formatDisplayDate(props.date))
+const titleWithoutSuffix = computed(() => title.value.replace(/\sг\.$/, ''))
 
 async function loadDayEvents() {
   loading.value = true
@@ -132,7 +133,7 @@ async function onCreated() {
       >
         <header class="modal-header">
           <div>
-            <h2>{{ title }}</h2>
+            <h2>{{ titleWithoutSuffix }} <span class="year-abbr">г.</span></h2>
             <p>{{ events.length }} мероприятий</p>
           </div>
           <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">×</button>
@@ -221,6 +222,11 @@ async function onCreated() {
 
 .modal-header h2 {
   margin: 0;
+  text-transform: none;
+}
+
+.year-abbr {
+  text-transform: none;
 }
 
 .modal-header p {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onUnmounted, ref } from 'vue'
 import ContractEditForm from '@/components/ContractEditForm.vue'
 import DataTable from '@/components/DataTable.vue'
 import EventDetailModal from '@/components/EventDetailModal.vue'
@@ -16,6 +16,7 @@ import { getContractReportDisplayMeta } from '@/utils/statuses'
 
 const auth = useAuthStore()
 const editing = ref<ContractRow | null>(null)
+const modalOpen = ref(false)
 
 const table = useServerTable<ContractRow>({
   tableId: 'contracts',
@@ -70,12 +71,6 @@ const columns: ColumnDef<ContractRow>[] = [
     sortable: false,
     filterable: false,
   },
-  {
-    key: 'actions',
-    label: '',
-    sortable: false,
-    filterable: false,
-  },
 ]
 
 function onQueryUpdate(patch: Partial<TableQueryState>) {
@@ -103,16 +98,30 @@ async function onReportChanged() {
   await table.reload()
 }
 
-function startEdit(row: ContractRow) {
-  editing.value = row
+function onKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && modalOpen.value) {
+    closeModal()
+  }
 }
 
-function cancelEdit() {
+window.addEventListener('keydown', onKeydown)
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
+
+function startEdit(row: ContractRow) {
+  if (!auth.canEdit()) return
+  editing.value = row
+  modalOpen.value = true
+}
+
+function closeModal() {
+  modalOpen.value = false
   editing.value = null
 }
 
 async function handleSaved() {
-  editing.value = null
+  closeModal()
   await table.reload()
 }
 </script>
@@ -120,13 +129,6 @@ async function handleSaved() {
 <template>
   <section class="card page">
     <header><h2>{{ MODULE_LABELS.contracts }}</h2></header>
-
-    <ContractEditForm
-      v-if="auth.canEdit() && editing"
-      :row="editing"
-      @saved="handleSaved"
-      @cancel="cancelEdit"
-    />
 
     <PageState
       :loading="table.loading.value"
@@ -141,6 +143,7 @@ async function handleSaved() {
         :columns="columns"
         :rows="table.rows.value"
         row-key="id"
+        :row-clickable="auth.canEdit()"
         :loading="table.loading.value"
         :total="table.total.value"
         :page="table.query.value.page"
@@ -151,6 +154,7 @@ async function handleSaved() {
         :column-filters="table.query.value.columnFilters"
         search-placeholder="Поиск по договорам..."
         @update:query="onQueryUpdate"
+        @row-click="startEdit"
       >
         <template #cell-days_left="{ row }">
           <span class="badge" :class="row.days_left <= 120 ? 'warning' : ''">{{ row.days_left }}</span>
@@ -182,19 +186,9 @@ async function handleSaved() {
             v-if="row.renewal_report_event"
             type="button"
             class="btn secondary"
-            @click="openReportEvent(row.renewal_report_event.id)"
+            @click.stop="openReportEvent(row.renewal_report_event.id)"
           >
             Мероприятие
-          </button>
-        </template>
-        <template #cell-actions="{ row }">
-          <button
-            v-if="auth.canEdit()"
-            class="btn secondary"
-            type="button"
-            @click="startEdit(row)"
-          >
-            Изменить
           </button>
         </template>
       </DataTable>
@@ -206,6 +200,34 @@ async function handleSaved() {
       @close="closeReportEvent"
       @changed="onReportChanged"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="modalOpen && editing"
+        class="overlay"
+        @click.self="closeModal"
+      >
+        <section
+          class="card modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Редактирование договора"
+        >
+          <header class="modal-header">
+            <h3>Редактирование договора: {{ editing.full_name ?? 'Сотрудник' }}</h3>
+            <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">
+              ×
+            </button>
+          </header>
+          <ContractEditForm
+            compact
+            :row="editing"
+            @saved="handleSaved"
+            @cancel="closeModal"
+          />
+        </section>
+      </div>
+    </Teleport>
   </section>
 </template>
 
@@ -214,5 +236,34 @@ async function handleSaved() {
   padding: 1rem;
   display: grid;
   gap: 1rem;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 1000;
+}
+
+.modal {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
+  padding: 1rem;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.modal-header h3 {
+  margin: 0;
 }
 </style>

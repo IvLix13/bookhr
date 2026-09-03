@@ -18,6 +18,7 @@ const weekdays = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
 const todayIso = formatLocalDate(new Date())
 
 const monthLabel = computed(() => formatMonthYearLabel(props.month))
+const monthNameYear = computed(() => monthLabel.value.replace(/\sг\.$/, ''))
 
 const days = computed(() => {
   const year = props.month.getFullYear()
@@ -67,7 +68,7 @@ function dayClasses(date: Date) {
   <section class="calendar card">
     <header>
       <button class="btn ghost" type="button" aria-label="Предыдущий месяц" @click="prevMonth">←</button>
-      <h2>{{ monthLabel }}</h2>
+      <h2>{{ monthNameYear }} <span class="year-abbr">г.</span></h2>
       <button class="btn ghost" type="button" aria-label="Следующий месяц" @click="nextMonth">→</button>
     </header>
 
@@ -119,6 +120,11 @@ header {
 
 header h2 {
   margin: 0;
+  text-transform: none;
+}
+
+.year-abbr {
+  text-transform: none;
 }
 
 .weekdays,

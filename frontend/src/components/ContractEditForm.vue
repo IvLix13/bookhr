@@ -9,6 +9,7 @@ const REPORT_LEAD_MONTHS = 4
 
 const props = defineProps<{
   row: ContractRow | null
+  compact?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -121,8 +122,8 @@ async function submit() {
 </script>
 
 <template>
-  <form v-if="row" class="form card" @submit.prevent="submit">
-    <header class="form-header">
+  <form v-if="row" class="form" :class="{ card: !compact, compact }" @submit.prevent="submit">
+    <header v-if="!compact" class="form-header">
       <div>
         <h3>Редактирование договора: {{ row.full_name ?? 'Сотрудник' }}</h3>
         <p>
@@ -132,6 +133,10 @@ async function submit() {
       </div>
       <button class="btn ghost" type="button" @click="emit('cancel')">×</button>
     </header>
+    <p v-else class="start-hint">
+      Дата начала считается автоматически от срока и даты окончания:
+      {{ derivedStart }}
+    </p>
 
     <div class="fields">
       <label>
@@ -180,6 +185,10 @@ async function submit() {
   gap: 1rem;
 }
 
+.form.compact {
+  padding: 0;
+}
+
 .form-header {
   display: flex;
   justify-content: space-between;
@@ -191,10 +200,15 @@ async function submit() {
   margin: 0;
 }
 
-.form-header p {
+.form-header p,
+.start-hint {
   margin: 0.35rem 0 0;
   color: var(--muted);
   font-size: 0.92rem;
+}
+
+.start-hint {
+  margin: 0;
 }
 
 .fields {
