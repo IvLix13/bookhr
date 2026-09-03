@@ -5,9 +5,11 @@ import {
   defaultStatsPeriod,
   formatDisplayDate,
   formatLocalDate,
+  formatMonthKey,
   formatMonthYearLabel,
   formatNumericDate,
   formatShortDate,
+  humanizeDatesInText,
   isSameLocalDate,
   monthRange,
   parseIsoDate,
@@ -47,7 +49,24 @@ describe('dates utils', () => {
 
   it('formats short date as DD month YYYY г.', () => {
     expect(formatShortDate('2026-07-24')).toBe('24 июля 2026 г.')
+    expect(formatShortDate('2026-07-24T10:00:00')).toBe('24 июля 2026 г.')
     expect(formatShortDate(null)).toBe('—')
+  })
+
+  it('formats YYYY-MM keys as month year labels', () => {
+    expect(formatMonthKey('2026-07')).toBe('Июль 2026 г.')
+    expect(formatMonthKey(null)).toBe('—')
+  })
+
+  it('replaces ISO dates inside user-facing text', () => {
+    expect(humanizeDatesInText('Подготовка до 2026-05-25')).toBe(
+      'Подготовка до 25 мая 2026 г.',
+    )
+    expect(humanizeDatesInText('Истекает 2026-05-25T00:00:00')).toBe(
+      'Истекает 25 мая 2026 г.',
+    )
+    expect(humanizeDatesInText('Без даты')).toBe('Без даты')
+    expect(humanizeDatesInText(null)).toBe('')
   })
 
   it('parses iso date for sorting', () => {

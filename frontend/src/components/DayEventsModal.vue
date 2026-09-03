@@ -7,7 +7,7 @@ import { normalizeError } from '@/api/errors'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import type { EventItem, Paginated } from '@/types'
 import StatusBadge from '@/components/StatusBadge.vue'
-import { formatDisplayDate } from '@/utils/dates'
+import { formatDisplayDate, humanizeDatesInText } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
 import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
@@ -145,9 +145,9 @@ async function onCreated() {
           <li v-for="event in events" :key="event.id" class="item">
             <button type="button" class="item-button" @click="openEvent(event.id)">
               <div class="item-main">
-                <strong>{{ event.title }}</strong>
+                <strong>{{ humanizeDatesInText(event.title) }}</strong>
                 <p>{{ event.employee_name ?? 'Без сотрудника' }}</p>
-                <p v-if="event.description" class="description">{{ event.description }}</p>
+                <p v-if="event.description" class="description">{{ humanizeDatesInText(event.description) }}</p>
               </div>
               <div class="item-meta">
                 <span class="badge">{{ labelEventType(event.event_type) }}</span>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { EventItem } from '@/types'
-import { formatLocalDate, formatMonthYearLabel } from '@/utils/dates'
+import { formatLocalDate, formatMonthYearLabel, humanizeDatesInText } from '@/utils/dates'
 
 const props = defineProps<{
   events: EventItem[]
@@ -94,7 +94,7 @@ function dayClasses(date: Date) {
           <div class="day-number">{{ cell.date.getDate() }}</div>
           <TransitionGroup name="fade" tag="div" class="events">
             <div v-for="event in cell.events.slice(0, 3)" :key="event.id" class="event-chip">
-              {{ event.title }}
+              {{ humanizeDatesInText(event.title) }}
             </div>
           </TransitionGroup>
           <span v-if="cell.events.length > 3" class="more">+{{ cell.events.length - 3 }}</span>

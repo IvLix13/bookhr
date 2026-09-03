@@ -128,6 +128,24 @@ describe('EventsView event modal', () => {
     })
   })
 
+  it('humanizes ISO dates in the title column', async () => {
+    events.mockResolvedValueOnce({
+      items: [
+        {
+          ...sampleEvent,
+          title: 'Подготовка до 2026-05-25',
+        },
+      ],
+      total: 1,
+      page: 1,
+      per_page: 25,
+      pages: 1,
+    })
+    const wrapper = await mountView()
+    expect(wrapper.text()).toContain('Подготовка до 25 мая 2026 г.')
+    expect(wrapper.text()).not.toContain('2026-05-25')
+  })
+
   it('keeps complete shortcut without opening modal via stop', async () => {
     const wrapper = await mountView()
     await wrapper.get('.data-table-row .btn.secondary').trigger('click')

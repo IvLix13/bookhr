@@ -46,6 +46,14 @@ _RU_LONG_DATE_RE = re.compile(
     re.IGNORECASE,
 )
 
+_ISO_DATE_IN_TEXT_RE = re.compile(
+    r"(?<!\d)(\d{4})-(\d{2})-(\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?(?!\d)"
+)
+
+_USER_TEXT_KEYS = frozenset(
+    {"title", "description", "subtitle", "completion_comment"}
+)
+
 
 def today_moscow() -> date:
     return datetime.now(MOSCOW).date()
@@ -114,6 +122,37 @@ def format_long_date_ru(value: date | None) -> str:
     if value is None:
         return "—"
     return f"{value.day} {_RU_MONTH_NAMES[value.month - 1]} {value.year} г."
+
+
+def humanize_dates_in_text(text: str | None) -> str | None:
+    """Replace ISO dates inside user-facing text with «11 августа 2025 г.»."""
+    if text is None:
+        return None
+    if not text:
+        return text
+
+    def _replace(match: re.Match[str]) -> str:
+        try:
+            value = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+        except ValueError:
+            return match.group(0)
+        return format_long_date_ru(value)
+
+    return _ISO_DATE_IN_TEXT_RE.sub(_replace, text)
+
+
+def humanize_user_text_fields(payload: dict) -> dict:
+    """Humanize ISO dates in title/description-like fields of an API payload."""
+    for key, value in payload.items():
+        if key in _USER_TEXT_KEYS and isinstance(value, str):
+            payload[key] = humanize_dates_in_text(value)
+        elif isinstance(value, dict):
+            humanize_user_text_fields(value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    humanize_user_text_fields(item)
+    return payload
 
 
 def parse_flexible_date(value: Any) -> date | None:

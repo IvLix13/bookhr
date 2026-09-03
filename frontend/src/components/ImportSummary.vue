@@ -6,6 +6,7 @@ import {
   labelImportSummaryKey,
 } from '@/utils/labels'
 import type { ImportJob } from '@/types'
+import { formatShortDate } from '@/utils/dates'
 
 const props = defineProps<{
   job: ImportJob
@@ -32,7 +33,7 @@ const skipReasons = computed(() => {
       <div>
         <h3>{{ job.filename }}</h3>
         <p>Статус: {{ labelImportStatus(job.status) }}</p>
-        <p v-if="job.created_at" class="meta">Загружен: {{ job.created_at }}</p>
+        <p v-if="job.created_at" class="meta">Загружен: {{ formatShortDate(job.created_at) }}</p>
         <p v-if="job.error_message" class="error">{{ job.error_message }}</p>
       </div>
       <span class="badge">{{ job.rows.length }} строк</span>

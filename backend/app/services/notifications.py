@@ -18,7 +18,7 @@ from app.models import (
 from app.models.base import utcnow
 from app.services.employees import get_current_name
 from app.services.events import effective_event_status
-from app.utils.dates import MOSCOW, format_long_date_ru, today_moscow
+from app.utils.dates import MOSCOW, format_long_date_ru, humanize_dates_in_text, today_moscow
 from sqlalchemy.exc import IntegrityError
 
 
@@ -47,7 +47,7 @@ def _build_message(event: Event, *, escalated: bool = False) -> str:
         parts.append(f"Сотрудник: {employee_name}")
     if event.description:
         parts.append(event.description)
-    return "\n".join(parts)
+    return humanize_dates_in_text("\n".join(parts)) or ""
 
 
 def send_talk_message(room_token: str, message: str) -> tuple[int, str]:

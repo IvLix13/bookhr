@@ -5,6 +5,7 @@ import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import { MODULE_LABELS } from '@/utils/labels'
+import { humanizeDatesInText } from '@/utils/dates'
 import type { SearchResult } from '@/types'
 
 const router = useRouter()
@@ -200,8 +201,8 @@ onUnmounted(() => {
             @click="selectResult(result)"
           >
             <div class="result-main">
-              <strong>{{ result.title }}</strong>
-              <span v-if="result.subtitle" class="result-subtitle">{{ result.subtitle }}</span>
+              <strong>{{ humanizeDatesInText(result.title) }}</strong>
+              <span v-if="result.subtitle" class="result-subtitle">{{ humanizeDatesInText(result.subtitle) }}</span>
             </div>
             <span class="badge">{{ typeLabel(result.type) }}</span>
           </li>

@@ -83,11 +83,31 @@ export function formatMonthYearLabel(value: Date): string {
 /** Формат «ДД месяц ГГГГ г.» без сдвига часового пояса. */
 export function formatShortDate(iso: string | null | undefined): string {
   if (!iso) return '—'
-  const [year, month, day] = iso.split('-').map(Number)
+  const datePart = iso.slice(0, 10)
+  const [year, month, day] = datePart.split('-').map(Number)
   if (!year || !month || !day) return iso
   const monthName = RUSSIAN_MONTHS[month - 1]
   if (!monthName) return iso
   return `${day} ${monthName} ${year} г.`
+}
+
+/** Replace ISO dates inside user-facing text with «11 августа 2025 г.». */
+export function humanizeDatesInText(text: string | null | undefined): string {
+  if (!text) return text ?? ''
+  const pattern =
+    /(?<!\d)(\d{4})-(\d{2})-(\d{2})(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?(?!\d)/g
+  return text.replace(pattern, (match, year: string, month: string, day: string) => {
+    const formatted = formatShortDate(`${year}-${month}-${day}`)
+    return formatted === '—' || formatted === `${year}-${month}-${day}` ? match : formatted
+  })
+}
+
+/** Подпись оси/ключа «ГГГГ-ММ»: «Июль 2026 г.» */
+export function formatMonthKey(value: string | null | undefined): string {
+  if (!value) return '—'
+  const [year, month] = value.split('-').map(Number)
+  if (!year || !month) return value
+  return formatMonthYearLabel(new Date(year, month - 1, 1))
 }
 
 export function isSameLocalDate(left: Date, right: Date): boolean {

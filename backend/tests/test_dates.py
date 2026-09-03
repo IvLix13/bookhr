@@ -9,6 +9,7 @@ from app.utils.dates import (
     calculate_contract_end,
     calculate_term_years,
     format_long_date_ru,
+    humanize_dates_in_text,
     subtract_months,
     today_moscow,
 )
@@ -20,6 +21,20 @@ def test_format_long_date_ru():
     assert format_long_date_ru(date(2025, 8, 11)) == "11 августа 2025 г."
     assert format_long_date_ru(date(2026, 1, 1)) == "1 января 2026 г."
     assert format_long_date_ru(None) == "—"
+
+
+def test_humanize_dates_in_text():
+    assert (
+        humanize_dates_in_text("Подготовка до 2026-05-25")
+        == "Подготовка до 25 мая 2026 г."
+    )
+    assert (
+        humanize_dates_in_text("Истекает 2026-05-25T00:00:00")
+        == "Истекает 25 мая 2026 г."
+    )
+    assert humanize_dates_in_text("Без даты") == "Без даты"
+    assert humanize_dates_in_text("2026-13-40") == "2026-13-40"
+    assert humanize_dates_in_text(None) is None
 
 
 def test_subtract_months_calendar():

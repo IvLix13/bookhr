@@ -9,7 +9,7 @@ import {
   attentionItemKey,
   type BackendAttentionItem,
 } from '@/utils/attention'
-import { formatShortDate } from '@/utils/dates'
+import { formatShortDate, humanizeDatesInText } from '@/utils/dates'
 
 withDefaults(
   defineProps<{
@@ -225,8 +225,8 @@ defineExpose({ reload: loadAttention })
             @click="openAttentionItem(item)"
           >
             <div class="attention-main">
-              <strong>{{ item.title }}</strong>
-              <p v-if="item.subtitle">{{ item.subtitle }}</p>
+              <strong>{{ humanizeDatesInText(item.title) }}</strong>
+              <p v-if="item.subtitle">{{ humanizeDatesInText(item.subtitle) }}</p>
             </div>
             <div class="attention-meta">
               <span class="badge" :class="severityClass(item.severity)">

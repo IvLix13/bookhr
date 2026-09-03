@@ -8,7 +8,7 @@ import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { Paginated, TableQueryState, TenureRow } from '@/types'
 import { MODULE_LABELS } from '@/utils/labels'
-import { formatNumericDate } from '@/utils/dates'
+import { formatShortDate } from '@/utils/dates'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -35,9 +35,9 @@ function awardDisplayText(row: TenureRow, years: AwardYears): string {
   const award = row.awards[years]
   if (!award) return '—'
   if (award.is_received) {
-    return award.received_date ? formatNumericDate(award.received_date) : '—'
+    return award.received_date ? formatShortDate(award.received_date) : '—'
   }
-  if (award.milestone_date) return formatNumericDate(award.milestone_date)
+  if (award.milestone_date) return formatShortDate(award.milestone_date)
   return '—'
 }
 
@@ -45,11 +45,11 @@ function awardAriaLabel(row: TenureRow, years: AwardYears): string {
   const award = row.awards[years]
   if (!award) return `${years} лет: нет данных`
   if (award.is_received) {
-    const date = award.received_date ? formatNumericDate(award.received_date) : 'дата не указана'
+    const date = award.received_date ? formatShortDate(award.received_date) : 'дата не указана'
     return `${years} лет: получено ${date}`
   }
   if (award.milestone_date) {
-    return `${years} лет: ${formatNumericDate(award.milestone_date)}`
+    return `${years} лет: ${formatShortDate(award.milestone_date)}`
   }
   return `${years} лет: нет данных`
 }
