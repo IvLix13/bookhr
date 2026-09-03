@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, time
 from typing import Callable
 
 from sqlalchemy.exc import IntegrityError
@@ -31,7 +31,7 @@ from app.services.tenure import (
     ensure_tenure_awards,
     is_tenure_award_scheduled,
 )
-from app.utils.dates import format_long_date_ru, subtract_months, today_moscow
+from app.utils.dates import MOSCOW, format_long_date_ru, subtract_months, today_moscow
 
 
 RULE_VERSION = 1
@@ -191,14 +191,18 @@ def apply_manual_report_date(
     default_date = subtract_months(contract.end_date, 4) if contract else None
     event.event_date = report_date
     event.manual_date = default_date is None or report_date != default_date
-    if event.status == EventStatus.OVERDUE.value and event.event_date >= today_moscow():
+    if event.status == EventStatus.COMPLETED.value:
+        event.completed_at = datetime.combine(report_date, time(12, 0), tzinfo=MOSCOW)
+    elif event.status == EventStatus.OVERDUE.value and event.event_date >= today_moscow():
         transition_event_status(event, EventStatus.PLANNED, "Date moved forward")
     return event
 
 
 def apply_contract_report_date(contract: Contract, report_date: date) -> Event | None:
     event = find_contract_renewal_event(contract.id)
-    if event is None or event.status not in OPEN_EVENT_STATUSES:
+    if event is None:
+        return event
+    if event.status not in OPEN_EVENT_STATUSES and event.status != EventStatus.COMPLETED.value:
         return event
     return apply_manual_report_date(event, report_date, contract=contract)
 

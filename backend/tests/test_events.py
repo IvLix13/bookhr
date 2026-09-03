@@ -383,6 +383,50 @@ def test_update_contract_report_date_via_event_api(hr_client, seed_company):
         assert report.manual_date is True
 
 
+def test_update_completed_contract_report_date(hr_client, seed_company):
+    created = hr_client.post(
+        "/api/employees",
+        json={
+            "company_id": seed_company.id,
+            "full_name": "Выполненный Рапорт",
+            "hire_date": "2020-01-01",
+            "education_status": "no",
+            "contract_term_years": 1,
+            "contract_end": "2026-12-01",
+        },
+    )
+    assert created.status_code == 201
+    employment_id = created.get_json()["data"]["id"]
+    contracts = hr_client.get(f"/api/contracts?company_id={seed_company.id}").get_json()["data"]["items"]
+    contract_item = next(c for c in contracts if c["employment_id"] == employment_id)
+    contract_id = contract_item["id"]
+    report_id = contract_item["renewal_report_event"]["id"]
+
+    completed = hr_client.post(f"/api/events/{report_id}/complete", json={})
+    assert completed.status_code == 200
+
+    updated = hr_client.patch(
+        f"/api/contracts/{contract_id}",
+        json={"report_date": "2026-04-10"},
+    )
+    assert updated.status_code == 200
+    report = updated.get_json()["data"]["renewal_report_event"]
+    assert report["status"] == EventStatus.COMPLETED.value
+    assert report["event_date"] == "2026-04-10"
+    assert report["completed_date"] == "2026-04-10"
+
+    via_event = hr_client.patch(
+        f"/api/events/{report_id}",
+        json={"event_date": "2026-03-01"},
+    )
+    assert via_event.status_code == 200
+    listed = hr_client.get(f"/api/contracts?company_id={seed_company.id}").get_json()["data"]["items"]
+    item = next(c for c in listed if c["employment_id"] == employment_id)
+    assert item["renewal_report_event"]["event_date"] == "2026-03-01"
+    assert item["renewal_report_event"]["completed_date"] == "2026-03-01"
+    assert item["renewal_report_event"]["status"] == EventStatus.COMPLETED.value
+
+
 def test_delete_manual_event_hr(hr_client, seed_company):
     event = create_manual_event(
         company_id=seed_company.id,

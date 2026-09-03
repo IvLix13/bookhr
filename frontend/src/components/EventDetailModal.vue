@@ -91,9 +91,18 @@ const canEditEvent = computed(
     isOpenStatus.value,
 )
 
-const canEditReportDate = computed(
-  () => canAct.value && isContractReport.value && isOpenStatus.value,
-)
+const canEditReportDate = computed(() => {
+  if (!canAct.value || !isContractReport.value || !event.value) return false
+  return event.value.status !== 'cancelled'
+})
+
+const displayedReportDate = computed(() => {
+  if (!event.value) return ''
+  if (event.value.status === 'completed' && event.value.completed_at) {
+    return event.value.completed_at.slice(0, 10)
+  }
+  return event.value.event_date
+})
 
 const reportDateDraft = ref('')
 
@@ -106,7 +115,10 @@ async function loadEvent() {
   error.value = ''
   try {
     event.value = (await api.getEvent(props.eventId)) as EventItem
-    reportDateDraft.value = event.value.event_date
+    reportDateDraft.value =
+      event.value.status === 'completed' && event.value.completed_at
+        ? event.value.completed_at.slice(0, 10)
+        : event.value.event_date
     const candidates = event.value.grade_completion?.candidates ?? []
     targetGradeId.value = candidates.length === 1 ? String(candidates[0].id) : ''
     newPassportValidUntil.value =
@@ -375,25 +387,25 @@ async function saveReportDate() {
                   Удалить
                 </button>
               </div>
+              <div v-if="canEditReportDate" class="extension-row">
+                <label for="report-date-input">Дата рапорта:</label>
+                <input
+                  id="report-date-input"
+                  v-model="reportDateDraft"
+                  type="date"
+                  :disabled="actionBusy"
+                  required
+                />
+                <button
+                  class="btn secondary"
+                  type="button"
+                  :disabled="actionBusy || !reportDateDraft || reportDateDraft === displayedReportDate"
+                  @click="saveReportDate"
+                >
+                  Сохранить дату
+                </button>
+              </div>
               <template v-if="isOpenStatus">
-                <div v-if="canEditReportDate" class="extension-row">
-                  <label for="report-date-input">Дата рапорта:</label>
-                  <input
-                    id="report-date-input"
-                    v-model="reportDateDraft"
-                    type="date"
-                    :disabled="actionBusy"
-                    required
-                  />
-                  <button
-                    class="btn secondary"
-                    type="button"
-                    :disabled="actionBusy || !reportDateDraft || reportDateDraft === event.event_date"
-                    @click="saveReportDate"
-                  >
-                    Сохранить дату
-                  </button>
-                </div>
                 <div v-if="isContractReport" class="extension-row">
                   <label for="extension-term-select">Срок продления договора:</label>
                   <select

@@ -197,6 +197,40 @@ describe('EventDetailModal', () => {
     expect(wrapper.emitted('changed')).toBeTruthy()
   })
 
+  it('saves a custom report date even when the renewal event is completed', async () => {
+    const completedContractEvent: EventItem = {
+      ...completedEvent,
+      title: 'Подготовить рапорт на продление Договора: Иванов',
+      reference_type: 'contract',
+      reference_id: 10,
+      completed_at: '2026-07-20T12:00:00',
+    }
+    getEvent.mockResolvedValue(completedContractEvent)
+    updateEvent.mockResolvedValue({
+      ...completedContractEvent,
+      event_date: '2026-06-01',
+      completed_at: '2026-06-01T12:00:00',
+    })
+    const wrapper = await mountModal('hr')
+
+    expect(document.body.textContent).toContain('Переоткрыть')
+    const dateEl = document.body.querySelector('#report-date-input')
+    expect(dateEl).not.toBeNull()
+    const dateInput = new DOMWrapper(dateEl as HTMLInputElement)
+    expect((dateInput.element as HTMLInputElement).value).toBe('2026-07-20')
+    await dateInput.setValue('2026-06-01')
+
+    const saveBtn = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Сохранить дату'),
+    )
+    expect(saveBtn).toBeTruthy()
+    await saveBtn!.click()
+    await flushPromises()
+
+    expect(updateEvent).toHaveBeenCalledWith(7, { event_date: '2026-06-01' })
+    expect(wrapper.emitted('changed')).toBeTruthy()
+  })
+
   it('requires a grade choice when several candidates share the next rank', async () => {
     const gradeEvent: EventItem = {
       ...plannedEvent,

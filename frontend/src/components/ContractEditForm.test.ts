@@ -87,4 +87,32 @@ describe('ContractEditForm', () => {
     expect(updateContract).not.toHaveBeenCalled()
     expect(wrapper.text()).toContain('Укажите срок договора и дату окончания')
   })
+
+  it('allows changing the report date when the report is already completed', async () => {
+    updateContract.mockClear()
+    const completedRow: ContractRow = {
+      ...sampleRow,
+      renewal_report_event: {
+        id: 55,
+        event_date: '2024-09-01',
+        completed_date: '2024-08-20',
+        status: 'completed',
+        effective_status: 'completed',
+      },
+    }
+    const wrapper = mount(ContractEditForm, { props: { row: completedRow } })
+    const reportInput = wrapper.get('input[name="report_date"]')
+    expect((reportInput.element as HTMLInputElement).disabled).toBe(false)
+    expect((reportInput.element as HTMLInputElement).value).toBe('2024-08-20')
+
+    await reportInput.setValue('2024-07-15')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateContract).toHaveBeenCalledWith(11, {
+      term_years: 1,
+      end_date: '2025-01-01',
+      report_date: '2024-07-15',
+    })
+  })
 })

@@ -239,10 +239,10 @@ def refresh_events_after_mutation(
 
 
 def update_manual_event(event: Event, payload: dict) -> Event:
-    if event.status not in OPEN_EDIT_STATUSES:
-        raise EventMutationError("Only open events can be edited")
     if event.source != EventSource.MANUAL.value:
         return _update_rule_report_date(event, payload)
+    if event.status not in OPEN_EDIT_STATUSES:
+        raise EventMutationError("Only open events can be edited")
     if not payload:
         return event
 
@@ -286,6 +286,11 @@ def _update_rule_report_date(event: Event, payload: dict) -> Event:
 
     if not is_contract_renewal_event(event):
         raise EventMutationError("Only manually created events can be edited")
+    if (
+        event.status not in OPEN_EDIT_STATUSES
+        and event.status != EventStatus.COMPLETED.value
+    ):
+        raise EventMutationError("Отменённый рапорт нельзя изменить")
     extra = set(payload) - {"event_date"}
     if extra:
         raise EventMutationError("У рапорта по договору можно изменить только дату")

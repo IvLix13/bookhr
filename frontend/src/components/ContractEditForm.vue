@@ -32,9 +32,13 @@ function defaultReportDate(endDate: string): string {
   return subtractMonthsFromIsoDate(endDate, REPORT_LEAD_MONTHS)
 }
 
-function isOpenReport(row: ContractRow | null): boolean {
-  const status = row?.renewal_report_event?.status
-  return status === 'planned' || status === 'overdue'
+function displayedReportDate(row: ContractRow | null): string {
+  const event = row?.renewal_report_event
+  if (!event) return defaultReportDate(row?.end_date ?? '')
+  if (event.status === 'completed' && event.completed_date) {
+    return event.completed_date
+  }
+  return event.event_date
 }
 
 function isStandardTerm(value: string): boolean {
@@ -49,9 +53,7 @@ function resetForm(row: ContractRow | null) {
     term_years:
       row?.term_years !== null && row?.term_years !== undefined ? String(row.term_years) : '',
     end_date: endDate,
-    report_date: isOpenReport(row)
-      ? (row?.renewal_report_event?.event_date ?? defaultReportDate(endDate))
-      : defaultReportDate(endDate),
+    report_date: displayedReportDate(row),
   }
   applyingRow.value = false
 }
@@ -91,32 +93,24 @@ const derivedStart = computed(() => {
   return formatShortDate(subtractYearsFromIsoDate(endDate, years))
 })
 
-const reportEditable = computed(() => {
-  const status = props.row?.renewal_report_event?.status
-  return !status || status === 'planned' || status === 'overdue'
-})
-
 async function submit() {
   if (!props.row) return
   if (!form.value.term_years || !form.value.end_date) {
     error.value = 'Укажите срок договора и дату окончания'
     return
   }
-  if (reportEditable.value && !form.value.report_date) {
+  if (!form.value.report_date) {
     error.value = 'Укажите дату рапорта'
     return
   }
   submitting.value = true
   error.value = ''
   try {
-    const payload: { term_years: number; end_date: string; report_date?: string } = {
+    await api.updateContract(props.row.id, {
       term_years: Number(form.value.term_years),
       end_date: form.value.end_date,
-    }
-    if (reportEditable.value && form.value.report_date) {
-      payload.report_date = form.value.report_date
-    }
-    await api.updateContract(props.row.id, payload)
+      report_date: form.value.report_date,
+    })
     emit('saved')
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Не удалось сохранить договор'
@@ -162,16 +156,10 @@ async function submit() {
       </label>
       <label>
         Дата рапорта
-        <input
-          v-model="form.report_date"
-          name="report_date"
-          type="date"
-          :required="reportEditable"
-          :disabled="!reportEditable"
-        />
+        <input v-model="form.report_date" name="report_date" type="date" required />
       </label>
     </div>
-    <p v-if="reportEditable" class="hint">
+    <p class="hint">
       По умолчанию за 4 месяца до окончания, можно указать другую дату.
     </p>
 
