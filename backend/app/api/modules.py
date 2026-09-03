@@ -56,7 +56,7 @@ from app.services.grade_catalog import (
     validate_rank,
 )
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
-from app.services.rule_engine import recalculate_employment_events
+from app.services.rule_engine import apply_contract_report_date, recalculate_employment_events
 from app.services.tenure import (
     active_employment,
     ensure_tenure_awards,
@@ -227,6 +227,8 @@ def register_routes(bp):
 
         db.session.flush()
         recalculate_employment_events(contract.employment)
+        if payload.get("report_date") is not None:
+            apply_contract_report_date(contract, payload["report_date"])
         refresh_overdue_events(contract.employment.company_id)
         db.session.commit()
         return api_response(contract_to_dict(contract))

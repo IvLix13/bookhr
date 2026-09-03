@@ -111,4 +111,33 @@ describe('DayEventsModal', () => {
 
     expect(document.body.querySelector('.item-button')).not.toBeNull()
   })
+
+  it('shows the day title with lowercase г.', async () => {
+    const auth = useAuthStore()
+    auth.user = {
+      id: 2,
+      username: 'hr',
+      full_name: 'HR',
+      role: 'hr',
+    }
+
+    mount(DayEventsModal, {
+      props: {
+        open: true,
+        date: '2026-07-24',
+      },
+      attachTo: document.body,
+      global: {
+        stubs: {
+          teleport: true,
+          EventDetailModal: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    const title = document.body.querySelector('.modal-header h2')?.textContent ?? ''
+    expect(title).toBe('Пятница, 24 июля 2026 г.')
+    expect(title).not.toContain('Г.')
+  })
 })

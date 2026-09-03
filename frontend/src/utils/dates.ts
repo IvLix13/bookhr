@@ -53,15 +53,15 @@ export function defaultStatsPeriod(): { from: string; to: string } {
   }
 }
 
-export function formatDisplayDate(iso: string): string {
-  const [year, month, day] = iso.split('-').map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString('ru-RU', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-}
+const RUSSIAN_WEEKDAYS = [
+  'воскресенье',
+  'понедельник',
+  'вторник',
+  'среда',
+  'четверг',
+  'пятница',
+  'суббота',
+] as const
 
 /** Формат «ДД.ММ.ГГГГ» без сдвига часового пояса. */
 export function formatNumericDate(iso: string | null | undefined): string {
@@ -89,6 +89,16 @@ export function formatShortDate(iso: string | null | undefined): string {
   const monthName = RUSSIAN_MONTHS[month - 1]
   if (!monthName) return iso
   return `${day} ${monthName} ${year} г.`
+}
+
+/** Формат «Пятница, 24 июля 2026 г.» без сдвига часового пояса и без заглавной «Г.». */
+export function formatDisplayDate(iso: string): string {
+  const datePart = iso.slice(0, 10)
+  const [year, month, day] = datePart.split('-').map(Number)
+  if (!year || !month || !day) return iso
+  const weekdayName = RUSSIAN_WEEKDAYS[new Date(year, month - 1, day).getDay()]
+  const capitalizedWeekday = weekdayName.charAt(0).toUpperCase() + weekdayName.slice(1)
+  return `${capitalizedWeekday}, ${formatShortDate(datePart)}`
 }
 
 /** Replace ISO dates inside user-facing text with «11 августа 2025 г.». */
@@ -128,6 +138,27 @@ export function addYearsToIsoDate(iso: string, years: number): string {
   const remainingMonths = Math.round((years - wholeYears) * 12)
   const target = new Date(year + wholeYears, month - 1 + remainingMonths, day)
   return formatLocalDate(target)
+}
+
+/** Дата начала договора: окончание минус срок, без сдвига часового пояса. */
+export function subtractYearsFromIsoDate(iso: string, years: number): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  if (!year || !month || !day) return iso
+  const wholeYears = Math.floor(years)
+  const remainingMonths = Math.round((years - wholeYears) * 12)
+  const target = new Date(year - wholeYears, month - 1 - remainingMonths, day)
+  return formatLocalDate(target)
+}
+
+/** Дата минус N месяцев с прижимом к последнему дню месяца, как relativedelta. */
+export function subtractMonthsFromIsoDate(iso: string, months: number): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  if (!year || !month || !day) return iso
+  const totalMonths = year * 12 + (month - 1) - months
+  const targetYear = Math.floor(totalMonths / 12)
+  const targetMonth = totalMonths - targetYear * 12
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate()
+  return formatLocalDate(new Date(targetYear, targetMonth, Math.min(day, lastDay)))
 }
 
 export function calculateTermYears(

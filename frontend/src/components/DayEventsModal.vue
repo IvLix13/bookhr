@@ -221,7 +221,6 @@ async function onCreated() {
 
 .modal-header h2 {
   margin: 0;
-  text-transform: capitalize;
 }
 
 .modal-header p {

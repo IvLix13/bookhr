@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import ContractEditForm from '@/components/ContractEditForm.vue'
 import DataTable from '@/components/DataTable.vue'
 import EventDetailModal from '@/components/EventDetailModal.vue'
 import PageState from '@/components/PageState.vue'
@@ -8,9 +9,13 @@ import { api } from '@/api/client'
 import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { ContractRow, Paginated, TableQueryState } from '@/types'
+import { useAuthStore } from '@/stores/auth'
 import { formatLocalDate, formatShortDate } from '@/utils/dates'
 import { MODULE_LABELS } from '@/utils/labels'
 import { getContractReportDisplayMeta } from '@/utils/statuses'
+
+const auth = useAuthStore()
+const editing = ref<ContractRow | null>(null)
 
 const table = useServerTable<ContractRow>({
   tableId: 'contracts',
@@ -65,6 +70,12 @@ const columns: ColumnDef<ContractRow>[] = [
     sortable: false,
     filterable: false,
   },
+  {
+    key: 'actions',
+    label: '',
+    sortable: false,
+    filterable: false,
+  },
 ]
 
 function onQueryUpdate(patch: Partial<TableQueryState>) {
@@ -91,11 +102,32 @@ function closeReportEvent() {
 async function onReportChanged() {
   await table.reload()
 }
+
+function startEdit(row: ContractRow) {
+  editing.value = row
+}
+
+function cancelEdit() {
+  editing.value = null
+}
+
+async function handleSaved() {
+  editing.value = null
+  await table.reload()
+}
 </script>
 
 <template>
   <section class="card page">
     <header><h2>{{ MODULE_LABELS.contracts }}</h2></header>
+
+    <ContractEditForm
+      v-if="auth.canEdit() && editing"
+      :row="editing"
+      @saved="handleSaved"
+      @cancel="cancelEdit"
+    />
+
     <PageState
       :loading="table.loading.value"
       :refreshing="table.refreshing.value"
@@ -155,6 +187,16 @@ async function onReportChanged() {
             Мероприятие
           </button>
         </template>
+        <template #cell-actions="{ row }">
+          <button
+            v-if="auth.canEdit()"
+            class="btn secondary"
+            type="button"
+            @click="startEdit(row)"
+          >
+            Изменить
+          </button>
+        </template>
       </DataTable>
     </PageState>
 
@@ -170,5 +212,7 @@ async function onReportChanged() {
 <style scoped>
 .page {
   padding: 1rem;
+  display: grid;
+  gap: 1rem;
 }
 </style>

@@ -40,6 +40,7 @@ class Event(db.Model, TimestampMixin):
     event_type = db.Column(db.String(32), nullable=False)
     description = db.Column(db.Text, nullable=True)
     event_date = db.Column(db.Date, nullable=False)
+    manual_date = db.Column(db.Boolean, default=False, nullable=False)
     status = db.Column(db.String(32), default=EventStatus.PLANNED.value, nullable=False)
     source = db.Column(db.String(32), default=EventSource.MANUAL.value, nullable=False)
     rule_key = db.Column(db.String(256), nullable=True)
