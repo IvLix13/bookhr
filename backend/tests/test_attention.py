@@ -35,6 +35,8 @@ def test_attention_summary_overdue_events(admin_client, seed_company, monkeypatc
     event_items = [item for item in data["items"] if item["category"] == "events"]
     assert event_items
     assert event_items[0]["route"] == f"/?event={event.id}"
+    assert event_items[0]["due_date"] == "1 июля 2026 г."
+    assert "2026-07-01" not in event_items[0]["due_date"]
 
     db.session.refresh(event)
     assert event.status == "planned"

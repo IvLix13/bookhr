@@ -124,6 +124,23 @@ def format_long_date_ru(value: date | None) -> str:
     return f"{value.day} {_RU_MONTH_NAMES[value.month - 1]} {value.year} г."
 
 
+def format_iso_date_ru(value: str | None) -> str | None:
+    """Turn an ISO date string such as ``2025-09-11`` into «11 сентября 2025 г.»."""
+    if value is None:
+        return None
+    text = value.strip()
+    if not text:
+        return value
+    match = _ISO_DATE_IN_TEXT_RE.match(text)
+    if not match:
+        return value
+    try:
+        parsed = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+    except ValueError:
+        return value
+    return format_long_date_ru(parsed)
+
+
 def humanize_dates_in_text(text: str | None) -> str | None:
     """Replace ISO dates inside user-facing text with «11 августа 2025 г.»."""
     if text is None:

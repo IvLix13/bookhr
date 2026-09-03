@@ -52,6 +52,7 @@ describe('dates utils', () => {
 
   it('formats short date as DD month YYYY г.', () => {
     expect(formatShortDate('2026-07-24')).toBe('24 июля 2026 г.')
+    expect(formatShortDate('2025-09-11')).toBe('11 сентября 2025 г.')
     expect(formatShortDate('2026-07-24T10:00:00')).toBe('24 июля 2026 г.')
     expect(formatShortDate(null)).toBe('—')
   })

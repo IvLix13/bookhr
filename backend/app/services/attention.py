@@ -16,7 +16,12 @@ from app.services.events import effectively_overdue_filter
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import compute_passport_status
 from app.services.tenure import active_employment, is_tenure_award_pending
-from app.utils.dates import format_long_date_ru, humanize_dates_in_text, today_moscow
+from app.utils.dates import (
+    format_iso_date_ru,
+    format_long_date_ru,
+    humanize_dates_in_text,
+    today_moscow,
+)
 
 ALL_CATEGORIES = ("events", "contracts", "passports", "grades", "tenure")
 _OPEN_EVENT_STATUSES = (EventStatus.PLANNED.value, EventStatus.OVERDUE.value)
@@ -304,6 +309,10 @@ def build_attention_summary(
     items.sort(key=lambda item: (item.get("due_date") or "9999-12-31", item["title"]))
     if limit > 0:
         items = items[:limit]
+
+    for category_items in by_category.values():
+        for item in category_items:
+            item["due_date"] = format_iso_date_ru(item.get("due_date")) or item.get("due_date")
 
     return {
         "total": sum(counts.values()),

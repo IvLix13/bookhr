@@ -10,9 +10,9 @@ const attentionPayload = {
     {
       category: 'events',
       id: 42,
-      title: 'Просроченное мероприятие',
+      title: 'Просроченное мероприятие до 2025-09-11',
       subtitle: 'Иван Иванов',
-      due_date: '2026-07-01',
+      due_date: '2025-09-11',
       severity: 'danger',
       route: '/?event=42',
       event_id: 42,
@@ -123,7 +123,8 @@ describe('AttentionPanel', () => {
     const { wrapper } = await mountPanel()
     const button = itemButton(wrapper, 'Просроченное мероприятие')
     expect(button).toBeTruthy()
-    expect(button!.text()).toContain('1 июля 2026 г.')
+    expect(button!.text()).toContain('11 сентября 2025 г.')
+    expect(button!.text()).not.toContain('2025-09-11')
   })
 
   it('opens an event in a modal without navigating away', async () => {
@@ -187,7 +188,7 @@ describe('AttentionPanel', () => {
 
   it.each([
     ['Договоры', 'contracts', 'Истекает договор'],
-    ['Мероприятия', 'events', 'Просроченное мероприятие'],
+    ['Мероприятия', 'events', 'Просроченное мероприятие до 11 сентября 2025 г.'],
     ['Грейды', 'grades', 'Рассмотреть повышение грейда'],
     ['Паспорта', 'passports', 'Паспорт скоро истекает'],
     ['Награды за стаж', 'tenure', 'Поощрение за 10 лет'],

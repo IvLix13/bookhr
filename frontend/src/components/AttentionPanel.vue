@@ -232,7 +232,7 @@ defineExpose({ reload: loadAttention })
               <span class="badge" :class="severityClass(item.severity)">
                 {{ categoryLabel(item.category) }}
               </span>
-              <time v-if="item.due_date">{{ formatShortDate(item.due_date) }}</time>
+              <time v-if="item.due_date">{{ humanizeDatesInText(formatShortDate(item.due_date)) }}</time>
             </div>
           </button>
         </li>
