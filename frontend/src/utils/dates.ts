@@ -150,6 +150,17 @@ export function subtractYearsFromIsoDate(iso: string, years: number): string {
   return formatLocalDate(target)
 }
 
+/** Дата минус N месяцев с прижимом к последнему дню месяца, как relativedelta. */
+export function subtractMonthsFromIsoDate(iso: string, months: number): string {
+  const [year, month, day] = iso.split('-').map(Number)
+  if (!year || !month || !day) return iso
+  const totalMonths = year * 12 + (month - 1) - months
+  const targetYear = Math.floor(totalMonths / 12)
+  const targetMonth = totalMonths - targetYear * 12
+  const lastDay = new Date(targetYear, targetMonth + 1, 0).getDate()
+  return formatLocalDate(new Date(targetYear, targetMonth, Math.min(day, lastDay)))
+}
+
 export function calculateTermYears(
   startDateIso: string | null | undefined,
   endDateIso: string | null | undefined,

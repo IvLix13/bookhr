@@ -159,8 +159,9 @@ describe('ContractsView', () => {
     expect(wrapper.text()).toContain('1 декабря 2024 г.')
 
     await wrapper.get('select').setValue('2')
-    await wrapper.get('input[type="date"]').setValue('2027-06-01')
+    await wrapper.get('input[name="end_date"]').setValue('2027-06-01')
     expect(wrapper.text()).toContain('1 июня 2025 г.')
+    await wrapper.get('input[name="report_date"]').setValue('2027-01-15')
 
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
@@ -168,6 +169,7 @@ describe('ContractsView', () => {
     expect(updateContract).toHaveBeenCalledWith(1, {
       term_years: 2,
       end_date: '2027-06-01',
+      report_date: '2027-01-15',
     })
     expect(contracts.mock.calls.length).toBeGreaterThan(0)
   })

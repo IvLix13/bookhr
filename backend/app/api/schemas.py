@@ -201,6 +201,7 @@ class UpdateContractSchema(BaseSchema):
     end_date = DateField(allow_none=True)
     term_years = fields.Float(allow_none=True)
     notes = fields.Str(allow_none=True)
+    report_date = DateField(allow_none=True)
 
     @validates_schema
     def validate_dates(self, data, **kwargs):

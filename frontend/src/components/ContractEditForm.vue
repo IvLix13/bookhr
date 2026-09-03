@@ -2,9 +2,10 @@
 import { computed, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import type { ContractRow } from '@/types'
-import { formatShortDate, subtractYearsFromIsoDate } from '@/utils/dates'
+import { formatShortDate, subtractMonthsFromIsoDate, subtractYearsFromIsoDate } from '@/utils/dates'
 
 const STANDARD_TERMS: readonly string[] = ['1', '2', '3', '5']
+const REPORT_LEAD_MONTHS = 4
 
 const props = defineProps<{
   row: ContractRow | null
@@ -18,22 +19,67 @@ const emit = defineEmits<{
 const form = ref({
   term_years: '',
   end_date: '',
+  report_date: '',
 })
 const submitting = ref(false)
 const error = ref('')
+const applyingRow = ref(false)
+const syncingReport = ref(false)
+const reportDateTouched = ref(false)
+
+function defaultReportDate(endDate: string): string {
+  if (!endDate) return ''
+  return subtractMonthsFromIsoDate(endDate, REPORT_LEAD_MONTHS)
+}
+
+function isOpenReport(row: ContractRow | null): boolean {
+  const status = row?.renewal_report_event?.status
+  return status === 'planned' || status === 'overdue'
+}
+
+function isStandardTerm(value: string): boolean {
+  return STANDARD_TERMS.includes(value)
+}
 
 function resetForm(row: ContractRow | null) {
+  applyingRow.value = true
+  reportDateTouched.value = false
+  const endDate = row?.end_date ?? ''
   form.value = {
     term_years:
       row?.term_years !== null && row?.term_years !== undefined ? String(row.term_years) : '',
-    end_date: row?.end_date ?? '',
+    end_date: endDate,
+    report_date: isOpenReport(row)
+      ? (row?.renewal_report_event?.event_date ?? defaultReportDate(endDate))
+      : defaultReportDate(endDate),
   }
+  applyingRow.value = false
 }
 
 watch(
   () => props.row,
   (row) => resetForm(row),
   { immediate: true },
+)
+
+watch(
+  () => form.value.end_date,
+  (endDate) => {
+    if (applyingRow.value || reportDateTouched.value) return
+    syncingReport.value = true
+    form.value.report_date = defaultReportDate(endDate)
+    syncingReport.value = false
+  },
+  { flush: 'sync' },
+)
+
+watch(
+  () => form.value.report_date,
+  () => {
+    if (applyingRow.value || syncingReport.value) return
+    reportDateTouched.value = true
+  },
+  { flush: 'sync' },
 )
 
 const derivedStart = computed(() => {
@@ -45,9 +91,10 @@ const derivedStart = computed(() => {
   return formatShortDate(subtractYearsFromIsoDate(endDate, years))
 })
 
-function isStandardTerm(value: string): boolean {
-  return STANDARD_TERMS.includes(value)
-}
+const reportEditable = computed(() => {
+  const status = props.row?.renewal_report_event?.status
+  return !status || status === 'planned' || status === 'overdue'
+})
 
 async function submit() {
   if (!props.row) return
@@ -55,13 +102,21 @@ async function submit() {
     error.value = 'Укажите срок договора и дату окончания'
     return
   }
+  if (reportEditable.value && !form.value.report_date) {
+    error.value = 'Укажите дату рапорта'
+    return
+  }
   submitting.value = true
   error.value = ''
   try {
-    await api.updateContract(props.row.id, {
+    const payload: { term_years: number; end_date: string; report_date?: string } = {
       term_years: Number(form.value.term_years),
       end_date: form.value.end_date,
-    })
+    }
+    if (reportEditable.value && form.value.report_date) {
+      payload.report_date = form.value.report_date
+    }
+    await api.updateContract(props.row.id, payload)
     emit('saved')
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Не удалось сохранить договор'
@@ -103,9 +158,22 @@ async function submit() {
       </label>
       <label>
         Окончание договора
-        <input v-model="form.end_date" type="date" required />
+        <input v-model="form.end_date" name="end_date" type="date" required />
+      </label>
+      <label>
+        Дата рапорта
+        <input
+          v-model="form.report_date"
+          name="report_date"
+          type="date"
+          :required="reportEditable"
+          :disabled="!reportEditable"
+        />
       </label>
     </div>
+    <p v-if="reportEditable" class="hint">
+      По умолчанию за 4 месяца до окончания, можно указать другую дату.
+    </p>
 
     <div class="actions">
       <button class="btn" type="submit" :disabled="submitting">
@@ -157,6 +225,12 @@ input[type='date'] {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 0.65rem 0.75rem;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
 }
 
 .actions {

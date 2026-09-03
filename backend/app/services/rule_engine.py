@@ -82,6 +82,14 @@ def is_grade_promotion_event(event: Event) -> bool:
     )
 
 
+def is_contract_renewal_event(event: Event) -> bool:
+    if event.event_type != EventType.REPORT.value:
+        return False
+    if event.rule_key and event.rule_key.startswith(f"{CONTRACT_RULE_PREFIX}:"):
+        return True
+    return event.reference_type == "contract"
+
+
 def is_passport_preparation_event(event: Event) -> bool:
     if event.event_type != EventType.PASSPORT.value:
         return False
@@ -133,7 +141,8 @@ def _upsert_rule_event(
             return existing
         existing.title = title
         existing.description = description
-        existing.event_date = event_date
+        if not existing.manual_date:
+            existing.event_date = event_date
         existing.employment_id = employment_id
         existing.reference_type = reference_type
         existing.reference_id = reference_id
@@ -168,6 +177,30 @@ def _upsert_rule_event(
 
     queue_notifications_for_event(event)
     return event
+
+
+def apply_manual_report_date(
+    event: Event,
+    report_date: date,
+    *,
+    contract: Contract | None = None,
+) -> Event:
+    """Set a report date and remember it so later recalculation keeps it."""
+    if contract is None and event.reference_id:
+        contract = db.session.get(Contract, event.reference_id)
+    default_date = subtract_months(contract.end_date, 4) if contract else None
+    event.event_date = report_date
+    event.manual_date = default_date is None or report_date != default_date
+    if event.status == EventStatus.OVERDUE.value and event.event_date >= today_moscow():
+        transition_event_status(event, EventStatus.PLANNED, "Date moved forward")
+    return event
+
+
+def apply_contract_report_date(contract: Contract, report_date: date) -> Event | None:
+    event = find_contract_renewal_event(contract.id)
+    if event is None or event.status not in OPEN_EVENT_STATUSES:
+        return event
+    return apply_manual_report_date(event, report_date, contract=contract)
 
 
 def find_contract_renewal_event(contract_id: int) -> Event | None:

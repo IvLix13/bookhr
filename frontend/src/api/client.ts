@@ -134,6 +134,7 @@ export const api = {
       end_date: string
       term_years: number
       notes: string
+      report_date: string
     }>,
   ) => request(`/api/contracts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   grades: (params: TableQueryParams = {}) =>

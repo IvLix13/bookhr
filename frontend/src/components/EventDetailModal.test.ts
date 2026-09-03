@@ -1,4 +1,4 @@
-import { flushPromises, mount } from '@vue/test-utils'
+import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import EventDetailModal from '@/components/EventDetailModal.vue'
@@ -59,10 +59,12 @@ describe('EventDetailModal', () => {
     completeEvent.mockReset()
     cancelEvent.mockReset()
     reopenEvent.mockReset()
+    updateEvent.mockReset()
     getEvent.mockResolvedValue(plannedEvent)
     completeEvent.mockResolvedValue({ ...plannedEvent, status: 'completed' })
     cancelEvent.mockResolvedValue({ ...plannedEvent, status: 'cancelled' })
     reopenEvent.mockResolvedValue(plannedEvent)
+    updateEvent.mockResolvedValue(plannedEvent)
   })
 
   afterEach(() => {
@@ -164,6 +166,34 @@ describe('EventDetailModal', () => {
     await flushPromises()
 
     expect(completeEvent).toHaveBeenCalledWith(7, undefined, { extension_term_years: 3 })
+    expect(wrapper.emitted('changed')).toBeTruthy()
+  })
+
+  it('saves a custom report date for an open contract renewal event', async () => {
+    const contractEvent: EventItem = {
+      ...plannedEvent,
+      title: 'Подготовить рапорт на продление Договора: Иванов',
+      reference_type: 'contract',
+      reference_id: 10,
+    }
+    getEvent.mockResolvedValue(contractEvent)
+    updateEvent.mockResolvedValue({ ...contractEvent, event_date: '2026-06-01' })
+    const wrapper = await mountModal('hr')
+
+    const dateEl = document.body.querySelector('#report-date-input')
+    expect(dateEl).not.toBeNull()
+    const dateInput = new DOMWrapper(dateEl as HTMLInputElement)
+    expect((dateInput.element as HTMLInputElement).value).toBe('2026-07-24')
+    await dateInput.setValue('2026-06-01')
+
+    const saveBtn = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Сохранить дату'),
+    )
+    expect(saveBtn).toBeTruthy()
+    await saveBtn!.click()
+    await flushPromises()
+
+    expect(updateEvent).toHaveBeenCalledWith(7, { event_date: '2026-06-01' })
     expect(wrapper.emitted('changed')).toBeTruthy()
   })
 

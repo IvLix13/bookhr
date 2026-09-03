@@ -344,6 +344,45 @@ def test_update_rule_event_returns_409(hr_client, seed_company, app):
     assert response.status_code == 409
 
 
+def test_update_contract_report_date_via_event_api(hr_client, seed_company):
+    created = hr_client.post(
+        "/api/employees",
+        json={
+            "company_id": seed_company.id,
+            "full_name": "Событие Рапорта",
+            "hire_date": "2020-01-01",
+            "education_status": "no",
+            "contract_term_years": 1,
+            "contract_end": "2026-12-01",
+        },
+    )
+    assert created.status_code == 201
+    employment_id = created.get_json()["data"]["id"]
+    contracts = hr_client.get(f"/api/contracts?company_id={seed_company.id}").get_json()["data"]["items"]
+    report_id = next(c["renewal_report_event"]["id"] for c in contracts if c["employment_id"] == employment_id)
+
+    blocked = hr_client.patch(
+        f"/api/events/{report_id}",
+        json={"title": "Nope", "event_date": "2026-05-01"},
+    )
+    assert blocked.status_code == 409
+
+    response = hr_client.patch(
+        f"/api/events/{report_id}",
+        json={"event_date": "2026-05-01"},
+    )
+    assert response.status_code == 200
+    assert response.get_json()["data"]["event_date"] == "2026-05-01"
+
+    listed = hr_client.get(f"/api/contracts?company_id={seed_company.id}").get_json()["data"]["items"]
+    item = next(c for c in listed if c["employment_id"] == employment_id)
+    assert item["renewal_report_event"]["event_date"] == "2026-05-01"
+
+    with hr_client.application.app_context():
+        report = db.session.get(Event, report_id)
+        assert report.manual_date is True
+
+
 def test_delete_manual_event_hr(hr_client, seed_company):
     event = create_manual_event(
         company_id=seed_company.id,

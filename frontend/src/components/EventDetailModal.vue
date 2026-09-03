@@ -91,6 +91,12 @@ const canEditEvent = computed(
     isOpenStatus.value,
 )
 
+const canEditReportDate = computed(
+  () => canAct.value && isContractReport.value && isOpenStatus.value,
+)
+
+const reportDateDraft = ref('')
+
 async function loadEvent() {
   if (props.eventId == null) {
     event.value = null
@@ -100,6 +106,7 @@ async function loadEvent() {
   error.value = ''
   try {
     event.value = (await api.getEvent(props.eventId)) as EventItem
+    reportDateDraft.value = event.value.event_date
     const candidates = event.value.grade_completion?.candidates ?? []
     targetGradeId.value = candidates.length === 1 ? String(candidates[0].id) : ''
     newPassportValidUntil.value =
@@ -129,6 +136,7 @@ watch(
       extensionTermYears.value = '1'
       targetGradeId.value = ''
       newPassportValidUntil.value = ''
+      reportDateDraft.value = ''
       editing.value = false
     }
   },
@@ -251,6 +259,21 @@ async function onUpdated() {
   await loadEvent()
   emit('changed')
 }
+
+async function saveReportDate() {
+  if (!event.value || !canEditReportDate.value) return
+  actionBusy.value = true
+  error.value = ''
+  try {
+    await api.updateEvent(event.value.id, { event_date: reportDateDraft.value })
+    await loadEvent()
+    emit('changed')
+  } catch (err) {
+    error.value = normalizeError(err)
+  } finally {
+    actionBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -353,6 +376,24 @@ async function onUpdated() {
                 </button>
               </div>
               <template v-if="isOpenStatus">
+                <div v-if="canEditReportDate" class="extension-row">
+                  <label for="report-date-input">Дата рапорта:</label>
+                  <input
+                    id="report-date-input"
+                    v-model="reportDateDraft"
+                    type="date"
+                    :disabled="actionBusy"
+                    required
+                  />
+                  <button
+                    class="btn secondary"
+                    type="button"
+                    :disabled="actionBusy || !reportDateDraft || reportDateDraft === event.event_date"
+                    @click="saveReportDate"
+                  >
+                    Сохранить дату
+                  </button>
+                </div>
                 <div v-if="isContractReport" class="extension-row">
                   <label for="extension-term-select">Срок продления договора:</label>
                   <select
@@ -526,18 +567,13 @@ async function onUpdated() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.75rem;
   font-size: 0.9rem;
 }
 
-.extension-row select {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-}
-
-.passport-row input[type='date'] {
+.extension-row select,
+.extension-row input[type='date'] {
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);

@@ -13,6 +13,7 @@ import {
   isSameLocalDate,
   monthRange,
   parseIsoDate,
+  subtractMonthsFromIsoDate,
   subtractYearsFromIsoDate,
 } from '@/utils/dates'
 
@@ -83,6 +84,12 @@ describe('dates utils', () => {
   it('adds years to iso date', () => {
     expect(addYearsToIsoDate('2024-09-01', 1)).toBe('2025-09-01')
     expect(addYearsToIsoDate('2024-09-01', 2)).toBe('2026-09-01')
+  })
+
+  it('subtracts months from iso date the same way a report date is derived', () => {
+    expect(subtractMonthsFromIsoDate('2026-11-30', 3)).toBe('2026-08-30')
+    expect(subtractMonthsFromIsoDate('2026-05-31', 1)).toBe('2026-04-30')
+    expect(subtractMonthsFromIsoDate('2027-12-01', 4)).toBe('2027-08-01')
   })
 
   it('subtracts years from iso date the same way contract start is derived', () => {
