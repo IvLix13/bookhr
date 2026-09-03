@@ -1,9 +1,11 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ContractsView from '@/views/ContractsView.vue'
+import { useAuthStore } from '@/stores/auth'
 
-const { contracts } = vi.hoisted(() => ({
+const { contracts, updateContract } = vi.hoisted(() => ({
   contracts: vi.fn(async () => ({
     items: [
       {
@@ -12,6 +14,7 @@ const { contracts } = vi.hoisted(() => ({
         full_name: 'Иван Иванов',
         start_date: '2025-01-01',
         end_date: '2027-12-01',
+        term_years: 3,
         days_left: 100,
         is_active: true,
         renewal_report_event: {
@@ -28,6 +31,7 @@ const { contracts } = vi.hoisted(() => ({
         full_name: 'Пётр Петров',
         start_date: '2025-01-01',
         end_date: '2027-10-01',
+        term_years: 2,
         days_left: 60,
         is_active: true,
         renewal_report_event: {
@@ -43,10 +47,11 @@ const { contracts } = vi.hoisted(() => ({
     page: 1,
     per_page: 25,
   })),
+  updateContract: vi.fn(async () => ({})),
 }))
 
 vi.mock('@/api/client', () => ({
-  api: { contracts },
+  api: { contracts, updateContract },
 }))
 
 const modalStub = {
@@ -60,29 +65,42 @@ const modalStub = {
   `,
 }
 
-async function mountView() {
-  const router = createRouter({
-    history: createMemoryHistory(),
-    routes: [
-      { path: '/contracts', name: 'contracts', component: { template: '<div />' } },
-      { path: '/events', name: 'events', component: { template: '<div />' } },
-    ],
-  })
-  await router.push({ name: 'contracts' })
-  await router.isReady()
-  const pushSpy = vi.spyOn(router, 'push')
-
-  const wrapper = mount(ContractsView, {
-    global: {
-      plugins: [router],
-      stubs: { EventDetailModal: modalStub },
-    },
-  })
-  await flushPromises()
-  return { wrapper, pushSpy }
-}
-
 describe('ContractsView', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    contracts.mockClear()
+    updateContract.mockClear()
+  })
+
+  async function mountView(role: 'admin' | 'hr' | 'viewer' = 'hr') {
+    const auth = useAuthStore()
+    auth.user = {
+      id: 1,
+      username: role,
+      full_name: role,
+      role,
+    }
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/contracts', name: 'contracts', component: { template: '<div />' } },
+        { path: '/events', name: 'events', component: { template: '<div />' } },
+      ],
+    })
+    await router.push({ name: 'contracts' })
+    await router.isReady()
+    const pushSpy = vi.spyOn(router, 'push')
+
+    const wrapper = mount(ContractsView, {
+      global: {
+        plugins: [router],
+        stubs: { EventDetailModal: modalStub },
+      },
+    })
+    await flushPromises()
+    return { wrapper, pushSpy }
+  }
+
   it('opens the renewal report in a modal without leaving the contracts tab', async () => {
     const { wrapper, pushSpy } = await mountView()
 
@@ -114,5 +132,43 @@ describe('ContractsView', () => {
     await flushPromises()
 
     expect(contracts).toHaveBeenCalled()
+  })
+
+  it('shows edit button for hr and hides it for viewer', async () => {
+    const hrView = await mountView('hr')
+    expect(hrView.wrapper.findAll('button').some((item) => item.text() === 'Изменить')).toBe(true)
+    hrView.wrapper.unmount()
+
+    const viewerView = await mountView('viewer')
+    expect(viewerView.wrapper.findAll('button').some((item) => item.text() === 'Изменить')).toBe(
+      false,
+    )
+    expect(viewerView.wrapper.findAll('button').some((item) => item.text() === 'Мероприятие')).toBe(
+      true,
+    )
+  })
+
+  it('opens the contract form and saves term plus end date', async () => {
+    const { wrapper } = await mountView('hr')
+    const editButton = wrapper.findAll('button').find((item) => item.text() === 'Изменить')
+    expect(editButton).toBeTruthy()
+    await editButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Редактирование договора: Иван Иванов')
+    expect(wrapper.text()).toContain('1 января 2025 г.')
+
+    await wrapper.get('select').setValue('2')
+    await wrapper.get('input[type="date"]').setValue('2027-06-01')
+    expect(wrapper.text()).toContain('1 июня 2025 г.')
+
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateContract).toHaveBeenCalledWith(1, {
+      term_years: 2,
+      end_date: '2027-06-01',
+    })
+    expect(contracts.mock.calls.length).toBeGreaterThan(0)
   })
 })

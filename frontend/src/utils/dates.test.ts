@@ -13,6 +13,7 @@ import {
   isSameLocalDate,
   monthRange,
   parseIsoDate,
+  subtractYearsFromIsoDate,
 } from '@/utils/dates'
 
 describe('dates utils', () => {
@@ -33,8 +34,9 @@ describe('dates utils', () => {
     expect(period.from <= period.to).toBe(true)
   })
 
-  it('formats display date in Russian locale', () => {
-    expect(formatDisplayDate('2026-07-24')).toContain('2026')
+  it('formats display date in Russian with lowercase г.', () => {
+    expect(formatDisplayDate('2026-07-24')).toBe('Пятница, 24 июля 2026 г.')
+    expect(formatDisplayDate('2026-07-24')).not.toContain('Г.')
   })
 
   it('formats numeric date as DD.MM.YYYY', () => {
@@ -81,6 +83,12 @@ describe('dates utils', () => {
   it('adds years to iso date', () => {
     expect(addYearsToIsoDate('2024-09-01', 1)).toBe('2025-09-01')
     expect(addYearsToIsoDate('2024-09-01', 2)).toBe('2026-09-01')
+  })
+
+  it('subtracts years from iso date the same way contract start is derived', () => {
+    expect(subtractYearsFromIsoDate('2027-01-10', 3)).toBe('2024-01-10')
+    expect(subtractYearsFromIsoDate('2026-01-10', 2)).toBe('2024-01-10')
+    expect(subtractYearsFromIsoDate('2027-06-01', 2)).toBe('2025-06-01')
   })
 
   it('calculates term years between dates', () => {
