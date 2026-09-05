@@ -55,7 +55,11 @@ from app.services.grade_catalog import (
     validate_min_years,
     validate_rank,
 )
-from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
+from app.services.grades import (
+    assign_grade_to_employment,
+    compute_grade_eligibility,
+    recompute_open_grade_required_months,
+)
 from app.services.rule_engine import apply_contract_report_date, recalculate_employment_events
 from app.services.tenure import (
     active_employment,
@@ -313,6 +317,10 @@ def register_routes(bp):
         payload = get_json()
         try:
             apply_grade_catalog_payload(grade, payload)
+            if "min_years" in payload:
+                for employment in recompute_open_grade_required_months(grade):
+                    recalculate_employment_events(employment)
+                    refresh_overdue_events(employment.company_id)
             commit_grade_catalog()
         except ValueError as exc:
             return api_response(message=str(exc), status=400)

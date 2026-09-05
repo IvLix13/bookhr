@@ -65,6 +65,10 @@ export function resolveEventStatus(
   return effectiveStatus || status || ''
 }
 
+export function isShownOnCalendar(status: string | null | undefined): boolean {
+  return status !== 'cancelled'
+}
+
 export function getRewardStatusMeta(status: string | null | undefined): StatusMeta {
   if (!status) return { label: '—', variant: '' }
   switch (status) {

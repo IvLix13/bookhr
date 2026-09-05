@@ -9,12 +9,15 @@ from app.models import (
     Event,
     EventSource,
     EventStatus,
+    EventStatusHistory,
+    EventType,
     GradeCatalog,
     Passport,
     Person,
 )
-from app.services.employees import create_person_with_employment
-from app.services.grades import compute_grade_eligibility
+from app.services.employees import create_person_with_employment, get_current_grade, sync_actual_grade
+from app.services.events import transition_event_status
+from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.rule_engine import (
     _expected_rule_keys,
     contract_rule_key,
@@ -425,3 +428,129 @@ def test_complete_tenure_award_event_marks_received(hr_client, seed_company, mon
         assert award.received_date == date(2020, 1, 1)
         event = db.session.get(Event, event_id)
         assert event.status == EventStatus.COMPLETED.value
+
+
+def test_changing_grade_date_retargets_preparation_without_cancel(hr_client, seed_company, app):
+    with app.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=1, is_active=True)
+        middle = GradeCatalog(name="Middle", rank=2, min_years=1, is_active=True)
+        db.session.add_all([junior, middle])
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Сдвиг Грейда",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status="yes",
+        )
+        assign_grade_to_employment(employment, junior, date(2026, 10, 1))
+        recalculate_employment_events(employment)
+        db.session.commit()
+        employment_id = employment.id
+        prep = Event.query.filter(
+            Event.employment_id == employment_id,
+            Event.rule_key.like("grade-preparation:%"),
+        ).one()
+        prep_id = prep.id
+        assert prep.event_date == date(2027, 9, 1)
+
+    updated = hr_client.patch(
+        f"/api/employees/{employment_id}",
+        json={"grade_date": "2027-01-01"},
+    )
+    assert updated.status_code == 200
+
+    with app.app_context():
+        prep = db.session.get(Event, prep_id)
+        assert prep is not None
+        assert prep.status == EventStatus.PLANNED.value
+        assert prep.event_date == date(2027, 12, 1)
+        cancels = EventStatusHistory.query.filter_by(
+            event_id=prep_id,
+            new_status=EventStatus.CANCELLED.value,
+        ).count()
+        assert cancels == 0
+        assert Event.query.filter_by(
+            employment_id=employment_id,
+            event_type=EventType.GRADE.value,
+            status=EventStatus.CANCELLED.value,
+        ).count() == 0
+
+
+def test_past_grade_preparation_is_moved_to_today(app, seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.rule_engine.today_moscow", lambda: date(2026, 9, 5))
+    monkeypatch.setattr("app.services.events.today_moscow", lambda: date(2026, 9, 5))
+    monkeypatch.setattr("app.services.grades.today_moscow", lambda: date(2026, 9, 5))
+
+    with app.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=0.1, is_active=True)
+        middle = GradeCatalog(name="Middle", rank=2, min_years=1, is_active=True)
+        db.session.add_all([junior, middle])
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Подготовка Сегодня",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status="yes",
+        )
+        assign_grade_to_employment(employment, junior, date(2026, 8, 20))
+        recalculate_employment_events(employment)
+        db.session.commit()
+
+        prep = Event.query.filter(
+            Event.employment_id == employment.id,
+            Event.rule_key.like("grade-preparation:%"),
+        ).one()
+        assert prep.event_date == date(2026, 9, 5)
+        assert prep.status in {EventStatus.PLANNED.value, EventStatus.OVERDUE.value}
+
+
+def test_completed_grade_preparation_is_not_moved(app, seed_company):
+    with app.app_context():
+        junior = GradeCatalog(name="Junior", rank=1, min_years=1, is_active=True)
+        middle = GradeCatalog(name="Middle", rank=2, min_years=1, is_active=True)
+        db.session.add_all([junior, middle])
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Подготовка Готово",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status="yes",
+        )
+        assign_grade_to_employment(employment, junior, date(2025, 1, 1))
+        recalculate_employment_events(employment)
+        db.session.flush()
+        prep = Event.query.filter(
+            Event.employment_id == employment.id,
+            Event.rule_key.like("grade-preparation:%"),
+        ).one()
+        transition_event_status(prep, EventStatus.COMPLETED, "готово")
+        old_date = prep.event_date
+        prep_id = prep.id
+        db.session.commit()
+        employment_id = employment.id
+
+        employment = db.session.get(Employment, employment_id)
+        current = get_current_grade(employment)
+        assert current is not None
+        sync_actual_grade(employment, current.grade_id, date(2025, 6, 1))
+        recalculate_employment_events(employment)
+        db.session.commit()
+
+        prep = db.session.get(Event, prep_id)
+        assert prep.status == EventStatus.COMPLETED.value
+        assert prep.event_date == old_date
+        assert Event.query.filter(
+            Event.employment_id == employment_id,
+            Event.rule_key.like("grade-preparation:%"),
+            Event.status == EventStatus.PLANNED.value,
+        ).count() == 0
+        assert EventStatusHistory.query.filter_by(
+            event_id=prep_id,
+            new_status=EventStatus.CANCELLED.value,
+        ).count() == 0

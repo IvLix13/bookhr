@@ -9,7 +9,7 @@ import type { EventItem, Paginated } from '@/types'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { formatDisplayDate, humanizeDatesInText } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
-import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
+import { getEventStatusMeta, isShownOnCalendar, resolveEventStatus } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
@@ -44,7 +44,7 @@ async function loadDayEvents() {
       to: props.date,
       per_page: 200,
     })) as Paginated<EventItem>
-    events.value = data.items
+    events.value = data.items.filter((event) => isShownOnCalendar(event.status))
   } catch (err) {
     error.value = normalizeError(err)
     events.value = []

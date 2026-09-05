@@ -201,13 +201,28 @@ def apply_manual_report_date(
 def apply_contract_report_date(contract: Contract, report_date: date) -> Event | None:
     event = find_contract_renewal_event(contract.id)
     if event is None:
+        event = find_contract_renewal_event(contract.id, include_cancelled=True)
+        if event is not None:
+            transition_event_status(event, EventStatus.PLANNED, "Reopened")
+    if event is None and contract.employment:
+        process_contract_rules(contract.employment)
+        event = find_contract_renewal_event(contract.id)
+        if event is None:
+            event = find_contract_renewal_event(contract.id, include_cancelled=True)
+            if event is not None:
+                transition_event_status(event, EventStatus.PLANNED, "Reopened")
+    if event is None:
         return event
     if event.status not in OPEN_EVENT_STATUSES and event.status != EventStatus.COMPLETED.value:
         return event
     return apply_manual_report_date(event, report_date, contract=contract)
 
 
-def find_contract_renewal_event(contract_id: int) -> Event | None:
+def find_contract_renewal_event(
+    contract_id: int,
+    *,
+    include_cancelled: bool = False,
+) -> Event | None:
     """Renewal report of a contract: the open one, otherwise the completed one.
 
     A completed report still has to be visible on the contracts screen so the
@@ -227,8 +242,16 @@ def find_contract_renewal_event(contract_id: int) -> Event | None:
     if open_event:
         return open_event
 
-    return (
+    completed = (
         query.filter(Event.status == EventStatus.COMPLETED.value)
+        .order_by(Event.event_date.desc())
+        .first()
+    )
+    if completed or not include_cancelled:
+        return completed
+
+    return (
+        query.filter(Event.status == EventStatus.CANCELLED.value)
         .order_by(Event.event_date.desc())
         .first()
     )
@@ -328,6 +351,91 @@ def process_contract_rules(employment: Employment) -> int:
     return 1
 
 
+def _release_cancelled_rule_key(rule_key: str, *, keep_event_id: int | None = None) -> None:
+    existing = Event.query.filter_by(rule_key=rule_key).first()
+    if (
+        existing
+        and existing.id != keep_event_id
+        and existing.status == EventStatus.CANCELLED.value
+    ):
+        existing.rule_key = f"{rule_key}:archived:{existing.id}"
+        db.session.flush()
+
+
+def _find_grade_rule_event(
+    employment_id: int,
+    prefix: str,
+    grade_history_id: int,
+    statuses: set[str],
+) -> Event | None:
+    return (
+        Event.query.filter(
+            Event.employment_id == employment_id,
+            Event.source == EventSource.RULE.value,
+            Event.rule_key.like(f"{prefix}:{grade_history_id}:____-__-__"),
+            Event.status.in_(list(statuses)),
+        )
+        .order_by(Event.id.desc())
+        .first()
+    )
+
+
+def _retarget_or_upsert_grade_event(
+    *,
+    employment: Employment,
+    grade_history_id: int,
+    prefix: str,
+    rule_key: str,
+    title: str,
+    event_date: date,
+    description: str,
+    clamp_past_to_today: bool = False,
+) -> Event | None:
+    today = today_moscow()
+    if clamp_past_to_today and event_date < today:
+        event_date = today
+
+    completed = _find_grade_rule_event(
+        employment.id,
+        prefix,
+        grade_history_id,
+        {EventStatus.COMPLETED.value},
+    )
+    if completed:
+        return completed
+
+    existing = _find_grade_rule_event(
+        employment.id,
+        prefix,
+        grade_history_id,
+        OPEN_EVENT_STATUSES,
+    )
+    if existing:
+        _release_cancelled_rule_key(rule_key, keep_event_id=existing.id)
+        existing.title = title
+        existing.description = description
+        existing.rule_key = rule_key
+        if not existing.manual_date:
+            existing.event_date = event_date
+        existing.reference_type = "employee_grade_history"
+        existing.reference_id = grade_history_id
+        if existing.status == EventStatus.OVERDUE.value and existing.event_date >= today:
+            transition_event_status(existing, EventStatus.PLANNED, "Date moved forward")
+        return existing
+
+    return _upsert_rule_event(
+        company_id=employment.company_id,
+        employment_id=employment.id,
+        rule_key=rule_key,
+        title=title,
+        event_type=EventType.GRADE,
+        event_date=event_date,
+        description=description,
+        reference_type="employee_grade_history",
+        reference_id=grade_history_id,
+    )
+
+
 def process_grade_rules(employment: Employment) -> int:
     current = get_current_grade(employment)
     if not current:
@@ -345,27 +453,24 @@ def process_grade_rules(employment: Employment) -> int:
     description = (
         f"Доступны грейды «{candidate_names}» с {format_long_date_ru(eligible_date)}"
     )
-    _upsert_rule_event(
-        company_id=employment.company_id,
-        employment_id=employment.id,
+    _retarget_or_upsert_grade_event(
+        employment=employment,
+        grade_history_id=current.id,
+        prefix=GRADE_PREP_RULE_PREFIX,
         rule_key=grade_preparation_rule_key(current.id, eligible_date),
         title=f"Подготовить документы на повышение грейда: {name}",
-        event_type=EventType.GRADE,
         event_date=prep_date,
         description=description,
-        reference_type="employee_grade_history",
-        reference_id=current.id,
+        clamp_past_to_today=True,
     )
-    _upsert_rule_event(
-        company_id=employment.company_id,
-        employment_id=employment.id,
+    _retarget_or_upsert_grade_event(
+        employment=employment,
+        grade_history_id=current.id,
+        prefix=GRADE_PROMOTION_RULE_PREFIX,
         rule_key=grade_promotion_rule_key(current.id, eligible_date),
         title=f"Повышение грейда: {name}",
-        event_type=EventType.GRADE,
         event_date=eligible_date,
         description=description,
-        reference_type="employee_grade_history",
-        reference_id=current.id,
     )
     return 2
 

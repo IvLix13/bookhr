@@ -5,11 +5,14 @@ from app.models import (
     EducationStatus,
     EmployeeGradeHistory,
     Employment,
+    Event,
+    EventStatus,
     GradeCatalog,
     PositionHistory,
 )
 from app.services.employees import create_person_with_employment, get_current_grade, get_current_position
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
+from app.services.rule_engine import recalculate_employment_events
 
 
 def test_create_grade_catalog_as_admin(admin_client, app):
@@ -50,6 +53,46 @@ def test_create_grade_catalog_rejects_invalid_min_years(admin_client):
     )
     assert response.status_code == 400
     assert "0.1 year steps" in response.get_json()["message"]
+
+
+def test_update_min_years_shifts_open_grade_events(admin_client, seed_company, app):
+    with app.app_context():
+        junior = GradeCatalog(name="JuniorShift", rank=1, min_years=1, is_active=True)
+        middle = GradeCatalog(name="MiddleShift", rank=2, min_years=1, is_active=True)
+        db.session.add_all([junior, middle])
+        db.session.flush()
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name="Каталог Срок",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+            position_grade_id=middle.id,
+            education_status="yes",
+        )
+        assign_grade_to_employment(employment, junior, date(2026, 10, 1))
+        recalculate_employment_events(employment)
+        db.session.commit()
+        junior_id = junior.id
+        prep = Event.query.filter(
+            Event.employment_id == employment.id,
+            Event.rule_key.like("grade-preparation:%"),
+        ).one()
+        prep_id = prep.id
+        assert prep.event_date == date(2027, 9, 1)
+
+    response = admin_client.patch(
+        f"/api/grade-catalog/{junior_id}",
+        json={"min_years": 2},
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        history = EmployeeGradeHistory.query.filter_by(valid_to=None).one()
+        assert history.required_months == 24
+        prep = db.session.get(Event, prep_id)
+        assert prep is not None
+        assert prep.status == EventStatus.PLANNED.value
+        assert prep.event_date == date(2028, 9, 1)
 
 
 def test_update_grade_catalog_as_admin(admin_client, app):
@@ -331,7 +374,6 @@ def test_no_university_extra_year_is_frozen_at_rank_entry(app, seed_company):
 
         employment.person.education_status = EducationStatus.YES.value
         junior.extra_year_without_university = False
-        junior.min_years = 0.5
         db.session.commit()
 
         assert compute_grade_eligibility(employment)["eligible_date"] == date(2026, 1, 1)

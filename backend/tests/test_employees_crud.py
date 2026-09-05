@@ -520,6 +520,44 @@ def test_update_contract_report_date_back_to_default_unlocks_recalc(hr_client, s
         assert report.manual_date is False
 
 
+def test_update_contract_report_date_reopens_cancelled_report(hr_client, seed_company):
+    created = hr_client.post(
+        "/api/employees",
+        json={
+            "company_id": seed_company.id,
+            "full_name": "Рапорт Отмена",
+            "hire_date": "2020-05-01",
+            "education_status": "no",
+            "contract_term_years": 1,
+            "contract_end": "2026-12-01",
+        },
+    )
+    assert created.status_code == 201
+    employment_id = created.get_json()["data"]["id"]
+    contracts = hr_client.get(f"/api/contracts?company_id={seed_company.id}").get_json()["data"]["items"]
+    contract_item = next(c for c in contracts if c["employment_id"] == employment_id)
+    contract_id = contract_item["id"]
+    report_id = contract_item["renewal_report_event"]["id"]
+
+    cancelled = hr_client.post(f"/api/events/{report_id}/cancel", json={"comment": "Не нужен"})
+    assert cancelled.status_code == 200
+
+    listed = hr_client.get(f"/api/contracts?company_id={seed_company.id}").get_json()["data"]["items"]
+    hidden = next(c for c in listed if c["employment_id"] == employment_id)
+    assert hidden["renewal_report_event"] is None
+
+    updated = hr_client.patch(
+        f"/api/contracts/{contract_id}",
+        json={"report_date": "2026-11-10", "end_date": "2026-12-01", "term_years": 1},
+    )
+    assert updated.status_code == 200
+    report = updated.get_json()["data"]["renewal_report_event"]
+    assert report is not None
+    assert report["id"] == report_id
+    assert report["event_date"] == "2026-11-10"
+    assert report["status"] == EventStatus.PLANNED.value
+
+
 def test_viewer_cannot_update_contract(viewer_client, seed_company):
     with viewer_client.application.app_context():
         _, employment = create_person_with_employment(

@@ -7,6 +7,7 @@ from app.models import (
     EmployeeGradeHistory,
     Employment,
     Event,
+    EventStatusHistory,
     EventType,
     GradeCatalog,
     ImportJob,
@@ -334,8 +335,23 @@ def event_to_dict(event: Event) -> dict:
         "grade_event_kind": grade_event_kind,
         "grade_completion": grade_completion,
         "passport_completion": passport_completion,
+        "last_status_change": _last_status_change_to_dict(event),
     }
     return humanize_user_text_fields(payload)
+
+
+def _last_status_change_to_dict(event: Event) -> dict | None:
+    history = list(event.status_history or [])
+    if not history:
+        return None
+    last: EventStatusHistory = max(history, key=lambda item: (item.changed_at, item.id))
+    changed_by = last.changed_by
+    return {
+        "username": changed_by.username if changed_by else None,
+        "changed_at": last.changed_at.isoformat() if last.changed_at else None,
+        "new_status": last.new_status,
+        "comment": last.comment,
+    }
 
 
 def import_job_to_dict(job: ImportJob) -> dict:

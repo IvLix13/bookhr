@@ -92,6 +92,12 @@ export interface EventItem {
   created_at: string | null
   completed_at: string | null
   completion_comment: string | null
+  last_status_change?: {
+    username: string | null
+    changed_at: string | null
+    new_status: string
+    comment: string | null
+  } | null
   grade_event_kind?: 'preparation' | 'promotion' | null
   grade_completion?: {
     next_rank: number | null

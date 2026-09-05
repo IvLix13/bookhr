@@ -193,6 +193,10 @@ onUnmounted(() => {
 async function runAction(action: 'complete' | 'cancel' | 'reopen') {
   if (!event.value || !canAct.value) return
   if (action === 'cancel') {
+    if (!comment.value.trim()) {
+      error.value = 'Укажите причину отмены'
+      return
+    }
     const confirmed = window.confirm('Отменить мероприятие? Это действие нельзя отменить.')
     if (!confirmed) return
   }
@@ -352,6 +356,17 @@ async function saveReportDate() {
                 <dt>Создано</dt>
                 <dd>{{ formatShortDate(event.created_at) }}</dd>
               </div>
+              <div v-if="event.last_status_change">
+                <dt>Последнее изменение</dt>
+                <dd>
+                  {{ event.last_status_change.username ?? '—' }},
+                  {{ formatShortDate(event.last_status_change.changed_at) }}
+                </dd>
+              </div>
+              <div v-if="event.last_status_change?.comment" class="full">
+                <dt>Комментарий к изменению</dt>
+                <dd>{{ humanizeDatesInText(event.last_status_change.comment) }}</dd>
+              </div>
               <div v-if="event.completed_at">
                 <dt>Выполнено</dt>
                 <dd>{{ formatShortDate(event.completed_at) }}</dd>
@@ -459,7 +474,7 @@ async function saveReportDate() {
                 <input
                   v-model="comment"
                   type="text"
-                  placeholder="Комментарий (необязательно)"
+                  placeholder="Почему отменяете (для отмены обязательно)"
                   aria-label="Комментарий к действию"
                   :disabled="actionBusy"
                 />
@@ -480,7 +495,7 @@ async function saveReportDate() {
                   <button
                     class="btn secondary"
                     type="button"
-                    :disabled="actionBusy"
+                    :disabled="actionBusy || !comment.trim()"
                     @click="runAction('cancel')"
                   >
                     Отменить

@@ -127,6 +127,8 @@ export const API_MESSAGE_LABELS: Record<string, string> = {
   'min_years must use 0.1 year steps': 'Минимальный стаж задаётся с шагом 0.1 года',
   'grade name or rank must be unique': 'Название или ранг грейда должны быть уникальными',
   Forbidden: 'Недостаточно прав для выполнения действия',
+  'Укажите причину отмены': 'Укажите причину отмены',
+  'comment: Укажите причину отмены': 'Укажите причину отмены',
   'Not found': 'Запись не найдена',
   'Invalid credentials': 'Неверный логин или пароль',
 }
