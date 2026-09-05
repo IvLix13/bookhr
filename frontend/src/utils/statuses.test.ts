@@ -4,6 +4,7 @@ import {
   getEventStatusMeta,
   getPassportStatusMeta,
   getRewardStatusMeta,
+  isShownOnCalendar,
   resolveEventStatus,
 } from '@/utils/statuses'
 
@@ -23,6 +24,13 @@ describe('status dictionaries', () => {
     expect(getEventStatusMeta('completed')).toEqual({ label: 'Выполнено', variant: 'success' })
     expect(getEventStatusMeta('cancelled')).toEqual({ label: 'Отменено', variant: 'warning' })
     expect(getEventStatusMeta('overdue')).toEqual({ label: 'Просрочено', variant: 'danger' })
+  })
+
+  it('hides cancelled events from the calendar', () => {
+    expect(isShownOnCalendar('planned')).toBe(true)
+    expect(isShownOnCalendar('overdue')).toBe(true)
+    expect(isShownOnCalendar('completed')).toBe(true)
+    expect(isShownOnCalendar('cancelled')).toBe(false)
   })
 
   it('prefers effective_status when resolving event status', () => {

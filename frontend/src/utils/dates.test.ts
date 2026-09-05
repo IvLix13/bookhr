@@ -9,6 +9,7 @@ import {
   formatMonthYearLabel,
   formatNumericDate,
   formatShortDate,
+  formatShortDateTime,
   humanizeDatesInText,
   isSameLocalDate,
   monthRange,
@@ -55,6 +56,14 @@ describe('dates utils', () => {
     expect(formatShortDate('2025-09-11')).toBe('11 сентября 2025 г.')
     expect(formatShortDate('2026-07-24T10:00:00')).toBe('24 июля 2026 г.')
     expect(formatShortDate(null)).toBe('—')
+  })
+
+  it('formats short datetime with hours and minutes without timezone shift', () => {
+    expect(formatShortDateTime('2026-07-20T12:00:00')).toBe('20 июля 2026 г., 12:00')
+    expect(formatShortDateTime('2026-07-20T09:05:00+03:00')).toBe('20 июля 2026 г., 09:05')
+    expect(formatShortDateTime('2026-07-20 14:30:00')).toBe('20 июля 2026 г., 14:30')
+    expect(formatShortDateTime('2026-07-20')).toBe('20 июля 2026 г.')
+    expect(formatShortDateTime(null)).toBe('—')
   })
 
   it('formats YYYY-MM keys as month year labels', () => {

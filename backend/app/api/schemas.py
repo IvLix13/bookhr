@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from datetime import date
 
-from marshmallow import Schema, ValidationError, fields, validate, validates_schema, EXCLUDE
+from marshmallow import (
+    EXCLUDE,
+    Schema,
+    ValidationError,
+    fields,
+    pre_load,
+    validate,
+    validates_schema,
+)
 
 from app.models import EducationStatus, EventType, RoleName
 from app.utils.dates import calculate_contract_start
@@ -83,6 +91,24 @@ class EventActionSchema(BaseSchema):
     new_end_date = DateField(allow_none=True)
     target_grade_id = fields.Int(allow_none=True)
     new_passport_valid_until = DateField(allow_none=True)
+
+
+class CancelEventSchema(BaseSchema):
+    comment = fields.Str(
+        required=True,
+        error_messages={"required": "Укажите причину отмены", "null": "Укажите причину отмены"},
+    )
+
+    @pre_load
+    def strip_comment(self, data, **kwargs):
+        if isinstance(data, dict) and data.get("comment") is not None:
+            data = {**data, "comment": str(data["comment"]).strip()}
+        return data
+
+    @validates_schema
+    def require_comment(self, data, **kwargs):
+        if not data.get("comment"):
+            raise ValidationError({"comment": ["Укажите причину отмены"]})
 
 
 class CreateEmployeeSchema(BaseSchema):

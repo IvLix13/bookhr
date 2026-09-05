@@ -7,7 +7,7 @@ import { normalizeError } from '@/api/errors'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import { useAuthStore } from '@/stores/auth'
 import type { EventItem } from '@/types'
-import { formatDisplayDate, formatShortDate, humanizeDatesInText } from '@/utils/dates'
+import { formatDisplayDate, formatShortDate, formatShortDateTime, humanizeDatesInText } from '@/utils/dates'
 import { labelEventSource, labelEventType } from '@/utils/labels'
 import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 
@@ -69,6 +69,9 @@ const statusKey = computed(() =>
 )
 
 const statusMeta = computed(() => getEventStatusMeta(statusKey.value))
+const lastChangeStatusMeta = computed(() =>
+  getEventStatusMeta(event.value?.last_status_change?.new_status),
+)
 
 const isOpenStatus = computed(() => {
   const status = event.value?.status
@@ -193,6 +196,10 @@ onUnmounted(() => {
 async function runAction(action: 'complete' | 'cancel' | 'reopen') {
   if (!event.value || !canAct.value) return
   if (action === 'cancel') {
+    if (!comment.value.trim()) {
+      error.value = 'Укажите причину отмены'
+      return
+    }
     const confirmed = window.confirm('Отменить мероприятие? Это действие нельзя отменить.')
     if (!confirmed) return
   }
@@ -352,6 +359,21 @@ async function saveReportDate() {
                 <dt>Создано</dt>
                 <dd>{{ formatShortDate(event.created_at) }}</dd>
               </div>
+              <div v-if="event.last_status_change" class="full">
+                <dt>Последнее изменение</dt>
+                <dd class="last-change">
+                  <span>{{ event.last_status_change.username ?? '—' }}</span>
+                  <StatusBadge
+                    :label="lastChangeStatusMeta.label"
+                    :variant="lastChangeStatusMeta.variant"
+                  />
+                  <span>{{ formatShortDateTime(event.last_status_change.changed_at) }}</span>
+                </dd>
+              </div>
+              <div v-if="event.last_status_change?.comment" class="full">
+                <dt>Комментарий к изменению</dt>
+                <dd>{{ humanizeDatesInText(event.last_status_change.comment) }}</dd>
+              </div>
               <div v-if="event.completed_at">
                 <dt>Выполнено</dt>
                 <dd>{{ formatShortDate(event.completed_at) }}</dd>
@@ -459,7 +481,7 @@ async function saveReportDate() {
                 <input
                   v-model="comment"
                   type="text"
-                  placeholder="Комментарий (необязательно)"
+                  placeholder="Почему отменяете (для отмены обязательно)"
                   aria-label="Комментарий к действию"
                   :disabled="actionBusy"
                 />
@@ -480,7 +502,7 @@ async function saveReportDate() {
                   <button
                     class="btn secondary"
                     type="button"
-                    :disabled="actionBusy"
+                    :disabled="actionBusy || !comment.trim()"
                     @click="runAction('cancel')"
                   >
                     Отменить
@@ -563,6 +585,13 @@ async function saveReportDate() {
 
 .details dd {
   margin: 0.2rem 0 0;
+}
+
+.last-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
 }
 
 .details .full {

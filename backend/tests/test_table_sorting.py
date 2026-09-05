@@ -265,6 +265,43 @@ def test_events_sort_by_planned_nearest(admin_client, seed_company, monkeypatch)
     assert titles.index("Просрочено") < titles.index("Выполнено")
 
 
+def test_events_sort_keeps_cancelled_last(admin_client, seed_company):
+    with admin_client.application.app_context():
+        early = create_manual_event(
+            company_id=seed_company.id,
+            title="А раннее",
+            event_type=EventType.MANUAL,
+            event_date=date(2026, 1, 1),
+        )
+        late = create_manual_event(
+            company_id=seed_company.id,
+            title="Я позднее",
+            event_type=EventType.MANUAL,
+            event_date=date(2026, 6, 1),
+        )
+        cancelled = create_manual_event(
+            company_id=seed_company.id,
+            title="Б отменено",
+            event_type=EventType.MANUAL,
+            event_date=date(2026, 3, 1),
+        )
+        transition_event_status(cancelled, EventStatus.CANCELLED, "не нужно")
+        db.session.commit()
+        early_id, late_id, cancelled_id = early.id, late.id, cancelled.id
+
+    by_title = admin_client.get("/api/events?sort=title&direction=asc")
+    assert by_title.status_code == 200
+    title_ids = [item["id"] for item in by_title.get_json()["data"]["items"]]
+    assert title_ids.index(early_id) < title_ids.index(late_id)
+    assert title_ids[-1] == cancelled_id
+
+    by_date = admin_client.get("/api/events?sort=event_date&direction=desc")
+    assert by_date.status_code == 200
+    date_ids = [item["id"] for item in by_date.get_json()["data"]["items"]]
+    assert date_ids.index(late_id) < date_ids.index(early_id)
+    assert date_ids[-1] == cancelled_id
+
+
 def test_grades_sort_by_eligible_date_nearest(admin_client, seed_company):
     from app.models import GradeCatalog
     from app.services.grades import assign_grade_to_employment

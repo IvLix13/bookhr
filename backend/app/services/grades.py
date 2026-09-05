@@ -150,6 +150,26 @@ def compute_grade_eligibility(
     }
 
 
+def recompute_open_grade_required_months(grade: GradeCatalog) -> list[Employment]:
+    """Refresh tenure snapshots for current assignments of this catalog grade."""
+    rows = EmployeeGradeHistory.query.filter_by(grade_id=grade.id, valid_to=None).all()
+    employments: list[Employment] = []
+    seen: set[int] = set()
+    for history in rows:
+        try:
+            history.required_months = _required_months(
+                grade,
+                history.education_status_at_rank_entry,
+            )
+        except ValueError:
+            continue
+        employment = history.employment
+        if employment and employment.id not in seen:
+            seen.add(employment.id)
+            employments.append(employment)
+    return employments
+
+
 def assign_grade_to_employment(
     employment: Employment,
     grade: GradeCatalog,

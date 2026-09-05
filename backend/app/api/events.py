@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from flask import request
 from flask_login import login_required
+from sqlalchemy.orm import selectinload
 
 from app.api.helpers import (
     api_response,
-    apply_sort,
     apply_text_search,
     load_schema,
     nearest_event_date_sort_key,
@@ -18,15 +18,31 @@ from app.api.helpers import (
     parse_sort_args,
     require_roles,
 )
-from app.api.schemas import CreateEventSchema, EventActionSchema, UpdateEventSchema, parse_query_date
+from app.api.schemas import (
+    CancelEventSchema,
+    CreateEventSchema,
+    EventActionSchema,
+    UpdateEventSchema,
+    parse_query_date,
+)
 from app.api.serializers import event_to_dict
 from app.extensions import db
-from app.models import Event, EventStatus, Employment, PersonNameHistory, RoleName, User
+from app.models import (
+    Event,
+    EventStatus,
+    EventStatusHistory,
+    Employment,
+    PersonNameHistory,
+    RoleName,
+    User,
+)
 from app.services.event_completion import apply_completion_effects
 from app.services.events import (
     EventMutationError,
     InvalidEventTransition,
     apply_status_filter,
+    cancelled_last_sort_key,
+    cancelled_last_sql_order,
     create_manual_event,
     delete_manual_event,
     planned_nearest_event_sort_key,
@@ -86,7 +102,10 @@ def register_routes(bp):
             default_direction="asc",
         )
 
-        query = Event.query.filter_by(company_id=company_id)
+        query = Event.query.filter_by(company_id=company_id).options(
+            selectinload(Event.status_history).selectinload(EventStatusHistory.changed_by),
+            selectinload(Event.created_by),
+        )
         if date_from:
             query = query.filter(Event.event_date >= date_from)
         if date_to:
@@ -103,9 +122,12 @@ def register_routes(bp):
                 events.sort(key=planned_nearest_event_sort_key)
             else:
                 events.sort(
-                    key=lambda event: nearest_event_date_sort_key(
-                        event.event_date,
-                        tie_breaker=event.id,
+                    key=lambda event: (
+                        cancelled_last_sort_key(event),
+                        nearest_event_date_sort_key(
+                            event.event_date,
+                            tie_breaker=event.id,
+                        ),
                     )
                 )
             return api_response(
@@ -113,7 +135,9 @@ def register_routes(bp):
             )
 
         query = _apply_event_list_sort_joins(query, sort)
-        query = apply_sort(query, EVENT_SORT_FIELDS, sort, direction)
+        column = EVENT_SORT_FIELDS[sort]
+        order = column.asc() if direction == "asc" else column.desc()
+        query = query.order_by(cancelled_last_sql_order(), order)
 
         return api_response(paginate_query(query, event_to_dict, page, per_page))
 
@@ -226,12 +250,12 @@ def register_routes(bp):
         event = db.session.get(Event, event_id)
         if not event or event.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
-        payload = load_schema(EventActionSchema)
+        payload = load_schema(CancelEventSchema)
         try:
             transition_event_status(
                 event,
                 EventStatus.CANCELLED,
-                payload.get("comment"),
+                payload["comment"],
             )
         except InvalidEventTransition as exc:
             return api_response(message=str(exc), status=409)

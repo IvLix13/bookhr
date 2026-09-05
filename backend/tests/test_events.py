@@ -543,3 +543,53 @@ def test_upcoming_events_excludes_overdue(admin_client, seed_company, monkeypatc
     assert "Virtual overdue" not in titles
     assert "Materialized overdue" not in titles
     assert titles == ["Today planned", "Future planned"]
+
+
+def test_cancel_event_requires_comment(hr_client, seed_company):
+    event = create_manual_event(
+        company_id=seed_company.id,
+        title="Need reason",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 24),
+    )
+    db.session.commit()
+
+    missing = hr_client.post(f"/api/events/{event.id}/cancel", json={})
+    assert missing.status_code == 400
+    assert "причину отмены" in missing.get_json()["message"]
+
+    blank = hr_client.post(f"/api/events/{event.id}/cancel", json={"comment": "   "})
+    assert blank.status_code == 400
+
+    ok = hr_client.post(f"/api/events/{event.id}/cancel", json={"comment": "Дубль"})
+    assert ok.status_code == 200
+    payload = ok.get_json()["data"]
+    assert payload["status"] == EventStatus.CANCELLED.value
+    assert payload["last_status_change"]["username"] == "hr_user"
+    assert payload["last_status_change"]["new_status"] == EventStatus.CANCELLED.value
+    assert payload["last_status_change"]["comment"] == "Дубль"
+
+
+def test_overdue_filter_excludes_cancelled(hr_client, seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.events.today_moscow", lambda: date(2026, 7, 24))
+
+    overdue = create_manual_event(
+        company_id=seed_company.id,
+        title="Просроченное",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 1),
+    )
+    cancelled = create_manual_event(
+        company_id=seed_company.id,
+        title="Отменённое",
+        event_type=EventType.MANUAL,
+        event_date=date(2026, 7, 1),
+    )
+    transition_event_status(cancelled, EventStatus.CANCELLED, "не нужно")
+    db.session.commit()
+
+    response = hr_client.get("/api/events?status=overdue")
+    assert response.status_code == 200
+    titles = [item["title"] for item in response.get_json()["data"]["items"]]
+    assert overdue.title in titles
+    assert cancelled.title not in titles

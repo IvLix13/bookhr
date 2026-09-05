@@ -116,6 +116,45 @@ describe('EventDetailModal', () => {
     expect(text).not.toContain('Переоткрыть')
   })
 
+  it('requires a comment before cancelling', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await mountModal('hr')
+    const cancelBtn = Array.from(document.body.querySelectorAll('button')).find((button) =>
+      button.textContent?.includes('Отменить'),
+    ) as HTMLButtonElement
+    expect(cancelBtn.disabled).toBe(true)
+
+    const input = document.body.querySelector(
+      'input[aria-label="Комментарий к действию"]',
+    ) as HTMLInputElement
+    await new DOMWrapper(input).setValue('Дубль')
+    expect(cancelBtn.disabled).toBe(false)
+
+    await cancelBtn.click()
+    await flushPromises()
+    expect(cancelEvent).toHaveBeenCalledWith(7, 'Дубль')
+  })
+
+  it('shows the last status change login, status label and exact time', async () => {
+    getEvent.mockResolvedValueOnce({
+      ...plannedEvent,
+      last_status_change: {
+        username: 'hr_user',
+        changed_at: '2026-07-20T12:00:00',
+        new_status: 'cancelled',
+        comment: 'Auto-created by rule engine',
+      },
+    })
+    await mountModal('hr')
+    const lastChange = document.body.querySelector('.last-change')
+    const text = lastChange?.textContent ?? ''
+    expect(document.body.textContent).toContain('Последнее изменение')
+    expect(text).toContain('hr_user')
+    expect(text).toContain('Отменено')
+    expect(text).toContain('20 июля 2026 г., 12:00')
+    expect(text).not.toMatch(/20 июля 2026 г\.(?!,)/)
+  })
+
   it('completes event and emits changed', async () => {
     const wrapper = await mountModal('hr')
     const buttons = Array.from(document.body.querySelectorAll('button'))

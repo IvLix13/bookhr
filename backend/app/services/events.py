@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date
 
+from sqlalchemy import case
+
 from app.extensions import db
 from app.models import (
     Employment,
@@ -106,14 +108,24 @@ _PLANNED_NEAREST_STATUS_ORDER = {
 }
 
 
+def cancelled_last_sql_order():
+    """SQL order so cancelled rows always sort after every other status."""
+    return case((Event.status == EventStatus.CANCELLED.value, 1), else_=0).asc()
+
+
+def cancelled_last_sort_key(event: Event) -> int:
+    return 1 if event.status == EventStatus.CANCELLED.value else 0
+
+
 def planned_nearest_event_sort_key(event: Event, reference: date | None = None) -> tuple:
     """Planned first (nearest date to farthest), then other statuses by date desc."""
     today = reference or today_moscow()
     effective = effective_event_status(event, today)
     group = _PLANNED_NEAREST_STATUS_ORDER.get(effective, 99)
+    cancelled_group = cancelled_last_sort_key(event)
 
     if event.event_date is None:
-        return (group, 999999999, event.id)
+        return (cancelled_group, group, 999999999, event.id)
 
     ordinal = event.event_date.toordinal()
     if effective == EventStatus.PLANNED.value:
@@ -121,7 +133,7 @@ def planned_nearest_event_sort_key(event: Event, reference: date | None = None) 
     else:
         date_key = -ordinal
 
-    return (group, date_key, event.id)
+    return (cancelled_group, group, date_key, event.id)
 
 
 def transition_event_status(
