@@ -7,7 +7,7 @@ import { normalizeError } from '@/api/errors'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import { useAuthStore } from '@/stores/auth'
 import type { EventItem } from '@/types'
-import { formatDisplayDate, formatShortDate, humanizeDatesInText } from '@/utils/dates'
+import { formatDisplayDate, formatShortDate, formatShortDateTime, humanizeDatesInText } from '@/utils/dates'
 import { labelEventSource, labelEventType } from '@/utils/labels'
 import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 
@@ -69,6 +69,9 @@ const statusKey = computed(() =>
 )
 
 const statusMeta = computed(() => getEventStatusMeta(statusKey.value))
+const lastChangeStatusMeta = computed(() =>
+  getEventStatusMeta(event.value?.last_status_change?.new_status),
+)
 
 const isOpenStatus = computed(() => {
   const status = event.value?.status
@@ -356,11 +359,15 @@ async function saveReportDate() {
                 <dt>Создано</dt>
                 <dd>{{ formatShortDate(event.created_at) }}</dd>
               </div>
-              <div v-if="event.last_status_change">
+              <div v-if="event.last_status_change" class="full">
                 <dt>Последнее изменение</dt>
-                <dd>
-                  {{ event.last_status_change.username ?? '—' }},
-                  {{ formatShortDate(event.last_status_change.changed_at) }}
+                <dd class="last-change">
+                  <span>{{ event.last_status_change.username ?? '—' }}</span>
+                  <StatusBadge
+                    :label="lastChangeStatusMeta.label"
+                    :variant="lastChangeStatusMeta.variant"
+                  />
+                  <span>{{ formatShortDateTime(event.last_status_change.changed_at) }}</span>
                 </dd>
               </div>
               <div v-if="event.last_status_change?.comment" class="full">
@@ -578,6 +585,13 @@ async function saveReportDate() {
 
 .details dd {
   margin: 0.2rem 0 0;
+}
+
+.last-change {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
 }
 
 .details .full {

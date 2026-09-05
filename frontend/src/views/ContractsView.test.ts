@@ -5,48 +5,50 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import ContractsView from '@/views/ContractsView.vue'
 import { useAuthStore } from '@/stores/auth'
 
+const defaultContractsPayload = {
+  items: [
+    {
+      id: 1,
+      employment_id: 4,
+      full_name: 'Иван Иванов',
+      start_date: '2024-12-01',
+      end_date: '2027-12-01',
+      term_years: 3,
+      days_left: 100,
+      is_active: true,
+      renewal_report_event: {
+        id: 55,
+        event_date: '2027-08-01',
+        completed_date: null,
+        status: 'planned',
+        effective_status: 'planned',
+      },
+    },
+    {
+      id: 2,
+      employment_id: 5,
+      full_name: 'Пётр Петров',
+      start_date: '2025-10-01',
+      end_date: '2027-10-01',
+      term_years: 2,
+      days_left: 60,
+      is_active: true,
+      renewal_report_event: {
+        id: 56,
+        event_date: '2027-06-01',
+        completed_date: '2027-05-20',
+        status: 'completed',
+        effective_status: 'completed',
+      },
+    },
+  ],
+  total: 2,
+  page: 1,
+  per_page: 25,
+}
+
 const { contracts, updateContract } = vi.hoisted(() => ({
-  contracts: vi.fn(async () => ({
-    items: [
-      {
-        id: 1,
-        employment_id: 4,
-        full_name: 'Иван Иванов',
-        start_date: '2024-12-01',
-        end_date: '2027-12-01',
-        term_years: 3,
-        days_left: 100,
-        is_active: true,
-        renewal_report_event: {
-          id: 55,
-          event_date: '2027-08-01',
-          completed_date: null,
-          status: 'planned',
-          effective_status: 'planned',
-        },
-      },
-      {
-        id: 2,
-        employment_id: 5,
-        full_name: 'Пётр Петров',
-        start_date: '2025-10-01',
-        end_date: '2027-10-01',
-        term_years: 2,
-        days_left: 60,
-        is_active: true,
-        renewal_report_event: {
-          id: 56,
-          event_date: '2027-06-01',
-          completed_date: '2027-05-20',
-          status: 'completed',
-          effective_status: 'completed',
-        },
-      },
-    ],
-    total: 2,
-    page: 1,
-    per_page: 25,
-  })),
+  contracts: vi.fn(),
   updateContract: vi.fn(async () => ({})),
 }))
 
@@ -68,7 +70,8 @@ const modalStub = {
 describe('ContractsView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    contracts.mockClear()
+    contracts.mockReset()
+    contracts.mockResolvedValue(defaultContractsPayload)
     updateContract.mockClear()
     document.body.innerHTML = ''
   })
@@ -190,5 +193,60 @@ describe('ContractsView', () => {
       report_date: '2027-01-15',
     })
     expect(contracts.mock.calls.length).toBeGreaterThan(0)
+  })
+
+  it('reloads after saving a contract without a report and shows the event button', async () => {
+    const rowWithoutEvent = {
+      id: 3,
+      employment_id: 6,
+      full_name: 'Анна Безрапорта',
+      start_date: '2024-12-01',
+      end_date: '2027-12-01',
+      term_years: 3,
+      days_left: 80,
+      is_active: true,
+      renewal_report_event: null,
+    }
+    const rowWithEvent = {
+      ...rowWithoutEvent,
+      renewal_report_event: {
+        id: 99,
+        event_date: '2027-08-01',
+        completed_date: null,
+        status: 'planned',
+        effective_status: 'planned',
+      },
+    }
+    contracts.mockResolvedValue({
+      items: [rowWithoutEvent],
+      total: 1,
+      page: 1,
+      per_page: 25,
+    })
+
+    const { wrapper } = await mountView('hr')
+    expect(wrapper.findAll('button').some((item) => item.text() === 'Мероприятие')).toBe(false)
+
+    await wrapper.get('.data-table-row').trigger('click')
+    await flushPromises()
+
+    contracts.mockResolvedValue({
+      items: [rowWithEvent],
+      total: 1,
+      page: 1,
+      per_page: 25,
+    })
+    contracts.mockClear()
+
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateContract).toHaveBeenCalledWith(3, {
+      term_years: 3,
+      end_date: '2027-12-01',
+      report_date: '2027-08-01',
+    })
+    expect(contracts).toHaveBeenCalled()
+    expect(wrapper.findAll('button').some((item) => item.text() === 'Мероприятие')).toBe(true)
   })
 })

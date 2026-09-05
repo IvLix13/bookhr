@@ -135,21 +135,24 @@ describe('EventDetailModal', () => {
     expect(cancelEvent).toHaveBeenCalledWith(7, 'Дубль')
   })
 
-  it('shows the last status change login and time', async () => {
+  it('shows the last status change login, status label and exact time', async () => {
     getEvent.mockResolvedValueOnce({
       ...plannedEvent,
       last_status_change: {
         username: 'hr_user',
         changed_at: '2026-07-20T12:00:00',
-        new_status: 'planned',
+        new_status: 'cancelled',
         comment: 'Auto-created by rule engine',
       },
     })
     await mountModal('hr')
-    const text = document.body.textContent ?? ''
+    const lastChange = document.body.querySelector('.last-change')
+    const text = lastChange?.textContent ?? ''
+    expect(document.body.textContent).toContain('Последнее изменение')
     expect(text).toContain('hr_user')
-    expect(text).toContain('20 июля 2026 г.')
-    expect(text).toContain('Последнее изменение')
+    expect(text).toContain('Отменено')
+    expect(text).toContain('20 июля 2026 г., 12:00')
+    expect(text).not.toMatch(/20 июля 2026 г\.(?!,)/)
   })
 
   it('completes event and emits changed', async () => {

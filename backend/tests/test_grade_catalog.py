@@ -7,6 +7,7 @@ from app.models import (
     Employment,
     Event,
     EventStatus,
+    EventStatusHistory,
     GradeCatalog,
     PositionHistory,
 )
@@ -77,8 +78,14 @@ def test_update_min_years_shifts_open_grade_events(admin_client, seed_company, a
             Event.employment_id == employment.id,
             Event.rule_key.like("grade-preparation:%"),
         ).one()
+        promo = Event.query.filter(
+            Event.employment_id == employment.id,
+            Event.rule_key.like("grade-promotion:%"),
+        ).one()
         prep_id = prep.id
+        promo_id = promo.id
         assert prep.event_date == date(2027, 9, 1)
+        assert promo.event_date == date(2027, 10, 1)
 
     response = admin_client.patch(
         f"/api/grade-catalog/{junior_id}",
@@ -90,9 +97,17 @@ def test_update_min_years_shifts_open_grade_events(admin_client, seed_company, a
         history = EmployeeGradeHistory.query.filter_by(valid_to=None).one()
         assert history.required_months == 24
         prep = db.session.get(Event, prep_id)
+        promo = db.session.get(Event, promo_id)
         assert prep is not None
+        assert promo is not None
         assert prep.status == EventStatus.PLANNED.value
+        assert promo.status == EventStatus.PLANNED.value
         assert prep.event_date == date(2028, 9, 1)
+        assert promo.event_date == date(2028, 10, 1)
+        assert EventStatusHistory.query.filter_by(
+            event_id=promo_id,
+            new_status=EventStatus.CANCELLED.value,
+        ).count() == 0
 
 
 def test_update_grade_catalog_as_admin(admin_client, app):

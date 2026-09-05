@@ -452,8 +452,14 @@ def test_changing_grade_date_retargets_preparation_without_cancel(hr_client, see
             Event.employment_id == employment_id,
             Event.rule_key.like("grade-preparation:%"),
         ).one()
+        promo = Event.query.filter(
+            Event.employment_id == employment_id,
+            Event.rule_key.like("grade-promotion:%"),
+        ).one()
         prep_id = prep.id
+        promo_id = promo.id
         assert prep.event_date == date(2027, 9, 1)
+        assert promo.event_date == date(2027, 10, 1)
 
     updated = hr_client.patch(
         f"/api/employees/{employment_id}",
@@ -463,14 +469,21 @@ def test_changing_grade_date_retargets_preparation_without_cancel(hr_client, see
 
     with app.app_context():
         prep = db.session.get(Event, prep_id)
+        promo = db.session.get(Event, promo_id)
         assert prep is not None
+        assert promo is not None
         assert prep.status == EventStatus.PLANNED.value
+        assert promo.status == EventStatus.PLANNED.value
         assert prep.event_date == date(2027, 12, 1)
-        cancels = EventStatusHistory.query.filter_by(
+        assert promo.event_date == date(2028, 1, 1)
+        assert EventStatusHistory.query.filter_by(
             event_id=prep_id,
             new_status=EventStatus.CANCELLED.value,
-        ).count()
-        assert cancels == 0
+        ).count() == 0
+        assert EventStatusHistory.query.filter_by(
+            event_id=promo_id,
+            new_status=EventStatus.CANCELLED.value,
+        ).count() == 0
         assert Event.query.filter_by(
             employment_id=employment_id,
             event_type=EventType.GRADE.value,

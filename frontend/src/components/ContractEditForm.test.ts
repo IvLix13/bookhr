@@ -88,6 +88,31 @@ describe('ContractEditForm', () => {
     expect(wrapper.text()).toContain('Укажите срок договора и дату окончания')
   })
 
+  it('sends the default report date when the contract has no renewal event', async () => {
+    updateContract.mockClear()
+    const rowWithoutEvent: ContractRow = {
+      ...sampleRow,
+      start_date: '2024-12-01',
+      end_date: '2027-12-01',
+      term_years: 3,
+      renewal_report_event: null,
+    }
+    const wrapper = mount(ContractEditForm, { props: { row: rowWithoutEvent } })
+    expect((wrapper.get('input[name="report_date"]').element as HTMLInputElement).value).toBe(
+      '2027-08-01',
+    )
+
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateContract).toHaveBeenCalledWith(11, {
+      term_years: 3,
+      end_date: '2027-12-01',
+      report_date: '2027-08-01',
+    })
+    expect(wrapper.emitted('saved')).toBeTruthy()
+  })
+
   it('allows changing the report date when the report is already completed', async () => {
     updateContract.mockClear()
     const completedRow: ContractRow = {

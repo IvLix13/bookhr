@@ -91,6 +91,22 @@ export function formatShortDate(iso: string | null | undefined): string {
   return `${day} ${monthName} ${year} г.`
 }
 
+function extractClockTime(iso: string): string | null {
+  const match = iso.match(/[T ](\d{2}):(\d{2})/)
+  if (!match) return null
+  return `${match[1]}:${match[2]}`
+}
+
+/** Формат «ДД месяц ГГГГ г., ЧЧ:ММ» без сдвига часового пояса. */
+export function formatShortDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const dateLabel = formatShortDate(iso)
+  if (dateLabel === '—' || dateLabel === iso) return dateLabel
+  const timePart = extractClockTime(iso)
+  if (!timePart) return dateLabel
+  return `${dateLabel}, ${timePart}`
+}
+
 /** Формат «Пятница, 24 июля 2026 г.» без сдвига часового пояса и без заглавной «Г.». */
 export function formatDisplayDate(iso: string): string {
   const datePart = iso.slice(0, 10)
