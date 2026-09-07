@@ -121,6 +121,9 @@ class CreateEmployeeSchema(BaseSchema):
     contract_end = DateField(allow_none=True)
     contract_term_years = fields.Float(allow_none=True)
     passport_until = DateField(allow_none=True)
+    tenure_10_received_date = DateField(allow_none=True)
+    tenure_15_received_date = DateField(allow_none=True)
+    tenure_20_received_date = DateField(allow_none=True)
     education_status = fields.Str(required=True, validate=validate.OneOf(EDUCATION_CHOICES))
 
     @validates_schema
