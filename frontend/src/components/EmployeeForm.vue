@@ -29,6 +29,9 @@ const form = ref<{
   contract_term_years: string
   contract_end: string
   passport_until: string
+  tenure_10_received_date: string
+  tenure_15_received_date: string
+  tenure_20_received_date: string
 }>({
   full_name: '',
   title: '',
@@ -40,6 +43,9 @@ const form = ref<{
   contract_term_years: '',
   contract_end: '',
   passport_until: '',
+  tenure_10_received_date: '',
+  tenure_15_received_date: '',
+  tenure_20_received_date: '',
 })
 const grades = ref<Grade[]>([])
 const activeGrades = computed(() => grades.value.filter((grade) => grade.is_active !== false))
@@ -59,6 +65,9 @@ function resetForm() {
     contract_term_years: '',
     contract_end: '',
     passport_until: '',
+    tenure_10_received_date: '',
+    tenure_15_received_date: '',
+    tenure_20_received_date: '',
   }
 }
 
@@ -84,6 +93,9 @@ watch(
           : '',
       contract_end: value.contract_end ?? '',
       passport_until: value.passport_until ?? '',
+      tenure_10_received_date: '',
+      tenure_15_received_date: '',
+      tenure_20_received_date: '',
     }
   },
   { immediate: true },
@@ -146,7 +158,7 @@ async function submit() {
     }
     validateContractFields()
 
-    const body = {
+    const body: Record<string, unknown> = {
       full_name: form.value.full_name.trim(),
       title: form.value.title.trim() || 'Не указана',
       hire_date: form.value.hire_date,
@@ -168,6 +180,9 @@ async function submit() {
     if (props.initial) {
       await api.updateEmployee(props.initial.id, body)
     } else {
+      body.tenure_10_received_date = form.value.tenure_10_received_date || null
+      body.tenure_15_received_date = form.value.tenure_15_received_date || null
+      body.tenure_20_received_date = form.value.tenure_20_received_date || null
       await api.createEmployee(body)
       resetForm()
     }
@@ -283,6 +298,21 @@ async function submit() {
         Срок паспорта
         <input v-model="form.passport_until" type="date" :disabled="readonly" />
       </label>
+      <template v-if="!initial">
+        <div class="section-title">Награды за стаж</div>
+        <label>
+          Дата получения награды за 10 лет
+          <input v-model="form.tenure_10_received_date" type="date" :disabled="readonly" />
+        </label>
+        <label>
+          Дата получения награды за 15 лет
+          <input v-model="form.tenure_15_received_date" type="date" :disabled="readonly" />
+        </label>
+        <label>
+          Дата получения награды за 20 лет
+          <input v-model="form.tenure_20_received_date" type="date" :disabled="readonly" />
+        </label>
+      </template>
     </div>
     <div v-if="!readonly" class="actions">
       <button class="btn" type="submit" :disabled="submitting">
@@ -329,6 +359,12 @@ label.checkbox {
   justify-content: start;
   align-items: center;
   gap: 0.5rem;
+}
+
+.section-title {
+  grid-column: 1 / -1;
+  font-weight: 600;
+  margin-top: 0.25rem;
 }
 
 .field-with-action {
