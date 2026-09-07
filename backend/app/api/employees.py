@@ -177,7 +177,17 @@ def register_routes(bp):
             position_grade_id=payload.get("position_grade_id"),
             education_status=payload["education_status"],
         )
-        ensure_tenure_awards(person.id, company_id)
+        tenure_awards = ensure_tenure_awards(person.id, company_id)
+        received_dates = {
+            10: payload.get("tenure_10_received_date"),
+            15: payload.get("tenure_15_received_date"),
+            20: payload.get("tenure_20_received_date"),
+        }
+        for award in tenure_awards:
+            received_date = received_dates.get(award.milestone_years)
+            if received_date is not None:
+                award.is_received = True
+                award.received_date = received_date
 
         sync_active_contract(
             employment,
