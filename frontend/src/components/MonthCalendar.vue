@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { EventItem } from '@/types'
 import { formatLocalDate, formatMonthYearLabel, humanizeDatesInText } from '@/utils/dates'
+import { resolveEventStatus } from '@/utils/statuses'
 
 const props = defineProps<{
   events: EventItem[]
@@ -62,6 +63,15 @@ function dayClasses(date: Date) {
     today: todayIso === iso,
   }
 }
+
+function eventChipClasses(event: EventItem) {
+  const status = resolveEventStatus(event.status, event.effective_status)
+  const isOverdue = status === 'overdue'
+  return {
+    'event-chip--overdue': isOverdue,
+    'event-chip--past': !isOverdue && event.event_date < todayIso,
+  }
+}
 </script>
 
 <template>
@@ -94,7 +104,12 @@ function dayClasses(date: Date) {
         >
           <div class="day-number">{{ cell.date.getDate() }}</div>
           <TransitionGroup name="fade" tag="div" class="events">
-            <div v-for="event in cell.events.slice(0, 3)" :key="event.id" class="event-chip">
+            <div
+              v-for="event in cell.events.slice(0, 3)"
+              :key="event.id"
+              class="event-chip"
+              :class="eventChipClasses(event)"
+            >
               {{ humanizeDatesInText(event.title) }}
             </div>
           </TransitionGroup>
@@ -212,6 +227,18 @@ header h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.event-chip--past {
+  background: #eef1f4;
+  color: var(--muted);
+  opacity: 0.62;
+}
+
+.event-chip--overdue {
+  background: #fdecec;
+  color: #b42318;
+  font-weight: 600;
 }
 
 .more {
