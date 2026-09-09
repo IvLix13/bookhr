@@ -63,6 +63,7 @@ async function save() {
   saveError.value = null
   try {
     await attestationApi.update(editing.value.employment_id, dateValue.value || null)
+    saving.value = false
     closeModal()
     await table.reload()
   } catch (error) {
