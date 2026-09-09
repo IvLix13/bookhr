@@ -78,6 +78,12 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     isActive: (route) => route.name === 'grades' || route.name === 'grade-catalog',
   },
   {
+    name: 'attestations',
+    labelKey: 'attestation',
+    icon: IconCalendar,
+    background: calendarBg,
+  },
+  {
     name: 'rewards',
     labelKey: 'rewards',
     icon: IconAward,
