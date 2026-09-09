@@ -1,7 +1,7 @@
 from datetime import date
 
 from app.extensions import db
-from app.models import Employment, EmploymentStatus, Person, PersonNameHistory
+from app.models import Company, Employment, EmploymentStatus, Person, PersonNameHistory
 
 
 def _create_employment(company_id: int, full_name: str) -> Employment:
@@ -30,6 +30,7 @@ def _create_employment(company_id: int, full_name: str) -> Employment:
 def test_attestations_list_active_employees(hr_client, seed_company):
     with hr_client.application.app_context():
         employment = _create_employment(seed_company.id, "Иванов Иван Иванович")
+        employment_id = employment.id
         employment.attestation_date = date(2026, 9, 15)
         db.session.commit()
 
@@ -39,7 +40,7 @@ def test_attestations_list_active_employees(hr_client, seed_company):
     payload = response.get_json()["data"]
     assert payload["total"] == 1
     assert payload["items"][0] == {
-        "employment_id": employment.id,
+        "employment_id": employment_id,
         "full_name": "Иванов Иван Иванович",
         "attestation_date": "2026-09-15",
     }
@@ -80,7 +81,10 @@ def test_viewer_cannot_change_attestation_date(viewer_client, seed_company):
 
 def test_attestation_update_is_company_scoped(hr_client, seed_company):
     with hr_client.application.app_context():
-        employment = _create_employment(seed_company.id + 1, "Чужой Сотрудник")
+        other_company = Company(name="Other Co")
+        db.session.add(other_company)
+        db.session.commit()
+        employment = _create_employment(other_company.id, "Чужой Сотрудник")
         employment_id = employment.id
 
     response = hr_client.patch(
