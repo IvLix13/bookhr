@@ -6,6 +6,7 @@ export const MODULE_LABELS = {
   eventCreate: 'Создать мероприятие',
   contracts: 'Договоры',
   grades: 'Грейды',
+  attestation: 'Аттестация',
   gradeCatalog: 'Справочник грейдов',
   rewards: 'Поощрения',
   awards: 'Награды за стаж',
