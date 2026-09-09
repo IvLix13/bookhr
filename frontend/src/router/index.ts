@@ -18,6 +18,7 @@ const router = createRouter({
         { path: 'employees', name: 'employees', component: () => import('@/views/EmployeesView.vue') },
         { path: 'contracts', name: 'contracts', component: () => import('@/views/ContractsView.vue') },
         { path: 'grades', name: 'grades', component: () => import('@/views/GradesView.vue') },
+        { path: 'attestations', name: 'attestations', component: () => import('@/views/AttestationsView.vue') },
         { path: 'rewards', name: 'rewards', component: () => import('@/views/RewardsView.vue') },
         { path: 'awards', name: 'awards', component: () => import('@/views/AwardsView.vue') },
         { path: 'passports', name: 'passports', component: () => import('@/views/PassportsView.vue') },
