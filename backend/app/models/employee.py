@@ -47,6 +47,7 @@ class Employment(db.Model, TimestampMixin):
     hire_date = db.Column(db.Date, nullable=False)
     dismissal_date = db.Column(db.Date, nullable=True)
     dismissal_reason = db.Column(db.Text, nullable=True)
+    attestation_date = db.Column(db.Date, nullable=True)
 
     person = db.relationship("Person", back_populates="employments")
     company = db.relationship("Company", back_populates="employments")
