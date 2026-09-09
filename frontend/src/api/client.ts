@@ -17,6 +17,12 @@ export interface TableQueryParams {
   [key: string]: string | number | boolean | undefined
 }
 
+export interface AttestationRow {
+  employment_id: number
+  full_name: string | null
+  attestation_date: string | null
+}
+
 let csrfToken: string | null = null
 let unauthorizedHandler: (() => void) | null = null
 
@@ -139,6 +145,13 @@ export const api = {
   ) => request(`/api/contracts/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   grades: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/grades${buildQuery(params)}`),
+  attestations: (params: TableQueryParams = {}) =>
+    request<Paginated<AttestationRow>>(`/api/attestations${buildQuery(params)}`),
+  updateAttestation: (employmentId: number, attestationDate: string | null) =>
+    request<AttestationRow>(`/api/attestations/${employmentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ attestation_date: attestationDate }),
+    }),
   gradeCatalog: () => request('/api/grade-catalog'),
   createGradeCatalog: (body: {
     name: string
