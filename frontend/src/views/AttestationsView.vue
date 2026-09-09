@@ -2,7 +2,7 @@
 import { computed, onUnmounted, ref } from 'vue'
 import DataTable from '@/components/DataTable.vue'
 import PageState from '@/components/PageState.vue'
-import { attestationApi, type AttestationRow } from '@/api/attestations'
+import { api, type AttestationRow } from '@/api/client'
 import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { Paginated, TableQueryState } from '@/types'
@@ -19,7 +19,7 @@ const saveError = ref<string | null>(null)
 const table = useServerTable<AttestationRow>({
   tableId: 'attestations',
   schemaVersion: 1,
-  fetcher: (params) => attestationApi.list(params) as Promise<Paginated<AttestationRow>>,
+  fetcher: (params) => api.attestations(params) as Promise<Paginated<AttestationRow>>,
   defaultSort: { key: 'full_name', direction: 'asc' },
 })
 
@@ -62,7 +62,7 @@ async function save() {
   saving.value = true
   saveError.value = null
   try {
-    await attestationApi.update(editing.value.employment_id, dateValue.value || null)
+    await api.updateAttestation(editing.value.employment_id, dateValue.value || null)
     saving.value = false
     closeModal()
     await table.reload()
