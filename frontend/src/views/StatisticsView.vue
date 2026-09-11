@@ -6,16 +6,28 @@ import { BarChart, LineChart, PieChart } from 'echarts/charts'
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { api } from '@/api/client'
+import { manualStatisticsApi } from '@/api/manualStatistics'
+import { useAuthStore } from '@/stores/auth'
 import type { DashboardStats } from '@/types'
+import type { ManualStatisticsData } from '@/types/manualStatistics'
 import { defaultStatsPeriod, formatMonthKey } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
 
 use([CanvasRenderer, BarChart, LineChart, PieChart, GridComponent, TooltipComponent, LegendComponent])
 
+type StatsTab = 'automatic' | 'manual'
+
+const auth = useAuthStore()
+const activeTab = ref<StatsTab>('automatic')
 const loading = ref(true)
 const error = ref('')
 const stats = ref<DashboardStats | null>(null)
 const period = ref(defaultStatsPeriod())
+const manualData = ref<ManualStatisticsData | null>(null)
+const manualLoading = ref(false)
+const manualUploading = ref(false)
+const manualError = ref('')
+const manualFileInput = ref<HTMLInputElement | null>(null)
 
 async function loadStats() {
   loading.value = true
@@ -28,6 +40,62 @@ async function loadStats() {
   } finally {
     loading.value = false
   }
+}
+
+async function loadManualStats() {
+  manualLoading.value = true
+  manualError.value = ''
+  try {
+    manualData.value = await manualStatisticsApi.get()
+  } catch (err) {
+    manualError.value = err instanceof Error ? err.message : 'Не удалось загрузить ручную статистику'
+    manualData.value = null
+  } finally {
+    manualLoading.value = false
+  }
+}
+
+async function selectTab(tab: StatsTab) {
+  activeTab.value = tab
+  if (tab === 'manual' && manualData.value === null && !manualLoading.value) {
+    await loadManualStats()
+  }
+}
+
+function chooseManualFile() {
+  manualFileInput.value?.click()
+}
+
+async function uploadManualFile(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  manualUploading.value = true
+  manualError.value = ''
+  try {
+    manualData.value = await manualStatisticsApi.upload(file)
+  } catch (err) {
+    manualError.value = err instanceof Error ? err.message : 'Не удалось загрузить Excel-файл'
+  } finally {
+    manualUploading.value = false
+    input.value = ''
+  }
+}
+
+async function downloadManualTemplate() {
+  manualError.value = ''
+  try {
+    await manualStatisticsApi.downloadTemplate()
+  } catch (err) {
+    manualError.value = err instanceof Error ? err.message : 'Не удалось скачать шаблон'
+  }
+}
+
+function formatUpdatedAt(value: string | null | undefined): string {
+  if (!value) return '—'
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString('ru-RU')
 }
 
 onMounted(loadStats)
@@ -139,7 +207,7 @@ const tenureChart = computed(() => {
         <h2>Статистика</h2>
         <p>Операционные показатели по кадровым модулям</p>
       </div>
-      <form class="period-form" @submit.prevent="loadStats">
+      <form v-if="activeTab === 'automatic'" class="period-form" @submit.prevent="loadStats">
         <label>
           С
           <input v-model="period.from" type="date" required />
@@ -152,94 +220,171 @@ const tenureChart = computed(() => {
       </form>
     </header>
 
-    <div v-if="loading" class="card page-state">Загрузка...</div>
-    <div v-else-if="error" class="card page-state error">{{ error }}</div>
-    <template v-else-if="stats">
-      <div class="kpi-grid">
-        <article class="card kpi">
-          <span>Активные сотрудники</span>
-          <strong>{{ stats.employees.active }}</strong>
-        </article>
-        <article class="card kpi">
-          <span>Мероприятия выполнено</span>
-          <strong>{{ stats.events.completed }}</strong>
-        </article>
-        <article class="card kpi">
-          <span>Просрочено</span>
-          <strong>{{ stats.events.overdue }}</strong>
-        </article>
-        <article class="card kpi">
-          <span>% выполнения</span>
-          <strong>{{ stats.events.completion_rate }}%</strong>
-        </article>
-      </div>
+    <nav class="card stats-tabs" aria-label="Разделы статистики">
+      <button
+        type="button"
+        class="stats-tab"
+        :class="{ active: activeTab === 'automatic' }"
+        @click="selectTab('automatic')"
+      >
+        Автоматическая статистика
+      </button>
+      <button
+        type="button"
+        class="stats-tab"
+        :class="{ active: activeTab === 'manual' }"
+        @click="selectTab('manual')"
+      >
+        Ручная статистика
+      </button>
+    </nav>
 
-      <div class="module-grid">
-        <article class="card module-card">
-          <header><h3>Сотрудники</h3></header>
-          <ul class="metric-list">
-            <li><span>Активные</span><strong>{{ stats.employees.active }}</strong></li>
-            <li><span>Приняты за период</span><strong>{{ stats.employees.hired_in_period }}</strong></li>
-            <li><span>Уволены за период</span><strong>{{ stats.employees.dismissed_in_period }}</strong></li>
-          </ul>
-        </article>
+    <template v-if="activeTab === 'automatic'">
+      <div v-if="loading" class="card page-state">Загрузка...</div>
+      <div v-else-if="error" class="card page-state error">{{ error }}</div>
+      <template v-else-if="stats">
+        <div class="kpi-grid">
+          <article class="card kpi">
+            <span>Активные сотрудники</span>
+            <strong>{{ stats.employees.active }}</strong>
+          </article>
+          <article class="card kpi">
+            <span>Мероприятия выполнено</span>
+            <strong>{{ stats.events.completed }}</strong>
+          </article>
+          <article class="card kpi">
+            <span>Просрочено</span>
+            <strong>{{ stats.events.overdue }}</strong>
+          </article>
+          <article class="card kpi">
+            <span>% выполнения</span>
+            <strong>{{ stats.events.completion_rate }}%</strong>
+          </article>
+        </div>
 
-        <article class="card module-card">
-          <header><h3>Договоры</h3></header>
-          <ul class="metric-list">
-            <li><span>Активные</span><strong>{{ stats.contracts.active }}</strong></li>
-            <li><span>Истёкшие</span><strong>{{ stats.contracts.expired }}</strong></li>
-            <li><span>Заканчиваются ≤120 дн.</span><strong>{{ stats.contracts.expiring_120d }}</strong></li>
-          </ul>
-        </article>
+        <div class="module-grid">
+          <article class="card module-card">
+            <header><h3>Сотрудники</h3></header>
+            <ul class="metric-list">
+              <li><span>Активные</span><strong>{{ stats.employees.active }}</strong></li>
+              <li><span>Приняты за период</span><strong>{{ stats.employees.hired_in_period }}</strong></li>
+              <li><span>Уволены за период</span><strong>{{ stats.employees.dismissed_in_period }}</strong></li>
+            </ul>
+          </article>
 
-        <article class="card module-card">
-          <header><h3>грейды</h3></header>
-          <ul class="metric-list">
-            <li><span>Без грейды</span><strong>{{ stats.grades.without_grade }}</strong></li>
-            <li><span>Готовы к повышению</span><strong>{{ stats.grades.eligible_now }}</strong></li>
-            <li><span>Повышение ≤30 дн.</span><strong>{{ stats.grades.eligible_30d }}</strong></li>
-            <li><span>Назначено за период</span><strong>{{ stats.grades.assigned_in_period }}</strong></li>
-          </ul>
-        </article>
+          <article class="card module-card">
+            <header><h3>Договоры</h3></header>
+            <ul class="metric-list">
+              <li><span>Активные</span><strong>{{ stats.contracts.active }}</strong></li>
+              <li><span>Истёкшие</span><strong>{{ stats.contracts.expired }}</strong></li>
+              <li><span>Заканчиваются ≤120 дн.</span><strong>{{ stats.contracts.expiring_120d }}</strong></li>
+            </ul>
+          </article>
 
-        <article class="card module-card">
-          <header><h3>Паспорта</h3></header>
-          <ul class="metric-list">
-            <li><span>В норме</span><strong>{{ stats.passports.ok }}</strong></li>
-            <li><span>Требуют подготовки</span><strong>{{ stats.passports.requires_preparation }}</strong></li>
-            <li><span>Истекли</span><strong>{{ stats.passports.expired }}</strong></li>
-            <li><span>Истекают ≤90 дн.</span><strong>{{ stats.passports.expiring_90d }}</strong></li>
-          </ul>
-        </article>
-      </div>
+          <article class="card module-card">
+            <header><h3>грейды</h3></header>
+            <ul class="metric-list">
+              <li><span>Без грейды</span><strong>{{ stats.grades.without_grade }}</strong></li>
+              <li><span>Готовы к повышению</span><strong>{{ stats.grades.eligible_now }}</strong></li>
+              <li><span>Повышение ≤30 дн.</span><strong>{{ stats.grades.eligible_30d }}</strong></li>
+              <li><span>Назначено за период</span><strong>{{ stats.grades.assigned_in_period }}</strong></li>
+            </ul>
+          </article>
 
-      <div class="chart-grid">
-        <article class="card chart-card">
-          <header><h3>Мероприятия по статусам</h3></header>
-          <VChart v-if="eventsStatusChart" class="chart" :option="eventsStatusChart" autoresize />
-        </article>
-        <article class="card chart-card">
-          <header><h3>Динамика мероприятий</h3></header>
-          <VChart v-if="eventsMonthlyChart" class="chart" :option="eventsMonthlyChart" autoresize />
-        </article>
-        <article class="card chart-card">
-          <header><h3>Мероприятия по типам</h3></header>
-          <VChart v-if="eventsTypeChart" class="chart" :option="eventsTypeChart" autoresize />
-        </article>
-        <article class="card chart-card">
-          <header><h3>Распределение грейдов</h3></header>
-          <VChart v-if="gradesChart" class="chart" :option="gradesChart" autoresize />
-        </article>
-        <article class="card chart-card">
-          <header><h3>Паспорта по статусам</h3></header>
-          <VChart v-if="passportsChart" class="chart" :option="passportsChart" autoresize />
-        </article>
-        <article class="card chart-card">
-          <header><h3>Поощрения по стажу</h3></header>
-          <VChart v-if="tenureChart" class="chart" :option="tenureChart" autoresize />
-        </article>
-      </div>
+          <article class="card module-card">
+            <header><h3>Паспорта</h3></header>
+            <ul class="metric-list">
+              <li><span>В норме</span><strong>{{ stats.passports.ok }}</strong></li>
+              <li><span>Требуют подготовки</span><strong>{{ stats.passports.requires_preparation }}</strong></li>
+              <li><span>Истекли</span><strong>{{ stats.passports.expired }}</strong></li>
+              <li><span>Истекают ≤90 дн.</span><strong>{{ stats.passports.expiring_90d }}</strong></li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="chart-grid">
+          <article class="card chart-card">
+            <header><h3>Мероприятия по статусам</h3></header>
+            <VChart v-if="eventsStatusChart" class="chart" :option="eventsStatusChart" autoresize />
+          </article>
+          <article class="card chart-card">
+            <header><h3>Динамика мероприятий</h3></header>
+            <VChart v-if="eventsMonthlyChart" class="chart" :option="eventsMonthlyChart" autoresize />
+          </article>
+          <article class="card chart-card">
+            <header><h3>Мероприятия по типам</h3></header>
+            <VChart v-if="eventsTypeChart" class="chart" :option="eventsTypeChart" autoresize />
+          </article>
+          <article class="card chart-card">
+            <header><h3>Распределение грейдов</h3></header>
+            <VChart v-if="gradesChart" class="chart" :option="gradesChart" autoresize />
+          </article>
+          <article class="card chart-card">
+            <header><h3>Паспорта по статусам</h3></header>
+            <VChart v-if="passportsChart" class="chart" :option="passportsChart" autoresize />
+          </article>
+          <article class="card chart-card">
+            <header><h3>Поощрения по стажу</h3></header>
+            <VChart v-if="tenureChart" class="chart" :option="tenureChart" autoresize />
+          </article>
+        </div>
+      </template>
+    </template>
+
+    <template v-else>
+      <article class="card manual-card">
+        <header class="manual-header">
+          <div>
+            <h3>Ручная статистика</h3>
+            <p v-if="manualData?.updated_at">
+              Последнее обновление: {{ formatUpdatedAt(manualData.updated_at) }}
+              <template v-if="manualData.source_filename"> · {{ manualData.source_filename }}</template>
+            </p>
+            <p v-else>Загрузите заполненный Excel-шаблон для отображения показателей.</p>
+          </div>
+          <div class="manual-actions">
+            <button class="btn secondary" type="button" @click="downloadManualTemplate">
+              Скачать шаблон
+            </button>
+            <button
+              v-if="auth.canEdit()"
+              class="btn"
+              type="button"
+              :disabled="manualUploading"
+              @click="chooseManualFile"
+            >
+              {{ manualUploading ? 'Загрузка...' : 'Загрузить Excel' }}
+            </button>
+            <input
+              ref="manualFileInput"
+              class="hidden-file-input"
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              @change="uploadManualFile"
+            />
+          </div>
+        </header>
+
+        <div v-if="manualLoading" class="page-state">Загрузка...</div>
+        <div v-else-if="manualError" class="page-state error">{{ manualError }}</div>
+        <div v-else-if="manualData?.items.length" class="manual-table-wrap">
+          <table class="manual-table">
+            <thead>
+              <tr>
+                <th>Показатель</th>
+                <th>Значение</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="item in manualData.items" :key="item.label">
+                <th scope="row">{{ item.label }}</th>
+                <td>{{ item.value || '—' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div v-else class="page-state">Ручная статистика пока не загружена.</div>
+      </article>
     </template>
   </section>
 </template>
@@ -265,13 +410,38 @@ const tenureChart = computed(() => {
 
 .page-header h2,
 .module-card h3,
-.chart-card h3 {
+.chart-card h3,
+.manual-card h3 {
   margin: 0;
 }
 
-.page-header p {
+.page-header p,
+.manual-header p {
   margin: 0.35rem 0 0;
   color: var(--muted);
+}
+
+.stats-tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.35rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.stats-tab {
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  padding: 0.7rem 1rem;
+  cursor: pointer;
+  font: inherit;
+  color: var(--muted);
+}
+
+.stats-tab.active {
+  background: var(--primary);
+  color: #fff;
 }
 
 .period-form {
@@ -322,7 +492,8 @@ const tenureChart = computed(() => {
 
 .kpi,
 .module-card,
-.chart-card {
+.chart-card,
+.manual-card {
   padding: 1rem;
 }
 
@@ -359,11 +530,69 @@ const tenureChart = computed(() => {
   height: 280px;
 }
 
+.manual-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.manual-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+}
+
+.manual-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.manual-table-wrap {
+  overflow-x: auto;
+}
+
+.manual-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.manual-table th,
+.manual-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.manual-table thead th {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.manual-table tbody th {
+  width: 55%;
+  font-weight: 600;
+}
+
 @media (max-width: 1100px) {
   .kpi-grid,
   .module-grid,
   .chart-grid {
     grid-template-columns: 1fr;
+  }
+
+  .manual-header {
+    display: grid;
+  }
+
+  .manual-actions {
+    justify-content: flex-start;
   }
 }
 </style>
