@@ -31,7 +31,6 @@ from app.api.serializers import (
     grade_to_dict,
     passport_row_to_dict,
     tenure_award_to_dict,
-    tenure_row_to_dict,
 )
 from app.extensions import db
 from app.models import (
@@ -61,12 +60,8 @@ from app.services.grades import (
     recompute_open_grade_required_months,
 )
 from app.services.rule_engine import apply_contract_report_date, recalculate_employment_events
-from app.services.tenure import (
-    active_employment,
-    ensure_tenure_awards,
-    tenure_years,
-    total_tenure_years,
-)
+from app.services.tenure import active_employment, ensure_tenure_awards, tenure_years
+from app.services.tenure_listing import build_tenure_rows
 from app.tenant import get_request_company_id
 from app.utils.dates import calculate_contract_start
 
@@ -454,15 +449,6 @@ def register_routes(bp):
             default_direction="desc",
         )
 
-        active_employments = Employment.query.filter_by(
-            company_id=company_id,
-            status=EmploymentStatus.ACTIVE.value,
-        ).all()
-        for employment in active_employments:
-            ensure_tenure_awards(employment.person_id, employment.company_id)
-            recalculate_employment_events(employment)
-        db.session.commit()
-
         query = Employment.query.filter_by(
             company_id=company_id,
             status=EmploymentStatus.ACTIVE.value,
@@ -471,28 +457,37 @@ def register_routes(bp):
         if sort == "full_name":
             query = join_current_person_name(query)
 
-        if sort == "tenure_years":
+        if sort in {"tenure_years", "continuous_tenure_years"}:
             employments = query.all()
-            sort_sequence_with_nulls_last(
-                employments,
-                lambda row: total_tenure_years(row.person_id, row.company_id),
-                reverse=direction == "desc",
-            )
-            rows = [tenure_row_to_dict(employment) for employment in employments]
-            return api_response(paginate_sequence(rows, page, per_page))
-
-        if sort == "continuous_tenure_years":
-            employments = query.all()
-            sort_sequence_with_nulls_last(
-                employments,
-                lambda row: tenure_years(row.hire_date),
-                reverse=direction == "desc",
-            )
-            rows = [tenure_row_to_dict(employment) for employment in employments]
+            rows_by_id, total_tenure_by_id = build_tenure_rows(employments)
+            if sort == "tenure_years":
+                sort_sequence_with_nulls_last(
+                    employments,
+                    lambda row: total_tenure_by_id.get(row.id),
+                    reverse=direction == "desc",
+                )
+            else:
+                sort_sequence_with_nulls_last(
+                    employments,
+                    lambda row: tenure_years(row.hire_date),
+                    reverse=direction == "desc",
+                )
+            rows = [rows_by_id[employment.id] for employment in employments]
             return api_response(paginate_sequence(rows, page, per_page))
 
         query = apply_sort(query, TENURE_SORT_FIELDS, sort, direction)
-        return api_response(paginate_query(query, tenure_row_to_dict, page, per_page))
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+        page_employments = list(pagination.items)
+        rows_by_id, _ = build_tenure_rows(page_employments)
+        return api_response(
+            {
+                "items": [rows_by_id[employment.id] for employment in page_employments],
+                "page": pagination.page,
+                "per_page": pagination.per_page,
+                "total": pagination.total,
+                "pages": pagination.pages,
+            }
+        )
 
     @bp.patch("/tenure/<int:award_id>")
     @require_roles(RoleName.ADMIN, RoleName.HR)
