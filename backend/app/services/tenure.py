@@ -93,14 +93,14 @@ def _period_end(employment: Employment, reference: date) -> date:
     return reference
 
 
-def total_tenure_years(
-    person_id: int,
-    company_id: int,
+def total_tenure_years_from_periods(
+    periods: list[Employment],
     reference: date | None = None,
 ) -> int:
+    """Calculate cumulative tenure from periods already loaded by the caller."""
     ref = reference or today_moscow()
     total_months = 0
-    for employment in employment_periods(person_id, company_id):
+    for employment in periods:
         if employment.hire_date > ref:
             continue
         end = _period_end(employment, ref)
@@ -108,17 +108,22 @@ def total_tenure_years(
     return total_months // 12
 
 
-def compute_milestone_date(
+def total_tenure_years(
     person_id: int,
     company_id: int,
+    reference: date | None = None,
+) -> int:
+    return total_tenure_years_from_periods(
+        employment_periods(person_id, company_id),
+        reference,
+    )
+
+
+def compute_milestone_date_from_periods(
+    periods: list[Employment],
     milestone_years: int,
 ) -> date:
-    """Date when cumulative tenure across all periods reaches ``milestone_years``.
-
-    Sums actual worked months in each employment period (same basis as
-    ``total_tenure_years``), skipping calendar gaps between periods.
-    """
-    periods = employment_periods(person_id, company_id)
+    """Calculate milestone date using employment periods already loaded by the caller."""
     if not periods:
         raise ValueError("No employment periods found")
 
@@ -138,6 +143,22 @@ def compute_milestone_date(
 
     last = periods[-1]
     return last.hire_date + relativedelta(months=remaining_months)
+
+
+def compute_milestone_date(
+    person_id: int,
+    company_id: int,
+    milestone_years: int,
+) -> date:
+    """Date when cumulative tenure across all periods reaches ``milestone_years``.
+
+    Sums actual worked months in each employment period (same basis as
+    ``total_tenure_years``), skipping calendar gaps between periods.
+    """
+    return compute_milestone_date_from_periods(
+        employment_periods(person_id, company_id),
+        milestone_years,
+    )
 
 
 def active_employment(person_id: int, company_id: int) -> Employment | None:
@@ -191,14 +212,21 @@ def is_tenure_award_auto_eligible(
 
 
 def ensure_tenure_awards(person_id: int, company_id: int) -> list[TenureAward]:
+    periods = employment_periods(person_id, company_id)
+    if not periods:
+        return []
+
+    existing_awards = (
+        TenureAward.query.filter_by(person_id=person_id, company_id=company_id)
+        .filter(TenureAward.milestone_years.in_(MILESTONES))
+        .all()
+    )
+    existing_by_years = {award.milestone_years: award for award in existing_awards}
+
     awards: list[TenureAward] = []
     for years in MILESTONES:
-        existing = TenureAward.query.filter_by(
-            person_id=person_id,
-            company_id=company_id,
-            milestone_years=years,
-        ).first()
-        milestone_date = compute_milestone_date(person_id, company_id, years)
+        existing = existing_by_years.get(years)
+        milestone_date = compute_milestone_date_from_periods(periods, years)
         if existing:
             if not existing.is_received and existing.milestone_date != milestone_date:
                 existing.milestone_date = milestone_date
