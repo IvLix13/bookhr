@@ -19,6 +19,7 @@ type AwardYears = '10' | '15' | '20'
 const table = useServerTable<TenureRow>({
   tableId: 'awards',
   fetcher: (params) => api.tenure(params) as Promise<Paginated<TenureRow>>,
+  debounceMs: 1000,
   defaultSort: { key: 'tenure_years', direction: 'desc' },
 })
 

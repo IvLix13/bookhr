@@ -14,6 +14,7 @@ from app.models.employee import (
 from app.models.event import Event, EventSource, EventStatus, EventStatusHistory, EventType
 from app.models.grade import EmployeeGradeHistory, GradeCatalog
 from app.models.import_job import ImportJob, ImportRow, ImportStatus, ImportType
+from app.models.manual_statistics import ManualStatisticsSnapshot
 from app.models.notification import DeliveryStatus, NotificationDelivery, NotificationRule
 from app.models.passport import Passport, PassportStatus
 from app.models.reward import Reward, RewardStatus
@@ -39,6 +40,7 @@ __all__ = [
     "ImportRow",
     "ImportStatus",
     "ImportType",
+    "ManualStatisticsSnapshot",
     "NotificationDelivery",
     "NotificationRule",
     "Passport",
