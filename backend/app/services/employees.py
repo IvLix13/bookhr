@@ -29,6 +29,7 @@ from app.services.tenure import (
     MAX_EMPLOYMENT_PERIODS,
     active_employment,
     employment_periods,
+    ensure_tenure_awards,
 )
 from app.utils.dates import calculate_contract_start, today_moscow
 
@@ -171,6 +172,8 @@ def dismiss_employment(
     employment.status = EmploymentStatus.DISMISSED.value
     employment.dismissal_date = dismissal_date
     employment.dismissal_reason = reason
+    db.session.flush()
+    ensure_tenure_awards(employment.person_id, employment.company_id)
     log_audit(
         "dismiss",
         "employment",
@@ -272,6 +275,7 @@ def delete_employment(employment: Employment) -> None:
     employment_id = employment.id
     person = employment.person
     person_id = person.id
+    company_id = employment.company_id
 
     event_ids = [
         event.id
@@ -296,6 +300,25 @@ def delete_employment(employment: Employment) -> None:
     )
     db.session.delete(employment)
     db.session.flush()
+
+    remaining_in_company = Employment.query.filter_by(
+        person_id=person_id,
+        company_id=company_id,
+    ).count()
+    if remaining_in_company:
+        ensure_tenure_awards(person_id, company_id)
+        current = active_employment(person_id, company_id)
+        if current:
+            from app.services.events import refresh_overdue_events
+            from app.services.rule_engine import recalculate_employment_events
+
+            recalculate_employment_events(current)
+            refresh_overdue_events(company_id)
+    else:
+        TenureAward.query.filter_by(
+            person_id=person_id,
+            company_id=company_id,
+        ).delete(synchronize_session=False)
 
     remaining = Employment.query.filter_by(person_id=person_id).count()
     if remaining == 0:
