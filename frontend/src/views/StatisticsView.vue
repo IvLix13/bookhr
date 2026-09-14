@@ -9,7 +9,7 @@ import { api } from '@/api/client'
 import { manualStatisticsApi } from '@/api/manualStatistics'
 import { useAuthStore } from '@/stores/auth'
 import type { DashboardStats } from '@/types'
-import type { ManualStatisticsData } from '@/types/manualStatistics'
+import type { ManualStatisticsBlock, ManualStatisticsData } from '@/types/manualStatistics'
 import { defaultStatsPeriod, formatMonthKey } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
 
@@ -28,6 +28,21 @@ const manualLoading = ref(false)
 const manualUploading = ref(false)
 const manualError = ref('')
 const manualFileInput = ref<HTMLInputElement | null>(null)
+
+const manualBlocks = computed<ManualStatisticsBlock[]>(() => {
+  if (!Array.isArray(manualData.value?.items)) return []
+  return manualData.value.items.filter(
+    (block): block is ManualStatisticsBlock =>
+      (block?.column === 'left' || block?.column === 'right') &&
+      typeof block.title === 'string' &&
+      Array.isArray(block.items),
+  )
+})
+
+const manualColumns = computed(() => ({
+  left: manualBlocks.value.filter((block) => block.column === 'left'),
+  right: manualBlocks.value.filter((block) => block.column === 'right'),
+}))
 
 async function loadStats() {
   loading.value = true
@@ -367,21 +382,21 @@ const tenureChart = computed(() => {
 
         <div v-if="manualLoading" class="page-state">Загрузка...</div>
         <div v-else-if="manualError" class="page-state error">{{ manualError }}</div>
-        <div v-else-if="manualData?.items.length" class="manual-table-wrap">
-          <table class="manual-table">
-            <thead>
-              <tr>
-                <th>Показатель</th>
-                <th>Значение</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="item in manualData.items" :key="item.label">
-                <th scope="row">{{ item.label }}</th>
-                <td>{{ item.value || '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
+        <div v-else-if="manualBlocks.length" class="manual-module-grid">
+          <div v-for="column in (['left', 'right'] as const)" :key="column" class="manual-column">
+            <article
+              v-for="(block, blockIndex) in manualColumns[column]"
+              :key="`${column}-${blockIndex}-${block.title}`"
+              class="card module-card"
+            >
+              <header><h3>{{ block.title }}</h3></header>
+              <ul class="metric-list">
+                <li v-for="(item, itemIndex) in block.items" :key="`${itemIndex}-${item.label}`">
+                  <span>{{ item.label }}</span><strong>{{ item.value || '—' }}</strong>
+                </li>
+              </ul>
+            </article>
+          </div>
         </div>
         <div v-else class="page-state">Ручная статистика пока не загружена.</div>
       </article>
@@ -553,31 +568,16 @@ const tenureChart = computed(() => {
   display: none;
 }
 
-.manual-table-wrap {
-  overflow-x: auto;
+.manual-module-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
 }
 
-.manual-table {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.manual-table th,
-.manual-table td {
-  padding: 0.75rem;
-  border-bottom: 1px solid var(--border);
-  text-align: left;
-  vertical-align: top;
-}
-
-.manual-table thead th {
-  color: var(--muted);
-  font-size: 0.9rem;
-}
-
-.manual-table tbody th {
-  width: 55%;
-  font-weight: 600;
+.manual-column {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
 }
 
 @media (max-width: 1100px) {
@@ -593,6 +593,10 @@ const tenureChart = computed(() => {
 
   .manual-actions {
     justify-content: flex-start;
+  }
+
+  .manual-module-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>
