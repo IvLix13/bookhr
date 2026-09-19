@@ -1,6 +1,7 @@
 """Domain models."""
 
 from app.models.audit import AuditLog
+from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
 from app.models.company import Company
 from app.models.contract import Contract
 from app.models.employee import (
@@ -22,6 +23,9 @@ from app.models.tenure import TenureAward
 from app.models.user import AuthSource, Role, RoleName, User
 
 __all__ = [
+    "OnboardingCell",
+    "OnboardingColumn",
+    "OnboardingPlan",
     "AuditLog",
     "Company",
     "Contract",

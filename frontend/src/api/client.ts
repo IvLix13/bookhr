@@ -1,4 +1,5 @@
 import { ApiError } from '@/api/errors'
+import type { OnboardingColumn, OnboardingCell, OnboardingPlan, OnboardingFieldType } from '@/types/onboarding'
 import { localizeApiMessage } from '@/utils/labels'
 import type {
   ApiResponse,
@@ -105,6 +106,19 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export const api = {
+  onboardingColumns: () => request<OnboardingColumn[]>('/api/onboarding/columns'),
+  createOnboardingColumn: (body: { title: string; field_type: OnboardingFieldType }) =>
+    request<OnboardingColumn>('/api/onboarding/columns', { method: 'POST', body: JSON.stringify(body) }),
+  updateOnboardingColumn: (id: number, body: { version: number; title?: string; field_type?: OnboardingFieldType; is_archived?: boolean }) =>
+    request<OnboardingColumn>(`/api/onboarding/columns/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  orderOnboardingColumns: (columns: Array<{ id: number; version: number }>) =>
+    request<OnboardingColumn[]>('/api/onboarding/columns/order', { method: 'PATCH', body: JSON.stringify({ columns }) }),
+  onboardingPlans: (params: TableQueryParams = {}) =>
+    request<Paginated<OnboardingPlan>>(`/api/onboarding/plans${buildQuery(params)}`),
+  createOnboardingPlan: (employment_id: number) =>
+    request<OnboardingPlan>('/api/onboarding/plans', { method: 'POST', body: JSON.stringify({ employment_id }) }),
+  updateOnboardingCell: (planId: number, columnId: number, body: Partial<OnboardingCell> & { version: number; column_version: number }) =>
+    request<OnboardingCell>(`/api/onboarding/plans/${planId}/cells/${columnId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   fetchCsrf: () =>
     request<{ csrf_token: string }>('/api/csrf').then((data) => {
       if (data?.csrf_token) setCsrfToken(data.csrf_token)

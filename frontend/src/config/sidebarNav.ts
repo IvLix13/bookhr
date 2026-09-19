@@ -65,6 +65,12 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     background: employeesBg,
   },
   {
+    name: 'onboarding',
+    labelKey: 'onboarding',
+    icon: IconEmployees,
+    background: employeesBg,
+  },
+  {
     name: 'contracts',
     labelKey: 'contracts',
     icon: IconContract,
