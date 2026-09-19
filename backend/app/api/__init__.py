@@ -1,6 +1,7 @@
 """API blueprint registration."""
 
 from flask import Blueprint
+from app.api import onboarding
 
 from app.api import attention, attestations, auth, employees, events, import_api, modules, notifications, rewards, search, stats, users
 
@@ -9,6 +10,7 @@ def register_blueprints(app):
     api = Blueprint("api", __name__, url_prefix="/api")
 
     auth.register_routes(api)
+    onboarding.register_routes(api)
     employees.register_routes(api)
     events.register_routes(api)
     modules.register_routes(api)

@@ -27,6 +27,10 @@ class PurgeEmployeesResult:
 
 def purge_all_employees() -> PurgeEmployeesResult:
     """Remove every employee/person and related records. Grade catalog is preserved."""
+    from app.models.onboarding import OnboardingPlan
+
+    if OnboardingPlan.query.first():
+        raise ValueError("Удаление запрещено: существуют планы обучения сотрудников.")
     grade_catalog_before = GradeCatalog.query.count()
     persons_before = Person.query.count()
 

@@ -12,6 +12,7 @@ const router = createRouter({
       component: () => import('@/layouts/AppShell.vue'),
       meta: { requiresAuth: true },
       children: [
+        { path: 'onboarding', name: 'onboarding', component: () => import('@/views/OnboardingView.vue') },
         { path: '', name: 'calendar', component: () => import('@/views/CalendarView.vue') },
         { path: 'events', name: 'events', component: () => import('@/views/EventsView.vue') },
         { path: 'events/create', redirect: { name: 'events', query: { create: '1' } } },

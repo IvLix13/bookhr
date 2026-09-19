@@ -272,6 +272,10 @@ def sync_passport(person: Person, passport_until: date | None) -> None:
 
 def delete_employment(employment: Employment) -> None:
     """Hard-delete employment and orphaned person records."""
+    from app.models.onboarding import OnboardingPlan
+
+    if OnboardingPlan.query.filter_by(employment_id=employment.id).first():
+        raise ValueError("Нельзя удалить сотрудника с планом обучения. Можно оформить увольнение.")
     employment_id = employment.id
     person = employment.person
     person_id = person.id
