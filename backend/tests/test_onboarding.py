@@ -252,3 +252,122 @@ def test_csrf_required_for_new_routes(hr_client):
                             json={"title": "Отдел", "field_type": "text"}), 201)
     finally:
         app.config["TESTING"] = True
+
+
+@pytest.mark.parametrize("kind", ["stage", "checkbox"])
+def test_exemption_transitions_and_per_employee_scope(hr_client, seed_company, kind):
+    plan, column = setup_plan(hr_client, seed_company.id, kind)
+    extra = {"planned_date": "2020-01-01", "completed_date": "2026-09-22"} if kind == "stage" else {}
+    done = data(patch_cell(hr_client, plan, column, is_completed=True, **extra))
+    assert done["is_completed"] is True
+    if kind == "checkbox":
+        assert done["planned_date"] is None and done["completed_date"] is None
+    exempt = data(patch_cell(hr_client, plan, column, version=done["version"], is_not_required=True))
+    assert exempt["is_not_required"] is True and exempt["is_completed"] is False
+    assert exempt["completed_date"] is None
+    assert exempt["planned_date"] == extra.get("planned_date")
+    assert data(hr_client.get(f'/api/onboarding/plans/{plan["id"]}'))["cells"][str(column["id"])]["is_not_required"] is True
+    with hr_client.application.app_context():
+        other_id = employee(seed_company.id, "Другой сотрудник")
+    other = data(hr_client.post("/api/onboarding/plans", json={"employment_id": other_id}), 201)
+    assert other["cells"] == {}
+    pending = data(patch_cell(hr_client, plan, column, version=exempt["version"], is_not_required=False))
+    assert pending["is_completed"] is False and pending["completed_date"] is None
+    exempt = data(patch_cell(hr_client, plan, column, version=pending["version"], is_not_required=True))
+    dates = {"completed_date": "2026-09-22"} if kind == "stage" else {}
+    done = data(patch_cell(hr_client, plan, column, version=exempt["version"], is_completed=True, **dates))
+    assert done["is_completed"] and not done["is_not_required"]
+    with hr_client.application.app_context():
+        logs = AuditLog.query.filter_by(entity_type="onboarding_cell").order_by(AuditLog.id).all()
+        assert logs[1].old_value["is_completed"] is True
+        assert logs[1].new_value["is_not_required"] is True
+        assert logs[1].old_value["completed_date"] == extra.get("completed_date")
+
+
+@pytest.mark.parametrize("kind,payload", [
+    ("checkbox", {"planned_date": None}), ("checkbox", {"completed_date": "2026-09-22"}),
+    ("checkbox", {"is_completed": True, "is_not_required": True}),
+    ("stage", {"is_completed": True, "is_not_required": True, "completed_date": "2026-09-22"}),
+    ("text", {"is_not_required": True}), ("date", {"is_not_required": True}),
+    ("stage", {"is_not_required": "false"}),
+])
+def test_new_state_validation(hr_client, seed_company, kind, payload):
+    plan, column = setup_plan(hr_client, seed_company.id, kind)
+    assert patch_cell(hr_client, plan, column, **payload).status_code == 400
+
+
+def test_exemption_blocks_type_change_and_respects_versions_archive(hr_client, seed_company):
+    plan, column = setup_plan(hr_client, seed_company.id, "checkbox")
+    cell = data(patch_cell(hr_client, plan, column, is_not_required=True))
+    assert patch_cell(hr_client, plan, column, is_completed=True).status_code == 409
+    url = f'/api/onboarding/columns/{column["id"]}'
+    assert hr_client.patch(url, json={"version": 1, "field_type": "text"}).status_code == 400
+    archived = data(hr_client.patch(url, json={"version": 1, "is_archived": True}))
+    assert hr_client.patch(url, json={"version": archived["version"], "field_type": "stage"}).status_code == 400
+    assert patch_cell(hr_client, plan, archived, version=cell["version"], clear=True).status_code == 409
+
+
+@pytest.mark.parametrize("kind,values", [
+    ("text", {"text_value": "Отдел"}), ("date", {"date_value": "2026-09-22"}),
+    ("stage", {"is_completed": True, "planned_date": "2026-09-23", "completed_date": "2026-09-22"}),
+    ("stage", {"is_not_required": True, "planned_date": "2026-09-23"}),
+    ("checkbox", {"is_completed": True}), ("checkbox", {"is_not_required": True}),
+])
+def test_clear_cell_resets_values_keeps_identity_and_version(hr_client, seed_company, kind, values):
+    plan, column = setup_plan(hr_client, seed_company.id, kind)
+    original = data(patch_cell(hr_client, plan, column, **values))
+    cleared = data(patch_cell(hr_client, plan, column, version=original["version"], clear=True))
+    assert cleared["version"] > original["version"]
+    assert all(cleared[key] is None for key in ["text_value", "date_value", "planned_date", "completed_date"])
+    assert not cleared["is_completed"] and not cleared["is_not_required"]
+    assert patch_cell(hr_client, plan, column, version=original["version"], **values).status_code == 409
+    assert patch_cell(hr_client, plan, column, **values).status_code == 409
+    again = data(patch_cell(hr_client, plan, column, version=cleared["version"], clear=True))
+    assert again["version"] > cleared["version"]
+    with hr_client.application.app_context():
+        assert OnboardingPlan.query.count() == 1 and OnboardingColumn.query.count() == 1
+        assert OnboardingCell.query.count() == 1
+        log = AuditLog.query.filter_by(action="clear").order_by(AuditLog.id).first()
+        for key, value in values.items():
+            assert log.old_value[key] == value
+    restored = data(patch_cell(hr_client, plan, column, version=again["version"], **values))
+    for key, value in values.items():
+        assert restored[key] == value
+
+
+def test_clear_empty_cell_and_invalid_mixed_request(hr_client, seed_company):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    assert patch_cell(hr_client, plan, column, clear=True, is_completed=True).status_code == 400
+    cleared = data(patch_cell(hr_client, plan, column, clear=True))
+    assert cleared["version"] > 0
+    assert patch_cell(hr_client, plan, column, planned_date="2026-09-22").status_code == 409
+
+
+def test_states_migration_preserves_values_and_guards_downgrade():
+    original = importlib.import_module("migrations.versions.0016_onboarding")
+    migration = importlib.import_module("migrations.versions.0017_onboarding_states")
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE companies (id INTEGER PRIMARY KEY)")
+        conn.exec_driver_sql("CREATE TABLE employments (id INTEGER PRIMARY KEY)")
+        conn.exec_driver_sql("INSERT INTO companies VALUES (1)")
+        conn.exec_driver_sql("INSERT INTO employments VALUES (1)")
+        with Operations.context(MigrationContext.configure(conn)):
+            original.upgrade()
+            conn.exec_driver_sql("INSERT INTO onboarding_plans (id, employment_id, created_at, updated_at) VALUES (1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+            conn.exec_driver_sql("INSERT INTO onboarding_cells (plan_id, column_id, planned_date, is_completed, completed_date, version, created_at, updated_at) VALUES (1,3,'2026-09-20',1,'2026-09-22',4,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+            before = conn.exec_driver_sql("SELECT planned_date, is_completed, completed_date, version FROM onboarding_cells").one()
+            migration.upgrade()
+            assert conn.exec_driver_sql("SELECT planned_date, is_completed, completed_date, version FROM onboarding_cells").one() == before
+            assert conn.exec_driver_sql("SELECT is_not_required FROM onboarding_cells").scalar() == 0
+            migration.downgrade()
+            migration.upgrade()
+            conn.exec_driver_sql("UPDATE onboarding_columns SET field_type='checkbox' WHERE id=4")
+            with pytest.raises(RuntimeError, match="Откат запрещён"):
+                migration.downgrade()
+            conn.exec_driver_sql("UPDATE onboarding_columns SET field_type='stage' WHERE id=4")
+            conn.exec_driver_sql("UPDATE onboarding_cells SET is_completed=0, completed_date=NULL, is_not_required=1")
+            with pytest.raises(RuntimeError, match="Откат запрещён"):
+                migration.downgrade()
+            with pytest.raises(sa.exc.IntegrityError):
+                conn.exec_driver_sql("UPDATE onboarding_cells SET is_completed=1 WHERE is_not_required=1")

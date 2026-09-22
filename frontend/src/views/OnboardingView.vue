@@ -5,7 +5,7 @@ import { normalizeError } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import { formatShortDate } from '@/utils/dates'
 import OnboardingCellEditor from '@/components/OnboardingCellEditor.vue'
-import OnboardingColumns from '@/components/OnboardingColumns.vue'
+import OnboardingColumnsModal from '@/components/OnboardingColumnsModal.vue'
 import type { Employee, Paginated } from '@/types'
 import type { OnboardingCell, OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 
@@ -80,14 +80,16 @@ function startEdit(plan: OnboardingPlan, column: OnboardingColumn) {
 }
 function cellLabel(plan: OnboardingPlan, column: OnboardingColumn) {
   const cell = plan.cells[column.id]
+  if (cell?.is_not_required) return 'Не нужно'
+  if (column.field_type === 'checkbox') return cell?.is_completed ? '✓' : '□ Не выполнено'
   if (!cell) return '—'
   if (column.field_type === 'text') return cell.text_value || '—'
   if (column.field_type === 'date') return formatShortDate(cell.date_value)
   return cell.is_completed ? `✓ ${formatShortDate(cell.completed_date)}` : formatShortDate(cell.planned_date)
 }
-function overdue(cell?: OnboardingCell) {
+function overdue(column: OnboardingColumn, cell?: OnboardingCell) {
   const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(new Date())
-  return !!cell?.planned_date && !cell.is_completed && cell.planned_date < today
+  return column.field_type === 'stage' && !!cell?.planned_date && !cell.is_completed && !cell.is_not_required && cell.planned_date < today
 }
 function saved() { editing.value = null; void load() }
 onMounted(load)
@@ -99,10 +101,10 @@ onMounted(load)
     <div class="toolbar">
       <form @submit.prevent="search"><input v-model="query" aria-label="Поиск планов по ФИО" placeholder="ФИО (от 2 символов)" /><button class="btn" :disabled="loading">Найти</button></form>
       <button v-if="auth.canEdit()" class="btn secondary" @click="openAdd">Добавить сотрудника</button>
-      <button v-if="auth.canEdit()" class="btn secondary" @click="showColumns = !showColumns">Настроить столбцы</button>
+      <button v-if="auth.canEdit()" class="btn secondary" @click="showColumns = !showColumns">Настроить этапы</button>
       <button class="btn secondary" :disabled="loading" @click="load">Обновить</button>
     </div>
-    <OnboardingColumns v-if="showColumns && auth.canEdit()" :columns="columns" @changed="load" />
+    <OnboardingColumnsModal v-if="showColumns && auth.canEdit()" :columns="columns" :refreshing="loading" :refresh-error="error" @changed="load" @close="showColumns = false" />
     <section v-if="showAdd && auth.canEdit()" class="add-panel" aria-label="Выбор сотрудника">
       <h3>Выберите сотрудника</h3>
       <form @submit.prevent="findEmployees(true)"><input v-model="employeeQuery" aria-label="Поиск сотрудника" placeholder="ФИО (от 2 символов)" /><button class="btn" :disabled="finding">Найти сотрудника</button></form>
@@ -119,11 +121,14 @@ onMounted(load)
     <template v-else-if="!error">
       <p v-if="!plans.length">Планы не найдены. HR/admin может добавить сотрудника.</p>
       <div v-else class="table-scroll" tabindex="0" aria-label="Таблица планов обучения">
-        <table>
-          <thead><tr><th class="sticky number">№</th><th class="sticky grade">Грейд</th><th class="sticky name">ФИО</th><th v-for="column in visibleColumns" :key="column.id">{{ column.title }}</th></tr></thead>
-          <tbody><tr v-for="(plan, index) in plans" :key="plan.id">
-            <td class="sticky number">{{ (page - 1) * 25 + index + 1 }}</td><td class="sticky grade">{{ plan.grade || '—' }}</td><td class="sticky name">{{ plan.full_name || '—' }}<small v-if="plan.employment_status === 'dismissed'">Уволен</small></td>
-            <td v-for="column in visibleColumns" :key="column.id" :class="{ completed: plan.cells[column.id]?.is_completed, overdue: overdue(plan.cells[column.id]) }">
+        <table :style="{ '--employee-count': plans.length }">
+          <thead><tr><th scope="col" class="sticky">Этап / сотрудник</th><th v-for="plan in plans" :key="plan.id" scope="col">{{ plan.full_name || '—' }}<small v-if="plan.employment_status === 'dismissed'">Уволен</small></th></tr></thead>
+          <tbody>
+          <tr><th scope="row" class="sticky">№</th><td v-for="(plan, index) in plans" :key="plan.id">{{ (page - 1) * 25 + index + 1 }}</td></tr>
+          <tr><th scope="row" class="sticky grade">Грейд</th><td v-for="plan in plans" :key="plan.id">{{ plan.grade || '—' }}</td></tr>
+          <tr v-for="column in visibleColumns" :key="column.id">
+            <th scope="row" class="sticky">{{ column.title }}</th>
+            <td v-for="plan in plans" :key="plan.id" :class="{ completed: plan.cells[column.id]?.is_completed && !plan.cells[column.id]?.is_not_required, overdue: overdue(column, plan.cells[column.id]), 'not-required': plan.cells[column.id]?.is_not_required }">
               <button v-if="auth.canEdit()" class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="startEdit(plan, column)">{{ cellLabel(plan, column) }}</button>
               <span v-else>{{ cellLabel(plan, column) }}</span>
             </td>
@@ -137,23 +142,22 @@ onMounted(load)
 </template>
 
 <style scoped>
-.onboarding-page { padding: 1rem; min-width: 0; }
+.onboarding-page { padding: 1rem; min-width: 0; --label-width: 150px; --employee-width: 220px; }
 .toolbar, form, li { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
 .toolbar { margin: 1rem 0; }
 .add-panel { padding: 1rem; border: 1px solid var(--border); }
 ul { padding: 0; list-style: none; } li { justify-content: space-between; padding: .5rem 0; }
 .table-scroll { overflow: auto; max-height: 65vh; }
-table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
-th, td { min-width: 160px; max-width: 320px; padding: .65rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
-th { position: sticky; top: 0; background: var(--surface, #fff); z-index: 3; text-align: left; }
-.sticky { position: sticky; background: var(--surface, #fff); z-index: 2; box-sizing: border-box; }
-th.sticky { z-index: 4; }
-.number { left: 0; width: 55px; min-width: 55px; max-width: 55px; }
-.grade { left: 55px; width: 115px; min-width: 115px; max-width: 115px; }
-.name { left: 170px; width: 240px; min-width: 240px; max-width: 240px; border-right: 1px solid var(--border); }
+table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: calc(var(--label-width) + var(--employee-count) * var(--employee-width)); }
+th, td { box-sizing: border-box; width: var(--employee-width); padding: .65rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; text-align: left; }
+thead th { position: sticky; top: 0; background: var(--surface, #fff); z-index: 3; }
+.sticky { position: sticky; left: 0; width: var(--label-width); background: var(--surface, #fff); z-index: 2; border-right: 1px solid var(--border); }
+thead .sticky { z-index: 4; }
+.sticky.grade { min-width: 130px; max-width: 150px; }
 .cell-button { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; width: 100%; min-height: 32px; white-space: pre-wrap; }
 .cell-button:hover { text-decoration: underline; }
 .completed { color: #16803c; } .overdue, .error { color: var(--danger); }
+.not-required { color: var(--muted, #64748b); }
 small { display: block; opacity: .7; }
-@media (max-width: 640px) { .grade, .name { position: static; } }
+@media (max-width: 640px) { .onboarding-page { --label-width: 130px; --employee-width: 190px; } }
 </style>
