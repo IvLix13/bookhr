@@ -14,7 +14,7 @@ class OnboardingColumn(db.Model, TimestampMixin):
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
     version = db.Column(db.Integer, nullable=False, default=1)
     __mapper_args__ = {"version_id_col": version}
-    __table_args__ = (db.CheckConstraint("field_type IN ('text', 'date', 'stage')", name="ck_onboarding_column_type"),)
+    __table_args__ = (db.CheckConstraint("field_type IN ('text', 'date', 'stage', 'checkbox')", name="ck_onboarding_column_type"),)
 
 
 class OnboardingPlan(db.Model, TimestampMixin):
@@ -34,11 +34,13 @@ class OnboardingCell(db.Model, TimestampMixin):
     date_value = db.Column(db.Date)
     planned_date = db.Column(db.Date)
     is_completed = db.Column(db.Boolean, nullable=False, default=False)
+    is_not_required = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     completed_date = db.Column(db.Date)
     version = db.Column(db.Integer, nullable=False, default=1)
     plan = db.relationship("OnboardingPlan", back_populates="cells")
     __mapper_args__ = {"version_id_col": version}
     __table_args__ = (
         db.UniqueConstraint("plan_id", "column_id", name="uq_onboarding_cell"),
-        db.CheckConstraint("(is_completed AND completed_date IS NOT NULL) OR (NOT is_completed AND completed_date IS NULL)", name="ck_onboarding_completion"),
+        db.CheckConstraint("is_completed OR completed_date IS NULL", name="ck_onboarding_completion"),
+        db.CheckConstraint("NOT (is_completed AND is_not_required)", name="ck_onboarding_not_required"),
     )

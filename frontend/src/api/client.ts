@@ -117,7 +117,7 @@ export const api = {
     request<Paginated<OnboardingPlan>>(`/api/onboarding/plans${buildQuery(params)}`),
   createOnboardingPlan: (employment_id: number) =>
     request<OnboardingPlan>('/api/onboarding/plans', { method: 'POST', body: JSON.stringify({ employment_id }) }),
-  updateOnboardingCell: (planId: number, columnId: number, body: Partial<OnboardingCell> & { version: number; column_version: number }) =>
+  updateOnboardingCell: (planId: number, columnId: number, body: Partial<OnboardingCell> & { version: number; column_version: number; clear?: boolean }) =>
     request<OnboardingCell>(`/api/onboarding/plans/${planId}/cells/${columnId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   fetchCsrf: () =>
     request<{ csrf_token: string }>('/api/csrf').then((data) => {

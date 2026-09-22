@@ -1,18 +1,22 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { api } from '@/api/client'
 import { ApiError, normalizeError } from '@/api/errors'
 import type { OnboardingColumn, OnboardingFieldType } from '@/types/onboarding'
 
 const props = defineProps<{ columns: OnboardingColumn[] }>()
-const emit = defineEmits<{ changed: [] }>()
+const emit = defineEmits<{ changed: []; state: [value: { dirty: boolean; busy: boolean }] }>()
 const draft = reactive({ id: 0, version: 0, title: '', field_type: 'stage' as OnboardingFieldType })
 const busy = ref(false)
 const error = ref('')
 const stale = ref(false)
 const archiveTarget = ref<OnboardingColumn | null>(null)
+const initialDraft = ref(JSON.stringify({ title: '', field_type: 'stage' }))
+const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: draft.field_type }) !== initialDraft.value)
+watch([dirty, busy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
 function edit(column?: OnboardingColumn) {
   Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage' })
+  initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type })
   error.value = ''
   stale.value = false
 }
@@ -52,24 +56,24 @@ function archive(column: OnboardingColumn) {
 </script>
 
 <template>
-  <section class="card columns-panel" aria-label="Настройка столбцов">
+  <section class="card columns-panel" aria-label="Настройка этапов">
     <h3>Структура таблицы</h3>
-    <p>Номер, Грейд и ФИО — системные. Остальные столбцы общие для всей компании. Архивирование сохраняет значения.</p>
+    <p>Каждый сотрудник — отдельный столбец. Номер, грейд и ФИО — системные данные. Этапы и поля отображаются строками и общие для всей компании. Архивирование сохраняет значения.</p>
     <form class="column-form" @submit.prevent="save">
       <label>Название<input v-model="draft.title" required maxlength="256" :disabled="busy" /></label>
-      <label>Тип<select v-model="draft.field_type" :disabled="busy"><option value="text">Текст</option><option value="date">Дата</option><option value="stage">Этап с датами</option></select></label>
-      <button class="btn" :disabled="busy || stale">{{ draft.id ? 'Сохранить столбец' : 'Добавить столбец' }}</button>
+      <label>Тип<select v-model="draft.field_type" :disabled="busy"><option value="text">Текст</option><option value="date">Дата</option><option value="stage">Этап с датами</option><option value="checkbox">Этап без даты</option></select></label>
+      <button class="btn" :disabled="busy || stale">{{ draft.id ? 'Сохранить поле' : 'Добавить поле' }}</button>
       <button v-if="draft.id || stale" class="btn secondary" type="button" :disabled="busy" @click="edit()">Сбросить форму</button>
     </form>
-    <p>Тип заполненного столбца изменить нельзя.</p>
+    <p>Тип заполненного поля изменить нельзя.</p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
-    <p v-if="stale">Список обновляется. Ввод сохранён; выберите столбец заново для редактирования.</p>
+    <p v-if="stale">Список обновляется. Ввод сохранён; выберите поле заново для редактирования.</p>
     <ol>
       <li v-for="(column, index) in columns" :key="column.id">
-        <span>{{ column.title }} · {{ { text: 'Текст', date: 'Дата', stage: 'Этап' }[column.field_type] }} {{ column.is_archived ? '(архив)' : '' }}</span>
+        <span>{{ column.title }} · {{ { text: 'Текст', date: 'Дата', stage: 'Этап с датами', checkbox: 'Этап без даты' }[column.field_type] }} {{ column.is_archived ? '(архив)' : '' }}</span>
         <div class="actions">
-          <button class="btn secondary" :disabled="busy || index === 0" :aria-label="`Переместить ${column.title} влево`" @click="move(index, -1)">←</button>
-          <button class="btn secondary" :disabled="busy || index === columns.length - 1" :aria-label="`Переместить ${column.title} вправо`" @click="move(index, 1)">→</button>
+          <button class="btn secondary" :disabled="busy || index === 0" :aria-label="`Переместить ${column.title} вверх`" @click="move(index, -1)">↑</button>
+          <button class="btn secondary" :disabled="busy || index === columns.length - 1" :aria-label="`Переместить ${column.title} вниз`" @click="move(index, 1)">↓</button>
           <button class="btn secondary" :disabled="busy" @click="edit(column)">Изменить</button>
           <button class="btn secondary" :disabled="busy" @click="column.is_archived ? archive(column) : archiveTarget = column">{{ column.is_archived ? 'Восстановить' : 'В архив' }}</button>
         </div>

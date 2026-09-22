@@ -1,4 +1,4 @@
-export type OnboardingFieldType = 'text' | 'date' | 'stage'
+export type OnboardingFieldType = 'text' | 'date' | 'stage' | 'checkbox'
 export interface OnboardingColumn {
   id: number
   title: string
@@ -13,6 +13,7 @@ export interface OnboardingCell {
   date_value: string | null
   planned_date: string | null
   is_completed: boolean
+  is_not_required: boolean
   completed_date: string | null
 }
 export interface OnboardingPlan {
