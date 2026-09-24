@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 
 from app.extensions import db
-from app.models import Event, EventStatus, EventType, TenureAward
+from app.models import EmployeeGradeHistory, Event, EventStatus, EventType, GradeCatalog, TenureAward
 from app.services.employees import create_person_with_employment
 from app.services.events import create_manual_event
 from app.services.statistics import build_dashboard_stats
@@ -100,6 +100,39 @@ def test_dashboard_stats_tenure_and_grades_per_company(seed_company, monkeypatch
 
     assert stats["tenure"]["received"]["10"] == 1
     assert stats["tenure"]["received_in_period"] == 1
+
+
+def test_dashboard_grade_distribution_is_sorted_by_rank(seed_company, monkeypatch):
+    monkeypatch.setattr("app.services.statistics.today_moscow", lambda: date(2026, 7, 24))
+    grades = [
+        GradeCatalog(name="Senior", rank=3, min_years=1),
+        GradeCatalog(name="Junior", rank=1, min_years=1),
+        GradeCatalog(name="Middle", rank=2, min_years=1),
+    ]
+    db.session.add_all(grades)
+    db.session.flush()
+
+    for index, grade in enumerate(grades):
+        _, employment = create_person_with_employment(
+            company_id=seed_company.id,
+            full_name=f"Сотрудник {index}",
+            hire_date=date(2020, 1, 1),
+            title="Инженер",
+        )
+        db.session.add(EmployeeGradeHistory(
+            employment_id=employment.id,
+            grade_id=grade.id,
+            assigned_date=date(2026, 1, 1),
+        ))
+    db.session.commit()
+
+    stats = build_dashboard_stats(seed_company.id)
+
+    assert stats["grades"]["distribution"] == [
+        {"name": "Junior", "rank": 1, "count": 1},
+        {"name": "Middle", "rank": 2, "count": 1},
+        {"name": "Senior", "rank": 3, "count": 1},
+    ]
 
 
 def test_dashboard_stats_tenure_pending_requires_due_date_and_lower_awards(

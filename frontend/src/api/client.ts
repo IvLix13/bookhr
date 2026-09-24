@@ -115,6 +115,21 @@ export const api = {
     request<OnboardingColumn[]>('/api/onboarding/columns/order', { method: 'PATCH', body: JSON.stringify({ columns }) }),
   onboardingPlans: (params: TableQueryParams = {}) =>
     request<Paginated<OnboardingPlan>>(`/api/onboarding/plans${buildQuery(params)}`),
+  downloadOnboarding: async () => {
+    const response = await fetch('/api/onboarding/export', { credentials: 'include' })
+    if (response.status === 401) unauthorizedHandler?.()
+    if (!response.ok) {
+      let message = 'Не удалось скачать план обучения'
+      try {
+        const payload = await parseJsonResponse<unknown>(response)
+        message = localizeApiMessage(payload.message) ?? message
+      } catch {
+        // Keep the local message for a non-JSON error response.
+      }
+      throw new ApiError(message, response.status)
+    }
+    triggerDownload(await response.blob(), 'onboarding_plan.xlsx')
+  },
   createOnboardingPlan: (employment_id: number) =>
     request<OnboardingPlan>('/api/onboarding/plans', { method: 'POST', body: JSON.stringify({ employment_id }) }),
   updateOnboardingCell: (planId: number, columnId: number, body: Partial<OnboardingCell> & { version: number; column_version: number; clear?: boolean }) =>

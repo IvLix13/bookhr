@@ -28,6 +28,8 @@ const employees = ref<Employee[]>([])
 const finding = ref(false)
 const adding = ref(false)
 const addError = ref('')
+const exporting = ref(false)
+const exportError = ref('')
 const editing = ref<{ planId: number; employeeName: string; column: OnboardingColumn; cell?: OnboardingCell } | null>(null)
 let requestId = 0
 let employeeRequestId = 0
@@ -74,6 +76,17 @@ async function add(employee: Employee) {
   } catch (err) { addError.value = normalizeError(err) }
   finally { adding.value = false }
 }
+async function downloadExcel() {
+  exporting.value = true
+  exportError.value = ''
+  try {
+    await api.downloadOnboarding()
+  } catch (err) {
+    exportError.value = normalizeError(err)
+  } finally {
+    exporting.value = false
+  }
+}
 function startEdit(plan: OnboardingPlan, column: OnboardingColumn) {
   if (!auth.canEdit()) return
   editing.value = { planId: plan.id, employeeName: plan.full_name ?? 'Сотрудник', column: { ...column }, cell: plan.cells[column.id] ? { ...plan.cells[column.id]! } : undefined }
@@ -102,8 +115,10 @@ onMounted(load)
       <form @submit.prevent="search"><input v-model="query" aria-label="Поиск планов по ФИО" placeholder="ФИО (от 2 символов)" /><button class="btn" :disabled="loading">Найти</button></form>
       <button v-if="auth.canEdit()" class="btn secondary" @click="openAdd">Добавить сотрудника</button>
       <button v-if="auth.canEdit()" class="btn secondary" @click="showColumns = !showColumns">Настроить этапы</button>
+      <button class="btn secondary" :disabled="exporting" @click="downloadExcel">{{ exporting ? 'Скачивание…' : 'Скачать Excel' }}</button>
       <button class="btn secondary" :disabled="loading" @click="load">Обновить</button>
     </div>
+    <p v-if="exportError" role="alert" class="error">{{ exportError }}</p>
     <OnboardingColumnsModal v-if="showColumns && auth.canEdit()" :columns="columns" :refreshing="loading" :refresh-error="error" @changed="load" @close="showColumns = false" />
     <section v-if="showAdd && auth.canEdit()" class="add-panel" aria-label="Выбор сотрудника">
       <h3>Выберите сотрудника</h3>
@@ -156,7 +171,7 @@ thead .sticky { z-index: 4; }
 .sticky.grade { min-width: 130px; max-width: 150px; }
 .cell-button { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; width: 100%; min-height: 32px; white-space: pre-wrap; }
 .cell-button:hover { text-decoration: underline; }
-.completed { color: #16803c; } .overdue, .error { color: var(--danger); }
+.completed { color: #16803c; background: #e2f5e9; } .overdue, .error { color: var(--danger); }
 .not-required { color: var(--muted, #64748b); }
 small { display: block; opacity: .7; }
 @media (max-width: 640px) { .onboarding-page { --label-width: 130px; --employee-width: 190px; } }

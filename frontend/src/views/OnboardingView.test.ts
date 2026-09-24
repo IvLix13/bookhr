@@ -11,6 +11,7 @@ const mock = vi.hoisted(() => ({
   editable: true,
   columns: vi.fn(), plans: vi.fn(), employees: vi.fn(), createPlan: vi.fn(),
   saveCell: vi.fn(), createColumn: vi.fn(), updateColumn: vi.fn(), orderColumns: vi.fn(),
+  downloadOnboarding: vi.fn(),
 }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ canEdit: () => mock.editable }) }))
 vi.mock('@/api/client', () => ({ api: {
@@ -18,6 +19,7 @@ vi.mock('@/api/client', () => ({ api: {
   createOnboardingPlan: mock.createPlan, updateOnboardingCell: mock.saveCell,
   createOnboardingColumn: mock.createColumn, updateOnboardingColumn: mock.updateColumn,
   orderOnboardingColumns: mock.orderColumns,
+  downloadOnboarding: mock.downloadOnboarding,
 } }))
 const column: OnboardingColumn = { id: 1, title: 'NDA', field_type: 'stage', sort_order: 0, is_archived: false, version: 1 }
 const cell = { version: 2, text_value: null, date_value: null, planned_date: '2026-10-01', is_completed: false, is_not_required: false, completed_date: null }
@@ -33,6 +35,7 @@ beforeEach(() => {
   mock.createColumn.mockResolvedValue({ ...column, id: 2 })
   mock.updateColumn.mockResolvedValue({ ...column, version: 2 })
   mock.orderColumns.mockResolvedValue([])
+  mock.downloadOnboarding.mockResolvedValue(undefined)
 })
 
 describe('Onboarding table', () => {
@@ -70,7 +73,37 @@ describe('Onboarding table', () => {
     expect(wrapper.text()).toContain('Иванов')
     expect(wrapper.text()).not.toContain('Настроить этапы')
     expect(wrapper.text()).not.toContain('Добавить сотрудника')
+    expect(wrapper.text()).toContain('Скачать Excel')
     expect(wrapper.find('.cell-button').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('downloads the full table and reports download errors', async () => {
+    const wrapper = mount(OnboardingView)
+    await flushPromises()
+    const button = wrapper.findAll('button').find(item => item.text() === 'Скачать Excel')!
+    await button.trigger('click')
+    await flushPromises()
+    expect(mock.downloadOnboarding).toHaveBeenCalledOnce()
+
+    mock.downloadOnboarding.mockRejectedValueOnce(new ApiError('Ошибка выгрузки', 500))
+    await button.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="alert"]').text()).toContain('Ошибка выгрузки')
+    wrapper.unmount()
+  })
+  it('prevents duplicate downloads while the export is running', async () => {
+    let finish!: () => void
+    mock.downloadOnboarding.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve }))
+    const wrapper = mount(OnboardingView)
+    await flushPromises()
+    const button = wrapper.findAll('button').find(item => item.text() === 'Скачать Excel')!
+    await button.trigger('click')
+    await wrapper.vm.$nextTick()
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.text()).toBe('Скачивание…')
+    finish()
+    await flushPromises()
+    expect(button.attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
   it('searches on submit and creates a plan for a selected employee', async () => {
@@ -188,6 +221,14 @@ describe('New onboarding states and clearing', () => {
     expect(wrapper.get('.not-required').text()).toBe('Не нужно')
     expect(wrapper.find('.overdue').exists()).toBe(false)
     expect(wrapper.find('.completed').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('marks completed cells for green background styling', async () => {
+    mock.plans.mockResolvedValueOnce({ items: [{ id: 1, full_name: 'Иванов', cells: { '1': { ...cell, is_completed: true, completed_date: '2026-09-22' } } }], total: 1, pages: 1 })
+    const wrapper = mount(OnboardingView)
+    await flushPromises()
+    expect(wrapper.get('td.completed').text()).toContain('✓')
+    expect(wrapper.get('td.completed').classes()).not.toContain('not-required')
     wrapper.unmount()
   })
   it('supports creating a checkbox column', async () => {

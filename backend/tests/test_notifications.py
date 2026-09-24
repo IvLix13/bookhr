@@ -1,4 +1,7 @@
 from datetime import date
+from types import SimpleNamespace
+
+import requests
 
 from app.extensions import db
 from app.models import (
@@ -12,7 +15,54 @@ from app.services.events import create_manual_event
 from app.services.notifications import (
     queue_escalation_for_event,
     queue_notifications_for_event,
+    send_talk_message,
 )
+
+
+def test_nextcloud_requests_disable_ssl_verification_by_default(app, monkeypatch):
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        if len(calls) == 1:
+            raise requests.ConnectionError("temporary")
+        return SimpleNamespace(status_code=201, text="created")
+
+    monkeypatch.setattr("app.services.notifications.requests.post", post)
+    with app.app_context():
+        app.config.update(
+            NEXTCLOUD_BASE_URL="https://nextcloud.internal",
+            NEXTCLOUD_BOT_TOKEN="secret-token",
+        )
+        code, body = send_talk_message("room", "Тест")
+
+    assert (code, body) == (201, "created")
+    assert len(calls) == 2
+    for url, kwargs in calls:
+        assert url == "https://nextcloud.internal/ocs/v2.php/apps/spreed/api/v1/bot/room/message"
+        assert kwargs["json"] == {"message": "Тест"}
+        assert kwargs["headers"]["Authorization"] == "Bearer secret-token"
+        assert kwargs["timeout"] == 15
+        assert kwargs["verify"] is False
+
+
+def test_nextcloud_ssl_verification_can_be_enabled(app, monkeypatch):
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return SimpleNamespace(status_code=200, text="ok")
+
+    monkeypatch.setattr("app.services.notifications.requests.post", post)
+    with app.app_context():
+        app.config.update(
+            NEXTCLOUD_BASE_URL="https://nextcloud.internal",
+            NEXTCLOUD_BOT_TOKEN="secret-token",
+            NEXTCLOUD_VERIFY_SSL=True,
+        )
+        assert send_talk_message("room", "Тест") == (200, "ok")
+
+    assert calls[0][1]["verify"] is True
 
 
 def test_queue_escalation_when_threshold_reached(app, seed_company, monkeypatch):

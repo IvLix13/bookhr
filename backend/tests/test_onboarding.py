@@ -1,10 +1,12 @@
 from datetime import date
 import importlib
+from io import BytesIO
 
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
+from openpyxl import load_workbook
 
 from app.extensions import db
 from app.models import AuditLog, Company, Employment, Person, PersonNameHistory, GradeCatalog, EmployeeGradeHistory
@@ -159,6 +161,88 @@ def test_viewer_and_anonymous_permissions(viewer_client):
 def test_anonymous_cannot_read(client):
     assert client.get("/api/onboarding/plans").status_code == 401
     assert client.get("/api/onboarding/columns").status_code == 401
+    assert client.get("/api/onboarding/export").status_code == 401
+
+
+def test_viewer_can_export_valid_workbook(viewer_client):
+    response = viewer_client.get("/api/onboarding/export")
+    assert response.status_code == 200
+    assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "onboarding_plan.xlsx" in response.headers["Content-Disposition"]
+    workbook = load_workbook(BytesIO(response.data))
+    assert workbook.active.title == "План обучения"
+    assert workbook.active.cell(1, 1).value == "Этап / сотрудник"
+
+
+def test_export_contains_all_plans_visible_columns_and_states(hr_client, seed_company):
+    plan, completed_column = setup_plan(hr_client, seed_company.id)
+    data(patch_cell(
+        hr_client,
+        plan,
+        completed_column,
+        is_completed=True,
+        completed_date="2026-09-19",
+    ))
+    text_column = data(hr_client.post(
+        "/api/onboarding/columns",
+        json={"title": "Отдел", "field_type": "text"},
+    ), 201)
+    data(patch_cell(hr_client, plan, text_column, text_value="Разработка"))
+    date_column = data(hr_client.post(
+        "/api/onboarding/columns",
+        json={"title": "Дата", "field_type": "date"},
+    ), 201)
+    data(patch_cell(hr_client, plan, date_column, date_value="2026-09-20"))
+    checkbox_column = data(hr_client.post(
+        "/api/onboarding/columns",
+        json={"title": "Ознакомление", "field_type": "checkbox"},
+    ), 201)
+    data(patch_cell(hr_client, plan, checkbox_column, is_completed=True))
+    not_required_column = data(hr_client.post(
+        "/api/onboarding/columns",
+        json={"title": "Не требуется", "field_type": "checkbox"},
+    ), 201)
+    data(patch_cell(hr_client, plan, not_required_column, is_not_required=True))
+    archived_column = data(hr_client.post(
+        "/api/onboarding/columns",
+        json={"title": "Архив", "field_type": "checkbox"},
+    ), 201)
+    data(hr_client.patch(
+        f'/api/onboarding/columns/{archived_column["id"]}',
+        json={"version": archived_column["version"], "is_archived": True},
+    ))
+
+    with hr_client.application.app_context():
+        for index in range(25):
+            employment_id = employee(seed_company.id, f"Сотрудник {index:02d}")
+            db.session.add(OnboardingPlan(employment_id=employment_id))
+        other_company = Company(name="Export isolation")
+        db.session.add(other_company)
+        db.session.commit()
+        other_employment_id = employee(other_company.id, "Чужой сотрудник")
+        db.session.add(OnboardingPlan(employment_id=other_employment_id))
+        db.session.commit()
+
+    response = hr_client.get("/api/onboarding/export?page=1&per_page=1&q=Несуществующий")
+    assert response.status_code == 200
+    sheet = load_workbook(BytesIO(response.data)).active
+
+    assert sheet.max_column == 27
+    assert sheet.cell(1, 2).value == "Иванов Иван"
+    assert sheet.cell(2, 27).value == 26
+    assert "Чужой сотрудник" not in [cell.value for cell in sheet[1]]
+    assert [sheet.cell(row, 1).value for row in range(1, sheet.max_row + 1)] == [
+        "Этап / сотрудник", "№", "Грейд", "NDA", "Отдел", "Дата",
+        "Ознакомление", "Не требуется",
+    ]
+    assert sheet.cell(4, 2).value == "Выполнено: 19.09.2026"
+    assert sheet.cell(4, 2).fill.fgColor.rgb.endswith("E2F5E9")
+    assert sheet.cell(5, 2).value == "Разработка"
+    assert sheet.cell(6, 2).value.strftime("%d.%m.%Y") == "20.09.2026"
+    assert sheet.cell(6, 2).number_format == "DD.MM.YYYY"
+    assert sheet.cell(7, 2).value == "Выполнено"
+    assert sheet.cell(7, 2).fill.fgColor.rgb.endswith("E2F5E9")
+    assert sheet.cell(8, 2).value == "Не нужно"
 
 
 def test_duplicate_dismissal_deletion_and_rehire(hr_client, seed_company):

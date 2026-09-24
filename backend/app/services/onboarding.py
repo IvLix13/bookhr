@@ -4,10 +4,11 @@ from datetime import date
 
 from marshmallow import Schema, fields, validate
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from werkzeug.exceptions import Conflict, NotFound
 
 from app.extensions import db
-from app.models import Company
+from app.models import Company, EmployeeGradeHistory, Employment, Person
 from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
 
@@ -68,6 +69,39 @@ def cell_dict(cell):
         "version", "text_value", "date_value", "planned_date", "is_completed", "is_not_required", "completed_date"
     )}
     return {key: value.isoformat() if isinstance(value, date) else value for key, value in result.items()}
+
+
+def onboarding_plan_query(company_id):
+    """Return the company-scoped plan query with all display data preloaded."""
+    return (
+        OnboardingPlan.query.join(Employment)
+        .filter(Employment.company_id == company_id)
+        .options(
+            selectinload(OnboardingPlan.cells),
+            selectinload(OnboardingPlan.employment)
+            .selectinload(Employment.person)
+            .selectinload(Person.name_history),
+            selectinload(OnboardingPlan.employment)
+            .selectinload(Employment.grade_history)
+            .selectinload(EmployeeGradeHistory.grade),
+        )
+    )
+
+
+def plan_dict(plan):
+    employment = plan.employment
+    names = [item for item in employment.person.name_history if item.valid_to is None]
+    name = max(names, key=lambda item: (item.valid_from, item.id)) if names else None
+    grades = [item for item in employment.grade_history if item.valid_to is None]
+    grade = max(grades, key=lambda item: (item.assigned_date, item.id)) if grades else None
+    return {
+        "id": plan.id,
+        "employment_id": employment.id,
+        "full_name": name.full_name if name else None,
+        "grade": grade.grade.name if grade else None,
+        "employment_status": employment.status,
+        "cells": {str(cell.column_id): cell_dict(cell) for cell in plan.cells},
+    }
 
 
 def find_column(column_id, company_id):

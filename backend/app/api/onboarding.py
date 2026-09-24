@@ -3,22 +3,23 @@
 from functools import wraps
 from math import ceil
 
+from flask import send_file
 from flask_login import login_required
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import selectinload
 from sqlalchemy.orm.exc import StaleDataError
 from werkzeug.exceptions import Conflict, NotFound
 
 from app.api.helpers import api_response, apply_employment_name_search, get_json, parse_pagination_args, parse_search_q, require_roles
 from app.extensions import db
-from app.models import Employment, Person, EmployeeGradeHistory, RoleName
+from app.models import Employment, RoleName
 from app.models.onboarding import OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
 from app.services.onboarding import (
     CellSchema, ColumnSchema, ColumnUpdateSchema, OrderSchema, PlanSchema,
     cell_dict, check_version, column_dict, find_column, find_plan,
-    lock_company, save_cell, save_column,
+    lock_company, onboarding_plan_query, plan_dict, save_cell, save_column,
 )
+from app.services.onboarding_export import build_onboarding_workbook
 from app.tenant import get_request_company_id
 
 
@@ -37,19 +38,6 @@ def transaction(fn):
             db.session.rollback()
             raise
     return wrapped
-
-
-def plan_dict(plan):
-    employment = plan.employment
-    names = [n for n in employment.person.name_history if n.valid_to is None]
-    name = max(names, key=lambda n: (n.valid_from, n.id)) if names else None
-    grades = [g for g in employment.grade_history if g.valid_to is None]
-    grade = max(grades, key=lambda g: (g.assigned_date, g.id)) if grades else None
-    return {"id": plan.id, "employment_id": employment.id,
-            "full_name": name.full_name if name else None,
-            "grade": grade.grade.name if grade else None,
-            "employment_status": employment.status,
-            "cells": {str(c.column_id): cell_dict(c) for c in plan.cells}}
 
 
 def register_routes(bp):
@@ -108,16 +96,22 @@ def register_routes(bp):
     @login_required
     def onboarding_plans():
         page, per_page = parse_pagination_args()
-        query = OnboardingPlan.query.join(Employment).filter(Employment.company_id == get_request_company_id())
+        query = onboarding_plan_query(get_request_company_id())
         query = apply_employment_name_search(query, parse_search_q())
         total = query.count()
-        plans = query.options(
-            selectinload(OnboardingPlan.cells),
-            selectinload(OnboardingPlan.employment).selectinload(Employment.person).selectinload(Person.name_history),
-            selectinload(OnboardingPlan.employment).selectinload(Employment.grade_history).selectinload(EmployeeGradeHistory.grade),
-        ).order_by(OnboardingPlan.id).offset((page - 1) * per_page).limit(per_page).all()
+        plans = query.order_by(OnboardingPlan.id).offset((page - 1) * per_page).limit(per_page).all()
         return api_response({"items": [plan_dict(p) for p in plans], "page": page,
                              "per_page": per_page, "total": total, "pages": ceil(total / per_page)})
+
+    @bp.get("/onboarding/export")
+    @login_required
+    def onboarding_export():
+        return send_file(
+            build_onboarding_workbook(get_request_company_id()),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name="onboarding_plan.xlsx",
+        )
 
     @bp.get("/onboarding/plans/<int:plan_id>")
     @login_required

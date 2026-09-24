@@ -168,13 +168,13 @@ const eventsTypeChart = computed(() => {
 
 const gradesChart = computed(() => {
   if (!stats.value) return null
-  const entries = Object.entries(stats.value.grades.distribution)
+  const entries = stats.value.grades.distribution
   return {
     tooltip: { trigger: 'axis' },
     grid: { left: 40, right: 16, top: 16, bottom: 24 },
-    xAxis: { type: 'category', data: entries.map(([name]) => name) },
+    xAxis: { type: 'category', data: entries.map((item) => item.name) },
     yAxis: { type: 'value', minInterval: 1 },
-    series: [{ type: 'bar', data: entries.map(([, value]) => value), itemStyle: { color: '#1f8a55' } }],
+    series: [{ type: 'bar', data: entries.map((item) => item.count), itemStyle: { color: '#1f8a55' } }],
   }
 })
 
