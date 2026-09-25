@@ -238,15 +238,21 @@ export interface NotificationRule {
   id: number
   company_id: number | null
   event_type: string | null
-  room_token: string
-  room_name: string | null
+  recipient_user_id: string | null
+  recipient_display_name: string | null
   is_enabled: boolean
   remind_days_before: number
   repeat_interval_days: number
   overdue_interval_days: number
-  escalation_room_token: string | null
+  escalation_recipient_user_id: string | null
+  escalation_recipient_display_name: string | null
   escalation_after_days: number | null
   send_time_moscow: string
+}
+
+export interface NextcloudUser {
+  user_id: string
+  display_name: string
 }
 
 export interface ImportCandidate {

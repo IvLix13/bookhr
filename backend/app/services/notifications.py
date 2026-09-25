@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-import requests
-from flask import current_app
-
 from app.extensions import db
 from app.models import (
     DeliveryStatus,
@@ -18,6 +15,7 @@ from app.models import (
 from app.models.base import utcnow
 from app.services.employees import get_current_name
 from app.services.events import effective_event_status
+from app.services.nextcloud import send_direct_message
 from app.utils.dates import MOSCOW, format_long_date_ru, humanize_dates_in_text, today_moscow
 from sqlalchemy.exc import IntegrityError
 
@@ -48,35 +46,6 @@ def _build_message(event: Event, *, escalated: bool = False) -> str:
     if event.description:
         parts.append(event.description)
     return humanize_dates_in_text("\n".join(parts)) or ""
-
-
-def send_talk_message(room_token: str, message: str) -> tuple[int, str]:
-    base_url = current_app.config.get("NEXTCLOUD_BASE_URL", "").rstrip("/")
-    token = current_app.config.get("NEXTCLOUD_BOT_TOKEN", "")
-    if not base_url or not token:
-        return 0, "Nextcloud not configured"
-
-    url = f"{base_url}/ocs/v2.php/apps/spreed/api/v1/bot/{room_token}/message"
-    headers = {
-        "OCS-APIRequest": "true",
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-    }
-    for attempt in range(2):
-        try:
-            response = requests.post(
-                url,
-                json={"message": message},
-                headers=headers,
-                timeout=15,
-                verify=current_app.config.get("NEXTCLOUD_VERIFY_SSL", False),
-            )
-            return response.status_code, response.text[:500]
-        except requests.RequestException as exc:
-            if attempt == 0:
-                continue
-            return 0, str(exc)[:500]
-    return 0, "Request failed"
 
 
 def _scheduled_send_time(rule: NotificationRule | None, event: Event) -> datetime:
@@ -152,12 +121,14 @@ def queue_notifications_for_event(event: Event) -> int:
 
     created = 0
     for rule in rules:
+        if not rule.recipient_user_id:
+            continue
         key = f"notify:{event.id}:{rule.id}:{event.event_date.isoformat()}"
         if _queue_delivery(
             event_id=event.id,
             rule_id=rule.id,
             idempotency_key=key,
-            recipient=rule.room_token,
+            recipient=rule.recipient_user_id,
             next_attempt_at=_scheduled_send_time(rule, event),
         ):
             created += 1
@@ -168,7 +139,7 @@ def queue_notifications_for_event(event: Event) -> int:
 
 def queue_escalation_for_event(event: Event, rule: NotificationRule) -> int:
     """Queue escalation delivery when overdue threshold is reached."""
-    if not rule.escalation_room_token or rule.escalation_after_days is None:
+    if not rule.escalation_recipient_user_id or rule.escalation_after_days is None:
         return 0
 
     if effective_event_status(event) != EventStatus.OVERDUE.value:
@@ -184,7 +155,7 @@ def queue_escalation_for_event(event: Event, rule: NotificationRule) -> int:
         event_id=event.id,
         rule_id=rule.id,
         idempotency_key=key,
-        recipient=rule.escalation_room_token,
+        recipient=rule.escalation_recipient_user_id,
     ):
         return 1
     return 0
@@ -234,7 +205,7 @@ def process_pending_notifications() -> dict[str, int]:
         )
 
         delivery.attempt_count += 1
-        code, body = send_talk_message(
+        code, body = send_direct_message(
             delivery.recipient,
             _build_message(event, escalated=escalated),
         )

@@ -15,54 +15,84 @@ from app.services.events import create_manual_event
 from app.services.notifications import (
     queue_escalation_for_event,
     queue_notifications_for_event,
-    send_talk_message,
 )
+from app.services.nextcloud import NextcloudUser, search_users, send_direct_message
 
 
-def test_nextcloud_requests_disable_ssl_verification_by_default(app, monkeypatch):
+def test_nextcloud_26_creates_direct_conversation_and_sends_message(app, monkeypatch):
     calls = []
 
-    def post(url, **kwargs):
-        calls.append((url, kwargs))
-        if len(calls) == 1:
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        if len(calls) == 1 and not getattr(request, "retried", False):
+            request.retried = True
             raise requests.ConnectionError("temporary")
+        if url.endswith("/api/v4/room"):
+            return SimpleNamespace(
+                status_code=201,
+                text='{"ocs":{"data":{"token":"direct-room"}}}',
+                json=lambda: {"ocs": {"data": {"token": "direct-room"}}},
+            )
         return SimpleNamespace(status_code=201, text="created")
 
-    monkeypatch.setattr("app.services.notifications.requests.post", post)
+    monkeypatch.setattr("app.services.nextcloud.requests.request", request)
     with app.app_context():
         app.config.update(
             NEXTCLOUD_BASE_URL="https://nextcloud.internal",
-            NEXTCLOUD_BOT_TOKEN="secret-token",
+            NEXTCLOUD_USERNAME="bookhr-bot",
+            NEXTCLOUD_APP_PASSWORD="app-password",
         )
-        code, body = send_talk_message("room", "Тест")
+        code, body = send_direct_message("ivanov", "Тест")
 
     assert (code, body) == (201, "created")
-    assert len(calls) == 2
-    for url, kwargs in calls:
-        assert url == "https://nextcloud.internal/ocs/v2.php/apps/spreed/api/v1/bot/room/message"
-        assert kwargs["json"] == {"message": "Тест"}
-        assert kwargs["headers"]["Authorization"] == "Bearer secret-token"
+    assert len(calls) == 3
+    _, room_url, room_kwargs = calls[1]
+    assert room_url == "https://nextcloud.internal/ocs/v2.php/apps/spreed/api/v4/room"
+    assert room_kwargs["data"] == {"roomType": 1, "invite": "ivanov"}
+    _, chat_url, chat_kwargs = calls[2]
+    assert chat_url.endswith("/ocs/v2.php/apps/spreed/api/v1/chat/direct-room")
+    assert chat_kwargs["data"] == {"message": "Тест"}
+    for _, _, kwargs in calls:
+        assert kwargs["auth"] == ("bookhr-bot", "app-password")
+        assert kwargs["headers"]["OCS-APIRequest"] == "true"
         assert kwargs["timeout"] == 15
         assert kwargs["verify"] is False
 
 
-def test_nextcloud_ssl_verification_can_be_enabled(app, monkeypatch):
+def test_nextcloud_user_search_and_ssl_verification(app, monkeypatch):
     calls = []
 
-    def post(url, **kwargs):
-        calls.append((url, kwargs))
-        return SimpleNamespace(status_code=200, text="ok")
+    def request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        payload = {
+            "ocs": {
+                "data": [
+                    {"id": "ivanov", "label": "Иванов Иван", "source": "users"},
+                    {"id": "hr", "label": "HR", "source": "groups"},
+                ]
+            }
+        }
+        return SimpleNamespace(status_code=200, text="ok", json=lambda: payload)
 
-    monkeypatch.setattr("app.services.notifications.requests.post", post)
+    monkeypatch.setattr("app.services.nextcloud.requests.request", request)
     with app.app_context():
         app.config.update(
             NEXTCLOUD_BASE_URL="https://nextcloud.internal",
-            NEXTCLOUD_BOT_TOKEN="secret-token",
+            NEXTCLOUD_USERNAME="bookhr-bot",
+            NEXTCLOUD_APP_PASSWORD="app-password",
             NEXTCLOUD_VERIFY_SSL=True,
         )
-        assert send_talk_message("room", "Тест") == (200, "ok")
+        assert search_users("Иванов") == [
+            NextcloudUser(user_id="ivanov", display_name="Иванов Иван")
+        ]
 
-    assert calls[0][1]["verify"] is True
+    assert calls[0][2]["verify"] is True
+    assert calls[0][2]["params"] == [
+        ("search", "Иванов"),
+        ("itemType", "call"),
+        ("itemId", "new"),
+        ("shareTypes[]", "0"),
+    ]
 
 
 def test_queue_escalation_when_threshold_reached(app, seed_company, monkeypatch):
@@ -87,8 +117,8 @@ def test_queue_escalation_when_threshold_reached(app, seed_company, monkeypatch)
         )
         rule = NotificationRule(
             company_id=seed_company.id,
-            room_token="room-main",
-            escalation_room_token="room-escalation",
+            recipient_user_id="user-main",
+            escalation_recipient_user_id="user-escalation",
             escalation_after_days=7,
             is_enabled=True,
         )
@@ -102,7 +132,7 @@ def test_queue_escalation_when_threshold_reached(app, seed_company, monkeypatch)
             NotificationDelivery.idempotency_key.like("escalate:%")
         ).all()
         assert len(deliveries) == 1
-        assert deliveries[0].recipient == "room-escalation"
+        assert deliveries[0].recipient == "user-escalation"
         assert deliveries[0].status == DeliveryStatus.PENDING.value
 
 
@@ -121,8 +151,8 @@ def test_queue_escalation_skipped_below_threshold(app, seed_company, monkeypatch
         )
         rule = NotificationRule(
             company_id=seed_company.id,
-            room_token="room-main",
-            escalation_room_token="room-escalation",
+            recipient_user_id="user-main",
+            escalation_recipient_user_id="user-escalation",
             escalation_after_days=7,
             is_enabled=True,
         )
@@ -149,8 +179,8 @@ def test_queue_notifications_also_queues_escalation(app, seed_company, monkeypat
         rule = NotificationRule(
             company_id=None,
             event_type=None,
-            room_token="room-main",
-            escalation_room_token="room-escalation",
+            recipient_user_id="user-main",
+            escalation_recipient_user_id="user-escalation",
             escalation_after_days=3,
             is_enabled=True,
         )
@@ -169,16 +199,39 @@ def test_create_notification_rule_with_escalation(admin_client, seed_company):
         "/api/notifications/rules",
         json={
             "company_id": seed_company.id,
-            "room_token": "room-main",
-            "room_name": "Main",
-            "escalation_room_token": "room-boss",
+            "recipient_user_id": "user-main",
+            "recipient_display_name": "Иванов Иван",
+            "escalation_recipient_user_id": "user-boss",
+            "escalation_recipient_display_name": "Петров Пётр",
             "escalation_after_days": 5,
         },
     )
     assert response.status_code == 201
     payload = response.get_json()["data"]
-    assert payload["escalation_room_token"] == "room-boss"
+    assert payload["escalation_recipient_user_id"] == "user-boss"
+    assert payload["escalation_recipient_display_name"] == "Петров Пётр"
     assert payload["escalation_after_days"] == 5
+
+
+def test_search_nextcloud_users_api(admin_client, monkeypatch):
+    monkeypatch.setattr(
+        "app.api.notifications.search_users",
+        lambda query: [
+            NextcloudUser(user_id="ivanov", display_name=f"{query} Иван")
+        ],
+    )
+
+    response = admin_client.get("/api/notifications/nextcloud-users?q=Иванов")
+
+    assert response.status_code == 200
+    assert response.get_json()["data"] == [
+        {"user_id": "ivanov", "display_name": "Иванов Иван"}
+    ]
+
+
+def test_search_nextcloud_users_requires_two_characters(admin_client):
+    response = admin_client.get("/api/notifications/nextcloud-users?q=И")
+    assert response.status_code == 400
 
 
 def test_update_notification_rule(admin_client, seed_company):
@@ -186,8 +239,8 @@ def test_update_notification_rule(admin_client, seed_company):
         "/api/notifications/rules",
         json={
             "company_id": seed_company.id,
-            "room_token": "room-main",
-            "room_name": "Main",
+            "recipient_user_id": "user-main",
+            "recipient_display_name": "Иванов Иван",
             "is_enabled": True,
             "remind_days_before": 1,
         },
@@ -197,16 +250,35 @@ def test_update_notification_rule(admin_client, seed_company):
     response = admin_client.patch(
         f"/api/notifications/rules/{rule_id}",
         json={
-            "room_name": "Updated",
+            "recipient_display_name": "Иванов И. И.",
             "is_enabled": False,
             "remind_days_before": 3,
         },
     )
     assert response.status_code == 200
     payload = response.get_json()["data"]
-    assert payload["room_name"] == "Updated"
+    assert payload["recipient_display_name"] == "Иванов И. И."
     assert payload["is_enabled"] is False
     assert payload["remind_days_before"] == 3
+
+
+def test_cannot_enable_migrated_rule_without_recipient(
+    admin_client, seed_company
+):
+    with admin_client.application.app_context():
+        rule = NotificationRule(
+            company_id=seed_company.id,
+            recipient_user_id=None,
+            is_enabled=False,
+        )
+        db.session.add(rule)
+        db.session.commit()
+        rule_id = rule.id
+
+    response = admin_client.patch(
+        f"/api/notifications/rules/{rule_id}", json={"is_enabled": True}
+    )
+    assert response.status_code == 400
 
 
 def test_notification_rules_allowed_for_hr(hr_client, seed_company):
@@ -216,8 +288,8 @@ def test_notification_rules_allowed_for_hr(hr_client, seed_company):
     created = hr_client.post(
         "/api/notifications/rules",
         json={
-            "room_token": "room-main",
-            "room_name": "Main",
+            "recipient_user_id": "user-main",
+            "recipient_display_name": "Иванов Иван",
         },
     )
     assert created.status_code == 201
