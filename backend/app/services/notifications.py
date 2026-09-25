@@ -69,6 +69,7 @@ def send_talk_message(room_token: str, message: str) -> tuple[int, str]:
                 json={"message": message},
                 headers=headers,
                 timeout=15,
+                verify=current_app.config.get("NEXTCLOUD_VERIFY_SSL", False),
             )
             return response.status_code, response.text[:500]
         except requests.RequestException as exc:

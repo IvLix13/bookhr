@@ -30,6 +30,7 @@ class BaseConfig:
     WTF_CSRF_ENABLED = False
     NEXTCLOUD_BASE_URL = os.getenv("NEXTCLOUD_BASE_URL", "")
     NEXTCLOUD_BOT_TOKEN = os.getenv("NEXTCLOUD_BOT_TOKEN", "")
+    NEXTCLOUD_VERIFY_SSL = _env_bool("NEXTCLOUD_VERIFY_SSL", False)
 
     PASSWORD_MIN_LENGTH = int(os.getenv("PASSWORD_MIN_LENGTH", "10"))
     PASSWORD_REQUIRE_UPPER = _env_bool("PASSWORD_REQUIRE_UPPER", True)

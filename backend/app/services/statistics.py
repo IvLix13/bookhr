@@ -116,7 +116,8 @@ def build_dashboard_stats(
         elif days_left <= 120:
             expiring_120 += 1
 
-    grade_distribution: Counter[str] = Counter()
+    grade_counts: Counter[int] = Counter()
+    grade_details: dict[int, tuple[str, int]] = {}
     eligible_now = 0
     eligible_30 = 0
     without_grade = 0
@@ -125,7 +126,9 @@ def build_dashboard_stats(
         if not grade:
             without_grade += 1
             continue
-        grade_distribution[grade.grade.name] += 1
+        catalog_grade = grade.grade
+        grade_counts[catalog_grade.id] += 1
+        grade_details[catalog_grade.id] = (catalog_grade.name, catalog_grade.rank)
         eligibility = compute_grade_eligibility(employment, today)
         days_left = eligibility["days_left"]
         if days_left is None:
@@ -180,6 +183,14 @@ def build_dashboard_stats(
         TenureAward.received_date <= date_to,
     ).count()
 
+    grade_distribution = [
+        {"name": grade_details[grade_id][0], "rank": grade_details[grade_id][1], "count": grade_counts[grade_id]}
+        for grade_id in sorted(
+            grade_counts,
+            key=lambda item: (grade_details[item][1], grade_details[item][0], item),
+        )
+    ]
+
     return {
         "period": {
             "from": date_from.isoformat(),
@@ -205,7 +216,7 @@ def build_dashboard_stats(
             "expiring_120d": expiring_120,
         },
         "grades": {
-            "distribution": dict(grade_distribution),
+            "distribution": grade_distribution,
             "without_grade": without_grade,
             "eligible_now": eligible_now,
             "eligible_30d": eligible_30,

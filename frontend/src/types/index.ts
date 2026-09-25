@@ -214,7 +214,7 @@ export interface DashboardStats {
   }
   contracts: { active: number; expired: number; expiring_120d: number }
   grades: {
-    distribution: Record<string, number>
+    distribution: Array<{ name: string; rank: number; count: number }>
     without_grade: number
     eligible_now: number
     eligible_30d: number
