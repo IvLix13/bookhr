@@ -26,7 +26,7 @@ describe('SettingsLayout', () => {
   it('renders settings tabs', () => {
     const wrapper = mount(SettingsLayout)
     expect(wrapper.text()).toContain('Пользователи и роли')
-    expect(wrapper.text()).toContain('Настройки бота')
+    expect(wrapper.text()).toContain('Уведомления Nextcloud')
     expect(wrapper.find('.router-view-stub').exists()).toBe(true)
   })
 })

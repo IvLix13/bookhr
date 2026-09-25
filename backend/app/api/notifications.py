@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+from flask import request
+
 from app.api.helpers import api_response, get_json, load_schema, require_roles
 from app.api.schemas import NotificationRuleSchema, NotificationTestSchema
 from app.api.serializers import notification_rule_to_dict
 from app.extensions import db
 from app.models import NotificationRule, RoleName
-from app.services.notifications import send_talk_message
+from app.services.nextcloud import (
+    NextcloudError,
+    NextcloudNotConfigured,
+    search_users,
+    send_direct_message,
+)
 from app.tenant import get_request_company_id
 
 
@@ -35,13 +42,18 @@ def register_routes(bp):
         rule = NotificationRule(
             company_id=get_request_company_id(),
             event_type=payload.get("event_type") or None,
-            room_token=payload["room_token"],
-            room_name=payload.get("room_name"),
+            recipient_user_id=payload["recipient_user_id"],
+            recipient_display_name=payload.get("recipient_display_name"),
             is_enabled=payload.get("is_enabled", True),
             remind_days_before=payload.get("remind_days_before", 0),
             repeat_interval_days=payload.get("repeat_interval_days", 7),
             overdue_interval_days=payload.get("overdue_interval_days", 3),
-            escalation_room_token=payload.get("escalation_room_token") or None,
+            escalation_recipient_user_id=(
+                payload.get("escalation_recipient_user_id") or None
+            ),
+            escalation_recipient_display_name=(
+                payload.get("escalation_recipient_display_name") or None
+            ),
             escalation_after_days=payload.get("escalation_after_days"),
             send_time_moscow=payload.get("send_time_moscow", "09:00"),
         )
@@ -58,21 +70,34 @@ def register_routes(bp):
         if rule.company_id and rule.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
         payload = get_json()
+        effective_recipient = payload.get(
+            "recipient_user_id", rule.recipient_user_id
+        )
+        if payload.get("is_enabled") is True and not effective_recipient:
+            return api_response(
+                message="Select a Nextcloud recipient before enabling the rule",
+                status=400,
+            )
         for field in (
             "event_type",
-            "room_token",
-            "room_name",
+            "recipient_user_id",
+            "recipient_display_name",
             "is_enabled",
             "remind_days_before",
             "repeat_interval_days",
             "overdue_interval_days",
-            "escalation_room_token",
+            "escalation_recipient_user_id",
+            "escalation_recipient_display_name",
             "escalation_after_days",
             "send_time_moscow",
         ):
             if field in payload:
                 value = payload[field]
-                if field in ("event_type", "escalation_room_token") and value == "":
+                if field in (
+                    "event_type",
+                    "escalation_recipient_user_id",
+                    "escalation_recipient_display_name",
+                ) and value == "":
                     value = None
                 setattr(rule, field, value)
         db.session.commit()
@@ -82,12 +107,34 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def test_notification():
         payload = load_schema(NotificationTestSchema)
-        code, body = send_talk_message(
-            payload["room_token"],
+        code, body = send_direct_message(
+            payload["recipient_user_id"],
             payload.get("message", "Bookuchet test notification"),
         )
         success = 200 <= code < 300
         return api_response(
             {"status_code": code, "response": body},
             status=200 if success else 502,
+        )
+
+    @bp.get("/notifications/nextcloud-users")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def nextcloud_users():
+        query = request.args.get("q", "").strip()
+        if len(query) < 2:
+            return api_response(message="Enter at least 2 characters", status=400)
+        try:
+            users = search_users(query)
+        except NextcloudNotConfigured as exc:
+            return api_response(message=str(exc), status=503)
+        except NextcloudError as exc:
+            return api_response(
+                message=exc.response_body or str(exc),
+                status=502,
+            )
+        return api_response(
+            [
+                {"user_id": user.user_id, "display_name": user.display_name}
+                for user in users
+            ]
         )

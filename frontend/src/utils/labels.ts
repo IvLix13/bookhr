@@ -15,7 +15,7 @@ export const MODULE_LABELS = {
   events: 'Все мероприятия',
   settings: 'Настройки',
   settingsUsers: 'Пользователи и роли',
-  settingsNotifications: 'Настройки бота',
+  settingsNotifications: 'Уведомления Nextcloud',
 } as const
 
 export const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -133,6 +133,11 @@ export const API_MESSAGE_LABELS: Record<string, string> = {
   'comment: Укажите причину отмены': 'Укажите причину отмены',
   'Not found': 'Запись не найдена',
   'Invalid credentials': 'Неверный логин или пароль',
+  'Enter at least 2 characters': 'Введите минимум 2 символа ФИО',
+  'Nextcloud not configured: NEXTCLOUD_BASE_URL, NEXTCLOUD_USERNAME and NEXTCLOUD_APP_PASSWORD are required':
+    'Nextcloud не настроен: заполните URL, логин и пароль приложения',
+  'Select a Nextcloud recipient before enabling the rule':
+    'Перед включением правила выберите получателя в Nextcloud',
 }
 
 export function localizeApiMessage(message: string | undefined): string {

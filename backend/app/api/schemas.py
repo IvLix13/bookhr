@@ -258,20 +258,23 @@ class UpdateTenureAwardSchema(BaseSchema):
 
 
 class NotificationRuleSchema(BaseSchema):
-    room_token = fields.Str(required=True, validate=validate.Length(min=1, max=128))
-    room_name = fields.Str(allow_none=True)
+    recipient_user_id = fields.Str(
+        required=True, validate=validate.Length(min=1, max=128)
+    )
+    recipient_display_name = fields.Str(allow_none=True)
     event_type = fields.Str(allow_none=True)
     is_enabled = fields.Bool(load_default=True)
     remind_days_before = fields.Int(load_default=0)
     repeat_interval_days = fields.Int(load_default=7)
     overdue_interval_days = fields.Int(load_default=3)
-    escalation_room_token = fields.Str(allow_none=True)
+    escalation_recipient_user_id = fields.Str(allow_none=True)
+    escalation_recipient_display_name = fields.Str(allow_none=True)
     escalation_after_days = fields.Int(allow_none=True)
     send_time_moscow = fields.Str(load_default="09:00")
 
 
 class NotificationTestSchema(BaseSchema):
-    room_token = fields.Str(required=True)
+    recipient_user_id = fields.Str(required=True)
     message = fields.Str(load_default="Тестовое уведомление Bookuchet")
 
 

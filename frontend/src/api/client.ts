@@ -7,6 +7,7 @@ import type {
   DashboardStats,
   Paginated,
   SearchResponse,
+  NextcloudUser,
 } from '@/types'
 
 export interface TableQueryParams {
@@ -269,6 +270,8 @@ export const api = {
       body: JSON.stringify({}),
     }),
   notificationRules: () => request('/api/notifications/rules'),
+  searchNextcloudUsers: (q: string) =>
+    request<NextcloudUser[]>(`/api/notifications/nextcloud-users${buildQuery({ q })}`),
   createNotificationRule: (body: Record<string, unknown>) =>
     request('/api/notifications/rules', { method: 'POST', body: JSON.stringify(body) }),
   updateNotificationRule: (id: number, body: Record<string, unknown>) =>
