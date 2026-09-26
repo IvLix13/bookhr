@@ -88,16 +88,28 @@ def onboarding_plan_query(company_id):
     )
 
 
+def current_plan_name(plan):
+    names = [item for item in plan.employment.person.name_history if item.valid_to is None]
+    name = max(names, key=lambda item: (item.valid_from, item.id)) if names else None
+    return name.full_name if name else None
+
+
+def names_match(left, right):
+    if not isinstance(left, str) or not isinstance(right, str):
+        return False
+    folded_left = left.strip().casefold()
+    folded_right = right.strip().casefold()
+    return bool(folded_left) and folded_left == folded_right
+
+
 def plan_dict(plan):
     employment = plan.employment
-    names = [item for item in employment.person.name_history if item.valid_to is None]
-    name = max(names, key=lambda item: (item.valid_from, item.id)) if names else None
     grades = [item for item in employment.grade_history if item.valid_to is None]
     grade = max(grades, key=lambda item: (item.assigned_date, item.id)) if grades else None
     return {
         "id": plan.id,
         "employment_id": employment.id,
-        "full_name": name.full_name if name else None,
+        "full_name": current_plan_name(plan),
         "grade": grade.grade.name if grade else None,
         "employment_status": employment.status,
         "cells": {str(cell.column_id): cell_dict(cell) for cell in plan.cells},

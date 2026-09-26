@@ -166,7 +166,7 @@ def test_viewer_can_edit_cells_but_not_structure(hr_client, seed_company):
             role = Role(name=RoleName.VIEWER.value)
             db.session.add(role)
             db.session.flush()
-        user = User(username="viewer_user", full_name="Viewer", role_id=role.id, company_id=seed_company.id)
+        user = User(username="viewer_user", full_name="  иВаНоВ иВаН  ", role_id=role.id, company_id=seed_company.id)
         user.set_password("secret123")
         db.session.add(user)
         db.session.commit()
@@ -183,6 +183,32 @@ def test_viewer_can_edit_cells_but_not_structure(hr_client, seed_company):
         "/api/onboarding/columns/order",
         json={"columns": [{"id": column["id"], "version": column["version"]}]},
     ).status_code == 403
+
+
+def test_viewer_cannot_edit_employee_with_different_name(hr_client, seed_company):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    with hr_client.application.app_context():
+        other_employment = employee(seed_company.id, "Петров Пётр")
+        role = Role.query.filter_by(name=RoleName.VIEWER.value).first()
+        if role is None:
+            role = Role(name=RoleName.VIEWER.value)
+            db.session.add(role)
+            db.session.flush()
+        user = User(username="viewer_user", full_name="Иванов Иван", role_id=role.id, company_id=seed_company.id)
+        user.set_password("secret123")
+        db.session.add(user)
+        db.session.commit()
+    other = data(hr_client.post("/api/onboarding/plans", json={"employment_id": other_employment}), 201)
+    data(patch_cell(hr_client, other, column, planned_date="2026-11-01"))
+    assert hr_client.post("/api/login", json={"username": "viewer_user", "password": "secret123"}).status_code == 200
+    response = patch_cell(hr_client, other, column, version=1, planned_date="2026-12-01")
+    assert response.status_code == 403
+    assert response.get_json()["message"] == "Можно изменять только этапы сотрудника с совпадающим ФИО"
+    with hr_client.application.app_context():
+        cell = OnboardingCell.query.filter_by(plan_id=other["id"], column_id=column["id"]).one()
+        assert cell.planned_date == date(2026, 11, 1)
+    saved = data(patch_cell(hr_client, plan, column, planned_date="2026-10-01"))
+    assert saved["planned_date"] == "2026-10-01"
 
 
 def test_anonymous_cannot_read(client):

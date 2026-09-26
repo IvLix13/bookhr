@@ -87,7 +87,17 @@ async function downloadExcel() {
     exporting.value = false
   }
 }
+function namesMatch(left?: string | null, right?: string | null) {
+  const own = left?.trim().toLocaleLowerCase('ru') ?? ''
+  const employee = right?.trim().toLocaleLowerCase('ru') ?? ''
+  return own.length > 0 && own === employee
+}
+function canEditCell(plan: OnboardingPlan) {
+  if (auth.canEdit()) return true
+  return auth.user?.role === 'viewer' && namesMatch(auth.user.full_name, plan.full_name)
+}
 function startEdit(plan: OnboardingPlan, column: OnboardingColumn) {
+  if (!canEditCell(plan)) return
   editing.value = { planId: plan.id, employeeName: plan.full_name ?? 'Сотрудник', column: { ...column }, cell: plan.cells[column.id] ? { ...plan.cells[column.id]! } : undefined }
 }
 function cellLabel(plan: OnboardingPlan, column: OnboardingColumn) {
@@ -143,7 +153,8 @@ onMounted(load)
           <tr v-for="column in visibleColumns" :key="column.id">
             <th scope="row" class="sticky">{{ column.title }}</th>
             <td v-for="plan in plans" :key="plan.id" :class="{ completed: plan.cells[column.id]?.is_completed && !plan.cells[column.id]?.is_not_required, overdue: overdue(column, plan.cells[column.id]), 'not-required': plan.cells[column.id]?.is_not_required }">
-              <button class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="startEdit(plan, column)">{{ cellLabel(plan, column) }}</button>
+              <button v-if="canEditCell(plan)" class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="startEdit(plan, column)">{{ cellLabel(plan, column) }}</button>
+              <span v-else>{{ cellLabel(plan, column) }}</span>
             </td>
           </tr></tbody>
         </table>

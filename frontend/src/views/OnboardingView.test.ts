@@ -9,11 +9,16 @@ import type { OnboardingColumn } from '@/types/onboarding'
 
 const mock = vi.hoisted(() => ({
   editable: true,
+  role: 'hr' as 'admin' | 'hr' | 'viewer',
+  fullName: 'HR User',
   columns: vi.fn(), plans: vi.fn(), employees: vi.fn(), createPlan: vi.fn(),
   saveCell: vi.fn(), createColumn: vi.fn(), updateColumn: vi.fn(), orderColumns: vi.fn(),
   downloadOnboarding: vi.fn(),
 }))
-vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ canEdit: () => mock.editable }) }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({
+  canEdit: () => mock.editable,
+  user: { id: 1, username: 'user', full_name: mock.fullName, role: mock.role },
+}) }))
 vi.mock('@/api/client', () => ({ api: {
   onboardingColumns: mock.columns, onboardingPlans: mock.plans, employees: mock.employees,
   createOnboardingPlan: mock.createPlan, updateOnboardingCell: mock.saveCell,
@@ -27,6 +32,8 @@ const cell = { version: 2, text_value: null, date_value: null, planned_date: '20
 beforeEach(() => {
   vi.resetAllMocks()
   mock.editable = true
+  mock.role = 'hr'
+  mock.fullName = 'HR User'
   mock.columns.mockResolvedValue([{ ...column }])
   mock.plans.mockResolvedValue({ items: [{ id: 1, employment_id: 2, full_name: 'Иванов', grade: 'Junior', employment_status: 'active', cells: { '1': { ...cell } } }], page: 1, per_page: 25, total: 1, pages: 1 })
   mock.employees.mockResolvedValue({ items: [{ id: 2, full_name: 'Петров', hire_date: '2020-01-01', status: 'active' }], page: 1, pages: 1, total: 1 })
@@ -66,16 +73,23 @@ describe('Onboarding table', () => {
     expect(wrapper.findComponent(OnboardingCellEditor).exists()).toBe(true)
     wrapper.unmount()
   })
-  it('viewer edits cells but cannot configure the table', async () => {
+  it('viewer edits only the employee with the same name and cannot configure the table', async () => {
     mock.editable = false
+    mock.role = 'viewer'
+    mock.fullName = '  иванов '
+    mock.plans.mockResolvedValueOnce({ items: [
+      { id: 10, full_name: 'Иванов', grade: 'Junior', cells: { '1': cell } },
+      { id: 20, full_name: 'Петров', grade: 'Senior', cells: { '1': cell } },
+    ], total: 2, pages: 1 })
     const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
-    expect(wrapper.text()).toContain('Иванов')
     expect(wrapper.text()).not.toContain('Настроить этапы')
     expect(wrapper.text()).not.toContain('Добавить сотрудника')
     expect(wrapper.text()).toContain('Скачать Excel')
+    expect(wrapper.findAll('.cell-button').map(button => button.attributes('aria-label'))).toEqual(['NDA, Иванов: 1 октября 2026 г.'])
+    expect(wrapper.text()).toContain('Петров')
     await wrapper.get('.cell-button').trigger('click')
-    expect(wrapper.findComponent(OnboardingCellEditor).exists()).toBe(true)
+    expect(wrapper.getComponent(OnboardingCellEditor).props('planId')).toBe(10)
     wrapper.unmount()
   })
   it('downloads the full table and reports download errors', async () => {

@@ -4,10 +4,10 @@ from functools import wraps
 from math import ceil
 
 from flask import send_file
-from flask_login import login_required
+from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
-from werkzeug.exceptions import Conflict, NotFound
+from werkzeug.exceptions import Conflict, Forbidden, NotFound
 
 from app.api.helpers import api_response, apply_employment_name_search, get_json, parse_pagination_args, parse_search_q, require_roles
 from app.extensions import db
@@ -16,8 +16,8 @@ from app.models.onboarding import OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
 from app.services.onboarding import (
     CellSchema, ColumnSchema, ColumnUpdateSchema, OrderSchema, PlanSchema,
-    cell_dict, check_version, column_dict, find_column, find_plan,
-    lock_company, onboarding_plan_query, plan_dict, save_cell, save_column,
+    cell_dict, check_version, column_dict, current_plan_name, find_column, find_plan,
+    lock_company, names_match, onboarding_plan_query, plan_dict, save_cell, save_column,
 )
 from app.services.onboarding_export import build_onboarding_workbook
 from app.tenant import get_request_company_id
@@ -139,5 +139,8 @@ def register_routes(bp):
     @transaction
     def onboarding_update_cell(plan_id, column_id):
         company_id = get_request_company_id()
-        cell = save_cell(find_plan(plan_id, company_id), find_column(column_id, company_id), CellSchema().load(get_json()))
+        plan = find_plan(plan_id, company_id)
+        if current_user.has_role(RoleName.VIEWER) and not names_match(current_user.full_name, current_plan_name(plan)):
+            raise Forbidden("Можно изменять только этапы сотрудника с совпадающим ФИО")
+        cell = save_cell(plan, find_column(column_id, company_id), CellSchema().load(get_json()))
         return api_response(cell_dict(cell))
