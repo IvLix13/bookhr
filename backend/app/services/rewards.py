@@ -3,9 +3,14 @@
 from __future__ import annotations
 
 from datetime import date
+from io import BytesIO
+
+from openpyxl import Workbook
+from openpyxl.styles import Font
 
 from app.extensions import db
 from app.models import Employment, Reward, RewardStatus
+from app.models.reward import REWARD_STATUS_LABELS
 from app.services.audit import log_audit
 from app.utils.dates import today_moscow
 
@@ -153,3 +158,48 @@ def list_rewards_for_company(
     if employment_id:
         query = query.filter(Reward.employment_id == employment_id)
     return query.all()
+
+
+def reward_status_statistics(company_id: int) -> dict:
+    """Count every reward in the company, including statuses that are unused."""
+    rows = (
+        db.session.query(Reward.status, db.func.count(Reward.id))
+        .join(Employment, Reward.employment_id == Employment.id)
+        .filter(Employment.company_id == company_id)
+        .group_by(Reward.status)
+        .all()
+    )
+    counts = {status: count for status, count in rows}
+    items = [
+        {
+            "status": status.value,
+            "label": REWARD_STATUS_LABELS[status.value],
+            "count": int(counts.get(status.value, 0)),
+        }
+        for status in RewardStatus
+    ]
+    known = {status.value for status in RewardStatus}
+    for status, count in sorted(rows, key=lambda item: item[0] or ""):
+        if status not in known:
+            items.append({"status": status, "label": status or "—", "count": int(count)})
+    return {"items": items, "total": sum(item["count"] for item in items)}
+
+
+def build_reward_statistics_workbook(company_id: int) -> BytesIO:
+    stats = reward_status_statistics(company_id)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Статистика поощрений"
+    sheet.append(["Состояние", "Количество"])
+    for item in stats["items"]:
+        sheet.append([item["label"], item["count"]])
+    sheet.append(["Всего", stats["total"]])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+    sheet.cell(row=sheet.max_row, column=1).font = Font(bold=True)
+    sheet.column_dimensions["A"].width = 24
+    sheet.column_dimensions["B"].width = 16
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output

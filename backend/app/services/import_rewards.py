@@ -12,6 +12,7 @@ from openpyxl import Workbook, load_workbook
 
 from app.extensions import db
 from app.models import Employment, ImportJob, ImportRow, ImportStatus, Person, Reward, RewardStatus
+from app.models.reward import REWARD_STATUS_LABELS
 from app.services.employees import get_current_name
 from app.services.import_excel import candidate_payload, find_person_candidates
 from app.services.rewards import create_reward, update_reward
@@ -53,14 +54,7 @@ STATUS_ALIASES = {
     "extra_3": RewardStatus.EXTRA_3.value,
 }
 
-STATUS_LABELS = {
-    RewardStatus.NOT_DELIVERED.value: "Не вручено",
-    RewardStatus.IN_HR.value: "В кадрах",
-    RewardStatus.DELIVERED.value: "Вручено",
-    RewardStatus.EXTRA_1.value: "Доп. статус 1",
-    RewardStatus.EXTRA_2.value: "Доп. статус 2",
-    RewardStatus.EXTRA_3.value: "Доп. статус 3",
-}
+STATUS_LABELS = REWARD_STATUS_LABELS
 
 
 def _normalize_header(value: str) -> str:

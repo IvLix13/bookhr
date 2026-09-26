@@ -1,7 +1,11 @@
 from datetime import date
+from io import BytesIO
+
+from openpyxl import load_workbook
 
 from app.extensions import db
-from app.models import EmployeeGradeHistory, GradeCatalog, Reward, RewardStatus
+from app.models import Company, EmployeeGradeHistory, GradeCatalog, Reward, RewardStatus
+from app.models.reward import REWARD_STATUS_LABELS
 from app.services.employees import create_person_with_employment
 from app.utils.dates import today_moscow
 
@@ -176,3 +180,66 @@ def test_employee_list_includes_eligible_date(admin_client, seed_company, app):
     items = response.get_json()["data"]["items"]
     employee = next(item for item in items if item["id"] == employment_id)
     assert employee["eligible_date"] == "2026-01-15"
+
+
+def test_reward_status_labels_cover_every_status():
+    assert set(REWARD_STATUS_LABELS) == {status.value for status in RewardStatus}
+
+
+def test_reward_statistics_counts_statuses_for_current_company(hr_client, seed_company):
+    employment = _create_employment(seed_company.id)
+    with hr_client.application.app_context():
+        other = Company(name="Другая")
+        db.session.add(other)
+        db.session.commit()
+        other_id = other.id
+        other_employment = _create_employment(other_id)
+        db.session.add_all([
+            Reward(employment_id=employment.id, reward_type="Благодарность", status=RewardStatus.NOT_DELIVERED.value),
+            Reward(employment_id=employment.id, reward_type="Грамота", status=RewardStatus.NOT_DELIVERED.value),
+            Reward(employment_id=employment.id, reward_type="Медаль", status=RewardStatus.DELIVERED.value),
+            Reward(employment_id=other_employment.id, reward_type="Чужая", status=RewardStatus.IN_HR.value),
+        ])
+        db.session.commit()
+
+    payload = hr_client.get("/api/rewards/statistics").get_json()["data"]
+    counts = {item["status"]: item["count"] for item in payload["items"]}
+    assert counts["not_delivered"] == 2
+    assert counts["delivered"] == 1
+    assert counts["in_hr"] == 0
+    assert counts["extra_1"] == 0
+    assert payload["total"] == 3
+    assert [item["label"] for item in payload["items"]] == [
+        "Не вручено",
+        "В кадрах",
+        "Вручено",
+        "Доп. статус 1",
+        "Доп. статус 2",
+        "Доп. статус 3",
+    ]
+
+
+def test_reward_statistics_requires_login(client):
+    assert client.get("/api/rewards/statistics").status_code == 401
+    assert client.get("/api/rewards/statistics/export").status_code == 401
+
+
+def test_reward_statistics_export_for_viewer(viewer_client, seed_company):
+    employment = _create_employment(seed_company.id)
+    db.session.add(Reward(
+        employment_id=employment.id,
+        reward_type="Благодарность",
+        status=RewardStatus.IN_HR.value,
+    ))
+    db.session.commit()
+
+    assert viewer_client.get("/api/rewards/statistics").status_code == 200
+    response = viewer_client.get("/api/rewards/statistics/export")
+    assert response.status_code == 200
+    assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "rewards_statistics.xlsx" in response.headers["Content-Disposition"]
+    sheet = load_workbook(BytesIO(response.data)).active
+    assert sheet.title == "Статистика поощрений"
+    assert [sheet.cell(1, 1).value, sheet.cell(1, 2).value] == ["Состояние", "Количество"]
+    assert [sheet.cell(3, 1).value, sheet.cell(3, 2).value] == ["В кадрах", 1]
+    assert [sheet.cell(8, 1).value, sheet.cell(8, 2).value] == ["Всего", 1]

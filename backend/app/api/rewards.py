@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from flask import request
+from flask import request, send_file
 from flask_login import login_required
 
 from app.api.helpers import (
@@ -22,7 +22,7 @@ from app.api.schemas import CreateRewardSchema
 from app.api.serializers import reward_to_dict
 from app.extensions import db
 from app.models import Employment, PersonNameHistory, Reward, RoleName
-from app.services.rewards import create_reward, update_reward
+from app.services.rewards import build_reward_statistics_workbook, create_reward, reward_status_statistics, update_reward
 from app.tenant import get_request_company_id
 
 
@@ -68,6 +68,21 @@ def register_routes(bp):
 
         query = apply_sort(query, REWARD_SORT_FIELDS, sort, direction)
         return api_response(paginate_query(query, reward_to_dict, page, per_page))
+
+    @bp.get("/rewards/statistics")
+    @login_required
+    def reward_statistics():
+        return api_response(reward_status_statistics(get_request_company_id()))
+
+    @bp.get("/rewards/statistics/export")
+    @login_required
+    def reward_statistics_export():
+        return send_file(
+            build_reward_statistics_workbook(get_request_company_id()),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name="rewards_statistics.xlsx",
+        )
 
     @bp.post("/rewards")
     @require_roles(RoleName.ADMIN, RoleName.HR)

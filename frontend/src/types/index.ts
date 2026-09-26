@@ -152,6 +152,17 @@ export interface RewardRow {
   notes: string | null
 }
 
+export interface RewardStatusCount {
+  status: string
+  label: string
+  count: number
+}
+
+export interface RewardStatistics {
+  items: RewardStatusCount[]
+  total: number
+}
+
 export interface GradeRow {
   employment_id: number
   full_name: string | null

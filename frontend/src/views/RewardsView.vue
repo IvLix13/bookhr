@@ -5,9 +5,10 @@ import PageState from '@/components/PageState.vue'
 import RewardForm from '@/components/RewardForm.vue'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { api } from '@/api/client'
+import { normalizeError } from '@/api/errors'
 import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
-import type { Paginated, RewardRow, TableQueryState } from '@/types'
+import type { Paginated, RewardRow, RewardStatistics, TableQueryState } from '@/types'
 import { formatShortDate } from '@/utils/dates'
 import { MODULE_LABELS } from '@/utils/labels'
 import { getRewardStatusMeta } from '@/utils/statuses'
@@ -16,6 +17,12 @@ import { useAuthStore } from '@/stores/auth'
 const auth = useAuthStore()
 const editing = ref<RewardRow | null>(null)
 const modalOpen = ref(false)
+const statisticsOpen = ref(false)
+const statistics = ref<RewardStatistics | null>(null)
+const statisticsLoading = ref(false)
+const statisticsError = ref('')
+const exporting = ref(false)
+const exportError = ref('')
 
 const table = useServerTable<RewardRow>({
   tableId: 'rewards',
@@ -67,9 +74,12 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
 }
 
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && modalOpen.value) {
-    closeModal()
+  if (event.key !== 'Escape') return
+  if (statisticsOpen.value) {
+    closeStatistics()
+    return
   }
+  if (modalOpen.value) closeModal()
 }
 
 window.addEventListener('keydown', onKeydown)
@@ -97,20 +107,56 @@ async function handleSaved() {
   closeModal()
   await table.reload()
 }
+
+async function openStatistics() {
+  statisticsOpen.value = true
+  statisticsLoading.value = true
+  statisticsError.value = ''
+  exportError.value = ''
+  try {
+    statistics.value = await api.rewardStatistics()
+  } catch (err) {
+    statistics.value = null
+    statisticsError.value = normalizeError(err)
+  } finally {
+    statisticsLoading.value = false
+  }
+}
+
+function closeStatistics() {
+  if (exporting.value) return
+  statisticsOpen.value = false
+}
+
+async function downloadStatistics() {
+  if (exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  try {
+    await api.downloadRewardStatistics()
+  } catch (err) {
+    exportError.value = normalizeError(err)
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
   <section class="card page">
     <header class="page-header">
       <h2>{{ MODULE_LABELS.rewards }}</h2>
-      <button
-        v-if="auth.canEdit()"
-        class="btn"
-        type="button"
-        @click="openCreate"
-      >
-        Добавить новое поощрение
-      </button>
+      <div class="header-actions">
+        <button class="btn secondary" type="button" @click="openStatistics">Статистика</button>
+        <button
+          v-if="auth.canEdit()"
+          class="btn"
+          type="button"
+          @click="openCreate"
+        >
+          Добавить новое поощрение
+        </button>
+      </div>
     </header>
 
     <PageState
@@ -160,6 +206,41 @@ async function handleSaved() {
 
     <Teleport to="body">
       <div
+        v-if="statisticsOpen"
+        class="overlay"
+        @click.self="closeStatistics"
+      >
+        <section class="card modal" role="dialog" aria-modal="true" aria-labelledby="reward-stats-title">
+          <header class="modal-header">
+            <h3 id="reward-stats-title">Статистика поощрений</h3>
+            <button class="btn ghost" type="button" aria-label="Закрыть статистику" :disabled="exporting" @click="closeStatistics">×</button>
+          </header>
+          <p class="stats-note">Количество поощрений по состояниям по всей компании.</p>
+          <p v-if="statisticsLoading" role="status">Загрузка…</p>
+          <p v-else-if="statisticsError" role="alert" class="error">{{ statisticsError }} <button class="btn secondary" type="button" @click="openStatistics">Повторить</button></p>
+          <template v-else-if="statistics">
+            <table class="stats-table">
+              <thead>
+                <tr><th scope="col">Состояние</th><th scope="col">Количество</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in statistics.items" :key="item.status">
+                  <th scope="row">{{ item.label }}</th>
+                  <td>{{ item.count }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr><th scope="row">Всего</th><td>{{ statistics.total }}</td></tr>
+              </tfoot>
+            </table>
+            <p v-if="exportError" role="alert" class="error">{{ exportError }}</p>
+            <div class="stats-actions">
+              <button class="btn" type="button" :disabled="exporting" @click="downloadStatistics">{{ exporting ? 'Скачивание…' : 'Скачать Excel' }}</button>
+            </div>
+          </template>
+        </section>
+      </div>
+      <div
         v-if="modalOpen"
         class="overlay"
         @click.self="closeModal"
@@ -205,6 +286,43 @@ async function handleSaved() {
 
 .page-header h2 {
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stats-note {
+  margin: 0 0 0.75rem;
+}
+
+.stats-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.stats-table th,
+.stats-table td {
+  text-align: left;
+  padding: 0.4rem 0.25rem;
+  border-bottom: 1px solid var(--border, #e2e8f0);
+}
+
+.stats-table tfoot th,
+.stats-table tfoot td {
+  font-weight: 700;
+}
+
+.stats-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.75rem;
+}
+
+.error {
+  color: var(--danger);
 }
 
 .overlay {
