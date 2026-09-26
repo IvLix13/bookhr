@@ -66,15 +66,16 @@ describe('Onboarding table', () => {
     expect(wrapper.findComponent(OnboardingCellEditor).exists()).toBe(true)
     wrapper.unmount()
   })
-  it('viewer sees data but cannot edit or configure', async () => {
+  it('viewer edits cells but cannot configure the table', async () => {
     mock.editable = false
-    const wrapper = mount(OnboardingView)
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
     expect(wrapper.text()).toContain('Иванов')
     expect(wrapper.text()).not.toContain('Настроить этапы')
     expect(wrapper.text()).not.toContain('Добавить сотрудника')
     expect(wrapper.text()).toContain('Скачать Excel')
-    expect(wrapper.find('.cell-button').exists()).toBe(false)
+    await wrapper.get('.cell-button').trigger('click')
+    expect(wrapper.findComponent(OnboardingCellEditor).exists()).toBe(true)
     wrapper.unmount()
   })
   it('downloads the full table and reports download errors', async () => {

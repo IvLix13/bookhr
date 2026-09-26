@@ -9,7 +9,7 @@ from alembic.operations import Operations
 from openpyxl import load_workbook
 
 from app.extensions import db
-from app.models import AuditLog, Company, Employment, Person, PersonNameHistory, GradeCatalog, EmployeeGradeHistory
+from app.models import AuditLog, Company, Employment, Person, PersonNameHistory, GradeCatalog, EmployeeGradeHistory, Role, RoleName, User
 from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
 from app.services.purge_employees import purge_all_employees
 
@@ -154,14 +154,42 @@ def test_tenant_isolation(hr_client, seed_company):
 def test_viewer_and_anonymous_permissions(viewer_client):
     assert viewer_client.get("/api/onboarding/plans").status_code == 200
     assert viewer_client.get("/api/onboarding/columns").status_code == 200
-    for method, path in [("post", "plans"), ("post", "columns"), ("patch", "columns/1"), ("patch", "columns/order"), ("patch", "plans/1/cells/1")]:
+    for method, path in [("post", "plans"), ("post", "columns"), ("patch", "columns/1"), ("patch", "columns/order")]:
         assert getattr(viewer_client, method)(f"/api/onboarding/{path}", json={}).status_code == 403
+
+
+def test_viewer_can_edit_cells_but_not_structure(hr_client, seed_company):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    with hr_client.application.app_context():
+        role = Role.query.filter_by(name=RoleName.VIEWER.value).first()
+        if role is None:
+            role = Role(name=RoleName.VIEWER.value)
+            db.session.add(role)
+            db.session.flush()
+        user = User(username="viewer_user", full_name="Viewer", role_id=role.id, company_id=seed_company.id)
+        user.set_password("secret123")
+        db.session.add(user)
+        db.session.commit()
+    assert hr_client.post("/api/login", json={"username": "viewer_user", "password": "secret123"}).status_code == 200
+    saved = data(patch_cell(hr_client, plan, column, planned_date="2026-10-01"))
+    assert saved["planned_date"] == "2026-10-01"
+    assert hr_client.post("/api/onboarding/plans", json={"employment_id": plan["employment_id"]}).status_code == 403
+    assert hr_client.post("/api/onboarding/columns", json={"title": "Отдел", "field_type": "text"}).status_code == 403
+    assert hr_client.patch(
+        f'/api/onboarding/columns/{column["id"]}',
+        json={"version": column["version"], "title": "Секрет"},
+    ).status_code == 403
+    assert hr_client.patch(
+        "/api/onboarding/columns/order",
+        json={"columns": [{"id": column["id"], "version": column["version"]}]},
+    ).status_code == 403
 
 
 def test_anonymous_cannot_read(client):
     assert client.get("/api/onboarding/plans").status_code == 401
     assert client.get("/api/onboarding/columns").status_code == 401
     assert client.get("/api/onboarding/export").status_code == 401
+    assert client.patch("/api/onboarding/plans/1/cells/1", json={}).status_code == 401
 
 
 def test_viewer_can_export_valid_workbook(viewer_client):

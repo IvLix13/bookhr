@@ -88,7 +88,6 @@ async function downloadExcel() {
   }
 }
 function startEdit(plan: OnboardingPlan, column: OnboardingColumn) {
-  if (!auth.canEdit()) return
   editing.value = { planId: plan.id, employeeName: plan.full_name ?? 'Сотрудник', column: { ...column }, cell: plan.cells[column.id] ? { ...plan.cells[column.id]! } : undefined }
 }
 function cellLabel(plan: OnboardingPlan, column: OnboardingColumn) {
@@ -144,15 +143,14 @@ onMounted(load)
           <tr v-for="column in visibleColumns" :key="column.id">
             <th scope="row" class="sticky">{{ column.title }}</th>
             <td v-for="plan in plans" :key="plan.id" :class="{ completed: plan.cells[column.id]?.is_completed && !plan.cells[column.id]?.is_not_required, overdue: overdue(column, plan.cells[column.id]), 'not-required': plan.cells[column.id]?.is_not_required }">
-              <button v-if="auth.canEdit()" class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="startEdit(plan, column)">{{ cellLabel(plan, column) }}</button>
-              <span v-else>{{ cellLabel(plan, column) }}</span>
+              <button class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="startEdit(plan, column)">{{ cellLabel(plan, column) }}</button>
             </td>
           </tr></tbody>
         </table>
       </div>
       <footer class="toolbar"><span>Всего: {{ total }}</span><button class="btn secondary" :disabled="page <= 1" @click="changePage(-1)">Назад</button><span>{{ page }} / {{ pages || 1 }}</span><button class="btn secondary" :disabled="page >= pages" @click="changePage(1)">Далее</button></footer>
     </template>
-    <OnboardingCellEditor v-if="editing && auth.canEdit()" v-bind="editing" @close="editing = null" @saved="saved" @conflict="load" />
+    <OnboardingCellEditor v-if="editing" v-bind="editing" @close="editing = null" @saved="saved" @conflict="load" />
   </section>
 </template>
 

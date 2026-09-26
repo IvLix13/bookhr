@@ -135,7 +135,7 @@ def register_routes(bp):
         return api_response(plan_dict(plan), status=201)
 
     @bp.patch("/onboarding/plans/<int:plan_id>/cells/<int:column_id>")
-    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
     @transaction
     def onboarding_update_cell(plan_id, column_id):
         company_id = get_request_company_id()
