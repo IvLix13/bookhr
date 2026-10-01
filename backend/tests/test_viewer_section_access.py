@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import pytest
 
+from datetime import date
+
 from app.extensions import db
-from app.models import ImportJob, ImportStatus, User
+from app.models import EventType, ImportJob, ImportStatus, User
+from app.services.events import create_manual_event
 
 
 VIEWER_FORBIDDEN_GETS = [
@@ -21,6 +24,8 @@ VIEWER_FORBIDDEN_GETS = [
     "/api/import/template?import_type=rewards",
     "/api/grades",
     "/api/grade-catalog",
+    "/api/events",
+    "/api/events?per_page=5",
     "/api/events/upcoming",
     "/api/events/upcoming?limit=8",
     "/api/attention",
@@ -85,7 +90,16 @@ def test_viewer_cannot_load_calendar_month_events(viewer_client, seed_company):
     assert response.get_json()["success"] is False
 
 
-def test_viewer_can_still_list_events_without_calendar_range(viewer_client, seed_company):
-    response = viewer_client.get(f"/api/events?company_id={seed_company.id}&per_page=5")
-    assert response.status_code == 200
-    assert response.get_json()["success"] is True
+def test_viewer_cannot_read_single_event(viewer_client, app, seed_company):
+    with app.app_context():
+        event = create_manual_event(
+            company_id=seed_company.id,
+            title="Viewer blocked",
+            event_type=EventType.MANUAL,
+            event_date=date(2026, 5, 1),
+        )
+        db.session.commit()
+        event_id = event.id
+    response = viewer_client.get(f"/api/events/{event_id}")
+    assert response.status_code == 403
+    assert response.get_json()["success"] is False

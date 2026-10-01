@@ -84,7 +84,7 @@ describe('Sidebar navigation order', () => {
     expect(labels).not.toContain(MODULE_LABELS.grades)
     expect(labels).not.toContain(MODULE_LABELS.import)
     expect(labels).not.toContain(MODULE_LABELS.statistics)
-    expect(labels).toContain(MODULE_LABELS.events)
+    expect(labels).not.toContain(MODULE_LABELS.events)
     expect(labels).toContain(MODULE_LABELS.employees)
   })
 

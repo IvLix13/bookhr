@@ -46,15 +46,18 @@ export function canOpenAttentionEvent(item: BackendAttentionItem): boolean {
 }
 
 function primaryModuleRoute(options?: AttentionRouteOptions): RouteLocationRaw {
-  return options?.canEdit === false ? { name: 'events' } : { name: 'calendar' }
+  return options?.canEdit === false ? { name: 'employees' } : { name: 'calendar' }
 }
 
 export function eventDetailLocation(
   eventId: number | string,
   options?: AttentionRouteOptions,
 ): RouteLocationRaw {
+  if (options?.canEdit === false) {
+    return primaryModuleRoute(options)
+  }
   return {
-    ...primaryModuleRoute(options),
+    name: 'calendar',
     query: { event: String(eventId) },
   }
 }

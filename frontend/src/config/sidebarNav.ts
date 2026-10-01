@@ -58,6 +58,7 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     labelKey: 'events',
     icon: IconEvent,
     background: eventsBg,
+    isVisible: (auth) => auth.canEdit(),
   },
   {
     name: 'employees',

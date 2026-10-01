@@ -4,7 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
 
 function defaultAppRoute(auth: ReturnType<typeof useAuthStore>) {
-  return auth.canEdit() ? { name: 'calendar' as const } : { name: 'events' as const }
+  return auth.canEdit() ? { name: 'calendar' as const } : { name: 'employees' as const }
 }
 
 const router = createRouter({
@@ -23,8 +23,17 @@ const router = createRouter({
           component: () => import('@/views/CalendarView.vue'),
           meta: { requiresEdit: true },
         },
-        { path: 'events', name: 'events', component: () => import('@/views/EventsView.vue') },
-        { path: 'events/create', redirect: { name: 'events', query: { create: '1' } } },
+        {
+          path: 'events',
+          name: 'events',
+          component: () => import('@/views/EventsView.vue'),
+          meta: { requiresEdit: true },
+        },
+        {
+          path: 'events/create',
+          redirect: { name: 'events', query: { create: '1' } },
+          meta: { requiresEdit: true },
+        },
         { path: 'employees', name: 'employees', component: () => import('@/views/EmployeesView.vue') },
         { path: 'contracts', name: 'contracts', component: () => import('@/views/ContractsView.vue') },
         {

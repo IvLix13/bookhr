@@ -55,6 +55,8 @@ describe('router access guards', () => {
 
     const restricted = [
       '/',
+      '/events',
+      '/events/create',
       '/grades',
       '/grade-catalog',
       '/rewards',
@@ -68,12 +70,12 @@ describe('router access guards', () => {
     for (const path of restricted) {
       await router.push(path)
       await router.isReady()
-      expect(router.currentRoute.value.name).toBe('events')
+      expect(router.currentRoute.value.name).toBe('employees')
       expect(router.currentRoute.value.query.denied).toBe('edit')
     }
   })
 
-  it('sends viewer to events after login instead of calendar', async () => {
+  it('sends viewer to employees after login instead of calendar', async () => {
     const router = await loadRouter()
     const auth = useAuthStore()
     auth.user = viewerUser
@@ -81,7 +83,7 @@ describe('router access guards', () => {
     await router.push({ name: 'login' })
     await router.isReady()
 
-    expect(router.currentRoute.value.name).toBe('events')
+    expect(router.currentRoute.value.name).toBe('employees')
   })
 
   it('allows hr into restricted routes', async () => {
@@ -105,7 +107,7 @@ describe('router access guards', () => {
     await router.isReady()
 
     expect(me).toHaveBeenCalled()
-    expect(router.currentRoute.value.name).toBe('events')
+    expect(router.currentRoute.value.name).toBe('employees')
     expect(router.currentRoute.value.query.denied).toBe('edit')
   })
 })

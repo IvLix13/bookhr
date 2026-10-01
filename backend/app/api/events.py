@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from flask import request
-from flask_login import current_user, login_required
 from sqlalchemy.orm import selectinload
 
 from app.api.helpers import (
@@ -87,14 +86,11 @@ def _apply_event_list_sort_joins(query, sort: str):
 
 def register_routes(bp):
     @bp.get("/events")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def list_events():
         company_id = get_request_company_id()
         date_from = parse_query_date(request.args.get("from"), field_name="from")
         date_to = parse_query_date(request.args.get("to"), field_name="to")
-        if date_from is not None and date_to is not None:
-            if not current_user.has_role(RoleName.ADMIN, RoleName.HR):
-                return api_response(message="Forbidden", status=403)
         status = request.args.get("status")
         event_type = request.args.get("type")
         page, per_page = parse_pagination_args()
@@ -145,7 +141,7 @@ def register_routes(bp):
         return api_response(paginate_query(query, event_to_dict, page, per_page))
 
     @bp.get("/events/<int:event_id>")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def get_event(event_id: int):
         event = db.session.get(Event, event_id)
         if not event or event.company_id != get_request_company_id():

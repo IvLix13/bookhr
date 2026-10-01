@@ -86,7 +86,7 @@ describe('attention utils', () => {
   })
 
   it('keeps viewer tenure attention off the awards section', () => {
-    expect(attentionCategoryRoute('tenure', { canEdit: false })).toEqual({ name: 'events' })
+    expect(attentionCategoryRoute('tenure', { canEdit: false })).toEqual({ name: 'employees' })
     expect(
       resolveAttentionRoute(
         {
@@ -98,10 +98,10 @@ describe('attention utils', () => {
         },
         { canEdit: false },
       ),
-    ).toEqual({ name: 'events' })
+    ).toEqual({ name: 'employees' })
   })
 
-  it('still opens tenure items through linked events for viewer', () => {
+  it('keeps viewer off event detail routes in closed modules', () => {
     expect(
       resolveAttentionRoute(
         {
@@ -114,11 +114,11 @@ describe('attention utils', () => {
         },
         { canEdit: false },
       ),
-    ).toEqual({ name: 'events', query: { event: '5' } })
+    ).toEqual({ name: 'employees' })
   })
 
-  it('routes viewer event chips to the events module', () => {
-    expect(attentionCategoryRoute('events', { canEdit: false })).toEqual({ name: 'events' })
-    expect(attentionCategoryRoute('grades', { canEdit: false })).toEqual({ name: 'events' })
+  it('routes viewer event chips to an allowed module', () => {
+    expect(attentionCategoryRoute('events', { canEdit: false })).toEqual({ name: 'employees' })
+    expect(attentionCategoryRoute('grades', { canEdit: false })).toEqual({ name: 'employees' })
   })
 })
