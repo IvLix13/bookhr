@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from flask import request
-from flask_login import login_required
+from flask_login import current_user, login_required
 from sqlalchemy.orm import selectinload
 
 from app.api.helpers import (
@@ -92,6 +92,9 @@ def register_routes(bp):
         company_id = get_request_company_id()
         date_from = parse_query_date(request.args.get("from"), field_name="from")
         date_to = parse_query_date(request.args.get("to"), field_name="to")
+        if date_from is not None and date_to is not None:
+            if not current_user.has_role(RoleName.ADMIN, RoleName.HR):
+                return api_response(message="Forbidden", status=403)
         status = request.args.get("status")
         event_type = request.args.get("type")
         page, per_page = parse_pagination_args()
@@ -150,7 +153,7 @@ def register_routes(bp):
         return api_response(event_to_dict(event))
 
     @bp.get("/events/upcoming")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def upcoming_events():
         company_id = get_request_company_id()
         limit = request.args.get("limit", 10, type=int)

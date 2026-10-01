@@ -1,4 +1,4 @@
-"""Viewer must not read import, rewards, stats, or tenure listing APIs."""
+"""Viewer must not read closed module APIs (import, stats, calendar feed, grades, …)."""
 
 from __future__ import annotations
 
@@ -19,6 +19,12 @@ VIEWER_FORBIDDEN_GETS = [
     "/api/import/template",
     "/api/import/template?import_type=employees",
     "/api/import/template?import_type=rewards",
+    "/api/grades",
+    "/api/grade-catalog",
+    "/api/events/upcoming",
+    "/api/events/upcoming?limit=8",
+    "/api/attention",
+    "/api/attention?limit=12",
 ]
 
 
@@ -69,3 +75,17 @@ def test_hr_can_read_import_job(hr_client, app, seed_company):
     response = hr_client.get(f"/api/import/{job_id}")
     assert response.status_code == 200
     assert response.get_json()["data"]["id"] == job_id
+
+
+def test_viewer_cannot_load_calendar_month_events(viewer_client, seed_company):
+    response = viewer_client.get(
+        f"/api/events?company_id={seed_company.id}&from=2026-01-01&to=2026-01-31"
+    )
+    assert response.status_code == 403
+    assert response.get_json()["success"] is False
+
+
+def test_viewer_can_still_list_events_without_calendar_range(viewer_client, seed_company):
+    response = viewer_client.get(f"/api/events?company_id={seed_company.id}&per_page=5")
+    assert response.status_code == 200
+    assert response.get_json()["success"] is True

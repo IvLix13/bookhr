@@ -233,7 +233,7 @@ def register_routes(bp):
         return api_response(contract_to_dict(contract))
 
     @bp.get("/grades")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def list_grades():
         company_id = get_request_company_id()
         page, per_page = parse_pagination_args()
@@ -270,7 +270,7 @@ def register_routes(bp):
         return api_response(paginate_query(query, grade_row_to_dict, page, per_page))
 
     @bp.get("/grade-catalog")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def list_grade_catalog():
         grades = GradeCatalog.query.order_by(
             GradeCatalog.rank.asc(),

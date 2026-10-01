@@ -86,7 +86,7 @@ describe('attention utils', () => {
   })
 
   it('keeps viewer tenure attention off the awards section', () => {
-    expect(attentionCategoryRoute('tenure', { canEdit: false })).toEqual({ name: 'calendar' })
+    expect(attentionCategoryRoute('tenure', { canEdit: false })).toEqual({ name: 'events' })
     expect(
       resolveAttentionRoute(
         {
@@ -98,7 +98,7 @@ describe('attention utils', () => {
         },
         { canEdit: false },
       ),
-    ).toEqual({ name: 'calendar' })
+    ).toEqual({ name: 'events' })
   })
 
   it('still opens tenure items through linked events for viewer', () => {
@@ -114,6 +114,11 @@ describe('attention utils', () => {
         },
         { canEdit: false },
       ),
-    ).toEqual({ name: 'calendar', query: { event: '5' } })
+    ).toEqual({ name: 'events', query: { event: '5' } })
+  })
+
+  it('routes viewer event chips to the events module', () => {
+    expect(attentionCategoryRoute('events', { canEdit: false })).toEqual({ name: 'events' })
+    expect(attentionCategoryRoute('grades', { canEdit: false })).toEqual({ name: 'events' })
   })
 })

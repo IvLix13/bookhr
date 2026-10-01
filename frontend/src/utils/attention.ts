@@ -12,7 +12,7 @@ export interface BackendAttentionItem {
 }
 
 export interface AttentionRouteOptions {
-  /** When false, tenure items must not link to the awards section (viewer). */
+  /** When false, routes avoid calendar, awards, and other edit-only sections. */
   canEdit?: boolean
 }
 
@@ -45,8 +45,18 @@ export function canOpenAttentionEvent(item: BackendAttentionItem): boolean {
   return attentionEventId(item) != null
 }
 
-export function eventDetailLocation(eventId: number | string): RouteLocationRaw {
-  return { name: 'calendar', query: { event: String(eventId) } }
+function primaryModuleRoute(options?: AttentionRouteOptions): RouteLocationRaw {
+  return options?.canEdit === false ? { name: 'events' } : { name: 'calendar' }
+}
+
+export function eventDetailLocation(
+  eventId: number | string,
+  options?: AttentionRouteOptions,
+): RouteLocationRaw {
+  return {
+    ...primaryModuleRoute(options),
+    query: { event: String(eventId) },
+  }
 }
 
 function isTenureAwardsRoute(item: BackendAttentionItem): boolean {
@@ -59,10 +69,10 @@ export function resolveAttentionRoute(
 ): RouteLocationRaw {
   const eventId = attentionEventId(item)
   if (eventId != null) {
-    return eventDetailLocation(eventId)
+    return eventDetailLocation(eventId, options)
   }
   if (options?.canEdit === false && isTenureAwardsRoute(item)) {
-    return { name: 'calendar' }
+    return primaryModuleRoute(options)
   }
   return item.route ?? `/${item.category}`
 }
@@ -74,14 +84,14 @@ export function attentionCategoryRoute(
   switch (category) {
     case 'events':
     case 'grades':
-      return { name: 'calendar' }
+      return primaryModuleRoute(options)
     case 'contracts':
       return '/contracts'
     case 'passports':
       return '/passports'
     case 'tenure':
-      return options?.canEdit === false ? { name: 'calendar' } : '/awards'
+      return options?.canEdit === false ? primaryModuleRoute(options) : '/awards'
     default:
-      return { name: 'calendar' }
+      return primaryModuleRoute(options)
   }
 }

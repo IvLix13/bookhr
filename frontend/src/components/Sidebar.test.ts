@@ -14,6 +14,7 @@ const routes = [
   { path: '/attestations', name: 'attestations', component: { template: '<div />' } },
   { path: '/contracts', name: 'contracts', component: { template: '<div />' } },
   { path: '/grades', name: 'grades', component: { template: '<div />' } },
+  { path: '/grade-catalog', name: 'grade-catalog', component: { template: '<div />' } },
   { path: '/rewards', name: 'rewards', component: { template: '<div />' } },
   { path: '/awards', name: 'awards', component: { template: '<div />' } },
   { path: '/passports', name: 'passports', component: { template: '<div />' } },
@@ -77,11 +78,13 @@ describe('Sidebar navigation order', () => {
   it('hides restricted sections for viewer', async () => {
     const wrapper = await mountSidebar('viewer')
     const labels = wrapper.findAll('.nav-label').map((item) => item.text())
+    expect(labels).not.toContain(MODULE_LABELS.calendar)
     expect(labels).not.toContain(MODULE_LABELS.rewards)
     expect(labels).not.toContain(MODULE_LABELS.awards)
+    expect(labels).not.toContain(MODULE_LABELS.grades)
     expect(labels).not.toContain(MODULE_LABELS.import)
     expect(labels).not.toContain(MODULE_LABELS.statistics)
-    expect(labels).toContain(MODULE_LABELS.calendar)
+    expect(labels).toContain(MODULE_LABELS.events)
     expect(labels).toContain(MODULE_LABELS.employees)
   })
 

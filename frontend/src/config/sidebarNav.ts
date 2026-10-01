@@ -51,6 +51,7 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     labelKey: 'calendar',
     icon: IconCalendar,
     background: calendarBg,
+    isVisible: (auth) => auth.canEdit(),
   },
   {
     name: 'events',
@@ -81,6 +82,7 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     labelKey: 'grades',
     icon: IconGrade,
     background: gradesBg,
+    isVisible: (auth) => auth.canEdit(),
     isActive: (route) => route.name === 'grades' || route.name === 'grade-catalog',
   },
   {
