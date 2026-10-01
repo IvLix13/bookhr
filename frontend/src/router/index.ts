@@ -2,10 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { setUnauthorizedHandler } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
 import { useToast } from '@/composables/useToast'
-
-function defaultAppRoute(auth: ReturnType<typeof useAuthStore>) {
-  return auth.canEdit() ? { name: 'calendar' as const } : { name: 'employees' as const }
-}
+import { defaultAppRoute } from '@/router/access'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -131,12 +128,18 @@ router.beforeEach(async (to) => {
   if (to.name === 'login' && auth.user) {
     return defaultAppRoute(auth)
   }
+  const fallback = defaultAppRoute(auth)
+
   if (to.matched.some((record) => record.meta.requiresAdmin) && !auth.isAdmin()) {
-    return { ...defaultAppRoute(auth), query: { denied: 'admin' } }
+    if (to.name === fallback.name) return true
+    return { ...fallback, query: { denied: 'admin' } }
   }
   if (to.matched.some((record) => record.meta.requiresEdit) && !auth.canEdit()) {
-    return { ...defaultAppRoute(auth), query: { denied: 'edit' } }
+    if (to.name === fallback.name) return true
+    return { ...fallback, query: { denied: 'edit' } }
   }
 })
+
+export { defaultAppRoute, postLoginNavigation } from '@/router/access'
 
 export default router

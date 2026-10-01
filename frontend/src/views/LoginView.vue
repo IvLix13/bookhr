@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { postLoginNavigation } from '@/router/access'
 import { useAuthStore } from '@/stores/auth'
 import { localizeApiMessage } from '@/utils/labels'
 
@@ -12,17 +13,14 @@ const password = ref('')
 const error = ref('')
 const submitting = ref(false)
 
-function safeRedirect(target: string | undefined): string {
-  if (!target || !target.startsWith('/') || target.startsWith('//')) return '/'
-  return target
-}
-
 async function submit() {
   error.value = ''
   submitting.value = true
   try {
     await auth.login(username.value, password.value)
-    await router.replace(safeRedirect(route.query.redirect as string | undefined))
+    await router.replace(
+      postLoginNavigation(auth, route.query.redirect as string | undefined),
+    )
   } catch (err) {
     const message = err instanceof Error ? err.message : undefined
     error.value = localizeApiMessage(message)
