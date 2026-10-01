@@ -224,7 +224,7 @@ def test_reward_statistics_requires_login(client):
     assert client.get("/api/rewards/statistics/export").status_code == 401
 
 
-def test_reward_statistics_export_for_viewer(viewer_client, seed_company):
+def test_reward_statistics_export_for_hr(hr_client, seed_company):
     employment = _create_employment(seed_company.id)
     db.session.add(Reward(
         employment_id=employment.id,
@@ -233,8 +233,8 @@ def test_reward_statistics_export_for_viewer(viewer_client, seed_company):
     ))
     db.session.commit()
 
-    assert viewer_client.get("/api/rewards/statistics").status_code == 200
-    response = viewer_client.get("/api/rewards/statistics/export")
+    assert hr_client.get("/api/rewards/statistics").status_code == 200
+    response = hr_client.get("/api/rewards/statistics/export")
     assert response.status_code == 200
     assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert "rewards_statistics.xlsx" in response.headers["Content-Disposition"]

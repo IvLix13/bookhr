@@ -84,4 +84,36 @@ describe('attention utils', () => {
     expect(attentionCategoryRoute('tenure')).toBe('/awards')
     expect(attentionCategoryRoute('contracts')).toBe('/contracts')
   })
+
+  it('keeps viewer tenure attention off the awards section', () => {
+    expect(attentionCategoryRoute('tenure', { canEdit: false })).toEqual({ name: 'calendar' })
+    expect(
+      resolveAttentionRoute(
+        {
+          category: 'tenure',
+          id: 3,
+          title: 'Поощрение за 10 лет',
+          severity: 'warning',
+          route: '/awards',
+        },
+        { canEdit: false },
+      ),
+    ).toEqual({ name: 'calendar' })
+  })
+
+  it('still opens tenure items through linked events for viewer', () => {
+    expect(
+      resolveAttentionRoute(
+        {
+          category: 'tenure',
+          id: 5,
+          title: 'Награда',
+          severity: 'warning',
+          route: '/?event=5',
+          event_id: 5,
+        },
+        { canEdit: false },
+      ),
+    ).toEqual({ name: 'calendar', query: { event: '5' } })
+  })
 })

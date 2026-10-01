@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from flask import request, send_file
-from flask_login import login_required
-
 from app.api.helpers import (
     api_response,
     apply_employment_name_search,
@@ -40,7 +38,7 @@ REWARD_SORT_FIELDS = {
 
 def register_routes(bp):
     @bp.get("/rewards")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def list_rewards():
         company_id = get_request_company_id()
         status = request.args.get("status", type=str)
@@ -70,12 +68,12 @@ def register_routes(bp):
         return api_response(paginate_query(query, reward_to_dict, page, per_page))
 
     @bp.get("/rewards/statistics")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def reward_statistics():
         return api_response(reward_status_statistics(get_request_company_id()))
 
     @bp.get("/rewards/statistics/export")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def reward_statistics_export():
         return send_file(
             build_reward_statistics_workbook(get_request_company_id()),

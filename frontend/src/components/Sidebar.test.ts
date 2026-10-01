@@ -20,10 +20,15 @@ const routes = [
   { path: '/import/employees', name: 'import-employees', component: { template: '<div />' } },
   { path: '/statistics', name: 'statistics', component: { template: '<div />' } },
   { path: '/settings/users', name: 'settings-users', component: { template: '<div />' } },
+  {
+    path: '/settings/notifications',
+    name: 'settings-notifications',
+    component: { template: '<div />' },
+  },
 ]
 
 describe('Sidebar navigation order', () => {
-  async function mountSidebar(role: 'admin' | 'hr' = 'admin') {
+  async function mountSidebar(role: 'admin' | 'hr' | 'viewer' = 'admin') {
     setActivePinia(createPinia())
     const auth = useAuthStore()
     auth.user = {
@@ -67,5 +72,36 @@ describe('Sidebar navigation order', () => {
   it('does not keep a dedicated create-event item', async () => {
     const wrapper = await mountSidebar('admin')
     expect(wrapper.text()).not.toContain(MODULE_LABELS.eventCreate)
+  })
+
+  it('hides restricted sections for viewer', async () => {
+    const wrapper = await mountSidebar('viewer')
+    const labels = wrapper.findAll('.nav-label').map((item) => item.text())
+    expect(labels).not.toContain(MODULE_LABELS.rewards)
+    expect(labels).not.toContain(MODULE_LABELS.awards)
+    expect(labels).not.toContain(MODULE_LABELS.import)
+    expect(labels).not.toContain(MODULE_LABELS.statistics)
+    expect(labels).toContain(MODULE_LABELS.calendar)
+    expect(labels).toContain(MODULE_LABELS.employees)
+  })
+
+  it('keeps restricted sections visible for hr', async () => {
+    const wrapper = await mountSidebar('hr')
+    const labels = wrapper.findAll('.nav-label').map((item) => item.text())
+    expect(labels).toEqual([
+      MODULE_LABELS.calendar,
+      MODULE_LABELS.events,
+      MODULE_LABELS.employees,
+      MODULE_LABELS.onboarding,
+      MODULE_LABELS.contracts,
+      MODULE_LABELS.grades,
+      MODULE_LABELS.attestation,
+      MODULE_LABELS.rewards,
+      MODULE_LABELS.awards,
+      MODULE_LABELS.passports,
+      MODULE_LABELS.import,
+      MODULE_LABELS.statistics,
+      MODULE_LABELS.settings,
+    ])
   })
 })

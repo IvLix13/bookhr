@@ -213,12 +213,12 @@ def test_stats_api_requires_auth(client):
     assert response.status_code in (401, 302)
 
 
-def test_stats_api_viewer_can_read(viewer_client, seed_company):
+def test_stats_api_viewer_forbidden(viewer_client, seed_company):
     response = viewer_client.get(f"/api/stats?company_id={seed_company.id}")
-    assert response.status_code == 200
+    assert response.status_code == 403
     payload = response.get_json()
-    assert payload["success"] is True
-    assert "employees" in payload["data"]
+    assert payload["success"] is False
+    assert payload.get("data") is None
 
 
 def test_stats_api_accepts_period(admin_client, seed_company):

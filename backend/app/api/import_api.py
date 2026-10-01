@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 
 from flask import current_app, request, send_file
-from flask_login import current_user, login_required
+from flask_login import current_user
 from werkzeug.utils import secure_filename
 
 from app.api.helpers import api_response, get_json, require_roles
@@ -130,7 +130,7 @@ def register_routes(bp):
         return api_response(import_job_to_dict(job))
 
     @bp.get("/import/<int:job_id>")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def get_job(job_id: int):
         job = db.session.get(ImportJob, job_id)
         if not job:
@@ -138,7 +138,7 @@ def register_routes(bp):
         return api_response(import_job_to_dict(job))
 
     @bp.get("/import/template")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def download_template():
         import_type = _resolve_import_type(request.args.get("import_type"))
         if import_type is None:

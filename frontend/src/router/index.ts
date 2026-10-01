@@ -20,8 +20,18 @@ const router = createRouter({
         { path: 'contracts', name: 'contracts', component: () => import('@/views/ContractsView.vue') },
         { path: 'grades', name: 'grades', component: () => import('@/views/GradesView.vue') },
         { path: 'attestations', name: 'attestations', component: () => import('@/views/AttestationsView.vue') },
-        { path: 'rewards', name: 'rewards', component: () => import('@/views/RewardsView.vue') },
-        { path: 'awards', name: 'awards', component: () => import('@/views/AwardsView.vue') },
+        {
+          path: 'rewards',
+          name: 'rewards',
+          component: () => import('@/views/RewardsView.vue'),
+          meta: { requiresEdit: true },
+        },
+        {
+          path: 'awards',
+          name: 'awards',
+          component: () => import('@/views/AwardsView.vue'),
+          meta: { requiresEdit: true },
+        },
         { path: 'passports', name: 'passports', component: () => import('@/views/PassportsView.vue') },
         {
           path: 'import',
@@ -41,7 +51,12 @@ const router = createRouter({
             },
           ],
         },
-        { path: 'statistics', name: 'statistics', component: () => import('@/views/StatisticsView.vue') },
+        {
+          path: 'statistics',
+          name: 'statistics',
+          component: () => import('@/views/StatisticsView.vue'),
+          meta: { requiresEdit: true },
+        },
         { path: 'grade-catalog', name: 'grade-catalog', component: () => import('@/views/GradeCatalogView.vue') },
         {
           path: 'settings',

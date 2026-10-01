@@ -11,6 +11,11 @@ export interface BackendAttentionItem {
   event_id?: number | null
 }
 
+export interface AttentionRouteOptions {
+  /** When false, tenure items must not link to the awards section (viewer). */
+  canEdit?: boolean
+}
+
 export function attentionItemKey(item: BackendAttentionItem): string {
   return `${item.category}-${item.id}`
 }
@@ -44,15 +49,28 @@ export function eventDetailLocation(eventId: number | string): RouteLocationRaw 
   return { name: 'calendar', query: { event: String(eventId) } }
 }
 
-export function resolveAttentionRoute(item: BackendAttentionItem): RouteLocationRaw {
+function isTenureAwardsRoute(item: BackendAttentionItem): boolean {
+  return item.category === 'tenure' || item.route === '/awards'
+}
+
+export function resolveAttentionRoute(
+  item: BackendAttentionItem,
+  options?: AttentionRouteOptions,
+): RouteLocationRaw {
   const eventId = attentionEventId(item)
   if (eventId != null) {
     return eventDetailLocation(eventId)
   }
+  if (options?.canEdit === false && isTenureAwardsRoute(item)) {
+    return { name: 'calendar' }
+  }
   return item.route ?? `/${item.category}`
 }
 
-export function attentionCategoryRoute(category: string): RouteLocationRaw {
+export function attentionCategoryRoute(
+  category: string,
+  options?: AttentionRouteOptions,
+): RouteLocationRaw {
   switch (category) {
     case 'events':
     case 'grades':
@@ -62,7 +80,7 @@ export function attentionCategoryRoute(category: string): RouteLocationRaw {
     case 'passports':
       return '/passports'
     case 'tenure':
-      return '/awards'
+      return options?.canEdit === false ? { name: 'calendar' } : '/awards'
     default:
       return { name: 'calendar' }
   }

@@ -94,12 +94,14 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     labelKey: 'rewards',
     icon: IconAward,
     background: rewardsBg,
+    isVisible: (auth) => auth.canEdit(),
   },
   {
     name: 'awards',
     labelKey: 'awards',
     icon: IconCake,
     background: awardsBg,
+    isVisible: (auth) => auth.canEdit(),
   },
   {
     name: 'passports',
@@ -112,6 +114,7 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     labelKey: 'import',
     icon: IconImport,
     background: importBg,
+    isVisible: (auth) => auth.canEdit(),
     isActive: (route) =>
       route.name === 'import-employees' || route.name === 'import-rewards',
   },
@@ -120,6 +123,7 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     labelKey: 'statistics',
     icon: IconStats,
     background: statisticsBg,
+    isVisible: (auth) => auth.canEdit(),
   },
   {
     name: (auth) => (auth.isAdmin() ? 'settings-users' : 'settings-notifications'),

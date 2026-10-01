@@ -438,7 +438,7 @@ def register_routes(bp):
         return api_response(passport_row_to_dict(person, employment), status=201)
 
     @bp.get("/tenure")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def list_tenure():
         company_id = get_request_company_id()
         page, per_page = parse_pagination_args()

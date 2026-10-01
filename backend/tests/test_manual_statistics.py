@@ -38,14 +38,22 @@ def _upload(client, workbook, filename="manual.xlsx"):
 
 def test_manual_stats_empty_for_viewer(viewer_client):
     response = viewer_client.get("/api/stats/manual")
+    assert response.status_code == 403
+    assert response.get_json()["success"] is False
+
+
+def test_manual_stats_empty_for_hr(hr_client):
+    response = hr_client.get("/api/stats/manual")
     assert response.status_code == 200
     assert response.get_json()["data"] == {
-        "items": [], "source_filename": None, "updated_at": None,
+        "items": [],
+        "source_filename": None,
+        "updated_at": None,
     }
 
 
-def test_manual_stats_template_has_left_and_right_blocks(viewer_client):
-    response = viewer_client.get("/api/stats/manual/template")
+def test_manual_stats_template_has_left_and_right_blocks(hr_client):
+    response = hr_client.get("/api/stats/manual/template")
     assert response.status_code == 200
     workbook = load_workbook(BytesIO(response.data), read_only=True, data_only=True)
     worksheet = workbook.active
@@ -145,7 +153,7 @@ def test_manual_stats_upload_rejects_value_without_label(hr_client):
     assert "не указано наименование параметра" in response.get_json()["message"]
 
 
-def test_old_flat_snapshot_is_returned_without_server_error(app, viewer_client, seed_company):
+def test_old_flat_snapshot_is_returned_without_server_error(app, hr_client, seed_company):
     with app.app_context():
         db.session.add(ManualStatisticsSnapshot(
             company_id=seed_company.id,
@@ -153,7 +161,7 @@ def test_old_flat_snapshot_is_returned_without_server_error(app, viewer_client, 
             source_filename="old.xlsx",
         ))
         db.session.commit()
-    response = viewer_client.get("/api/stats/manual")
+    response = hr_client.get("/api/stats/manual")
     assert response.status_code == 200
     assert response.get_json()["data"]["items"] == [
         {"label": "Старый показатель", "value": "10"},
