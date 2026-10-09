@@ -161,6 +161,8 @@ export interface RewardStatusCount {
 export interface RewardStatistics {
   items: RewardStatusCount[]
   total: number
+  delivered: number
+  undelivered: number
 }
 
 export interface GradeRow {

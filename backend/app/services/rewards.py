@@ -6,7 +6,7 @@ from datetime import date
 from io import BytesIO
 
 from openpyxl import Workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Alignment, Font
 
 from app.extensions import db
 from app.models import Employment, Reward, RewardStatus
@@ -161,7 +161,7 @@ def list_rewards_for_company(
 
 
 def reward_status_statistics(company_id: int) -> dict:
-    """Count every reward in the company, including statuses that are unused."""
+    """Return status counts and delivery totals for every reward in the company."""
     rows = (
         db.session.query(Reward.status, db.func.count(Reward.id))
         .join(Employment, Reward.employment_id == Employment.id)
@@ -182,7 +182,14 @@ def reward_status_statistics(company_id: int) -> dict:
     for status, count in sorted(rows, key=lambda item: item[0] or ""):
         if status not in known:
             items.append({"status": status, "label": status or "—", "count": int(count)})
-    return {"items": items, "total": sum(item["count"] for item in items)}
+    total = sum(int(count) for count in counts.values())
+    delivered = int(counts.get(RewardStatus.DELIVERED.value, 0))
+    return {
+        "items": items,
+        "total": total,
+        "delivered": delivered,
+        "undelivered": total - delivered,
+    }
 
 
 def build_reward_statistics_workbook(company_id: int) -> BytesIO:
@@ -190,14 +197,28 @@ def build_reward_statistics_workbook(company_id: int) -> BytesIO:
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Статистика поощрений"
+    sheet.append(["Итоги", "Количество"])
+    sheet.append(["Всего", stats["total"]])
+    sheet.append(["Вручено", stats["delivered"]])
+    sheet.append(["Не вручено", stats["undelivered"]])
+    sheet.append(['Не вручено — все поощрения, кроме состояния “Вручено”'])
+    sheet.merge_cells("A5:B5")
+    sheet["A5"].alignment = Alignment(wrap_text=True, vertical="center")
+    sheet.row_dimensions[5].height = 32
+    sheet.append([])
+    sheet.append(["Разбивка по состояниям"])
     sheet.append(["Состояние", "Количество"])
     for item in stats["items"]:
-        sheet.append([item["label"], item["count"]])
-    sheet.append(["Всего", stats["total"]])
-    for cell in sheet[1]:
-        cell.font = Font(bold=True)
-    sheet.cell(row=sheet.max_row, column=1).font = Font(bold=True)
-    sheet.column_dimensions["A"].width = 24
+        label = (
+            "Состояние: Не вручено"
+            if item["status"] == RewardStatus.NOT_DELIVERED.value
+            else item["label"]
+        )
+        sheet.append([label, item["count"]])
+    for row in (1, 7, 8):
+        for cell in sheet[row]:
+            cell.font = Font(bold=True)
+    sheet.column_dimensions["A"].width = 32
     sheet.column_dimensions["B"].width = 16
     output = BytesIO()
     workbook.save(output)

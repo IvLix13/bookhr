@@ -1,6 +1,7 @@
 from datetime import date
 from io import BytesIO
 
+import pytest
 from openpyxl import load_workbook
 
 from app.extensions import db
@@ -209,6 +210,8 @@ def test_reward_statistics_counts_statuses_for_current_company(hr_client, seed_c
     assert counts["in_hr"] == 0
     assert counts["extra_1"] == 0
     assert payload["total"] == 3
+    assert payload["delivered"] == 1
+    assert payload["undelivered"] == 2
     assert [item["label"] for item in payload["items"]] == [
         "Не вручено",
         "В кадрах",
@@ -240,6 +243,72 @@ def test_reward_statistics_export_for_hr(hr_client, seed_company):
     assert "rewards_statistics.xlsx" in response.headers["Content-Disposition"]
     sheet = load_workbook(BytesIO(response.data)).active
     assert sheet.title == "Статистика поощрений"
-    assert [sheet.cell(1, 1).value, sheet.cell(1, 2).value] == ["Состояние", "Количество"]
-    assert [sheet.cell(3, 1).value, sheet.cell(3, 2).value] == ["В кадрах", 1]
-    assert [sheet.cell(8, 1).value, sheet.cell(8, 2).value] == ["Всего", 1]
+    rows = list(sheet.values)
+    assert rows[0] == ("Итоги", "Количество")
+    assert rows[1:4] == [("Всего", 1), ("Вручено", 0), ("Не вручено", 1)]
+    assert rows[4][0] == 'Не вручено — все поощрения, кроме состояния “Вручено”'
+    assert rows[6][0] == "Разбивка по состояниям"
+    assert rows[7] == ("Состояние", "Количество")
+    assert ("Состояние: Не вручено", 0) in rows[8:]
+    assert ("В кадрах", 1) in rows[8:]
+
+
+@pytest.mark.parametrize(
+    "counts, expected_total, expected_delivered",
+    [
+        ({}, 0, 0),
+        ({"delivered": 3}, 3, 3),
+        ({"in_hr": 2, "extra_2": 1}, 3, 0),
+        ({"legacy_status": 2, "": 1, "delivered": 1}, 4, 1),
+        ({"not_delivered": 10, "in_hr": 20, "delivered": 40,
+          "extra_1": 10, "extra_2": 10, "extra_3": 10}, 100, 40),
+    ],
+)
+def test_reward_delivery_totals_and_export(hr_client, seed_company, counts, expected_total, expected_delivered):
+    employment = _create_employment(seed_company.id)
+    for status, count in counts.items():
+        db.session.add_all([
+            Reward(
+                employment_id=employment.id,
+                reward_type="Грамота",
+                status=status,
+                # The status, not a retained delivery date, defines the totals.
+                delivered_date=date(2026, 1, 1),
+            )
+            for _ in range(count)
+        ])
+    db.session.commit()
+
+    response = hr_client.get("/api/rewards/statistics?q=ignored&per_page=1")
+    assert response.status_code == 200
+    stats = response.get_json()["data"]
+    assert stats["total"] == expected_total
+    assert stats["delivered"] == expected_delivered
+    assert stats["undelivered"] == expected_total - expected_delivered
+    assert stats["total"] == sum(item["count"] for item in stats["items"])
+    for item in stats["items"]:
+        assert item["count"] == counts.get(item["status"], 0)
+    assert set(counts).issubset({item["status"] for item in stats["items"]})
+
+    export = hr_client.get("/api/rewards/statistics/export")
+    assert export.status_code == 200
+    rows = list(load_workbook(BytesIO(export.data)).active.values)
+    assert rows[1:4] == [
+        ("Всего", stats["total"]),
+        ("Вручено", stats["delivered"]),
+        ("Не вручено", stats["undelivered"]),
+    ]
+    assert rows[8:] == [
+        ("Состояние: Не вручено" if item["status"] == "not_delivered" else item["label"], item["count"])
+        for item in stats["items"]
+    ]
+
+
+def test_reward_statistics_viewer_forbidden(viewer_client):
+    assert viewer_client.get("/api/rewards/statistics").status_code == 403
+    assert viewer_client.get("/api/rewards/statistics/export").status_code == 403
+
+
+def test_reward_statistics_admin_allowed(admin_client):
+    assert admin_client.get("/api/rewards/statistics").status_code == 200
+    assert admin_client.get("/api/rewards/statistics/export").status_code == 200
