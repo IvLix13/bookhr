@@ -12,6 +12,7 @@ export interface OnboardingCell {
   text_value: string | null
   date_value: string | null
   planned_date: string | null
+  is_in_progress: boolean
   is_completed: boolean
   is_not_required: boolean
   completed_date: string | null
@@ -22,5 +23,8 @@ export interface OnboardingPlan {
   full_name: string | null
   grade: string | null
   employment_status: string
+  hire_date: string
+  curator_name: string | null
+  version: number
   cells: Record<string, OnboardingCell>
 }

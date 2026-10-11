@@ -15,9 +15,9 @@ from app.models import Employment, RoleName
 from app.models.onboarding import OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
 from app.services.onboarding import (
-    CellSchema, ColumnSchema, ColumnUpdateSchema, OrderSchema, PlanSchema,
+    CellSchema, ColumnSchema, ColumnUpdateSchema, OrderSchema, PlanSchema, PlanUpdateSchema,
     cell_dict, check_version, column_dict, current_plan_name, find_column, find_plan,
-    lock_company, names_match, onboarding_plan_query, plan_dict, save_cell, save_column,
+    lock_company, names_match, onboarding_plan_query, plan_dict, save_cell, save_column, save_plan,
 )
 from app.services.onboarding_export import build_onboarding_workbook
 from app.tenant import get_request_company_id
@@ -133,6 +133,14 @@ def register_routes(bp):
         db.session.flush()
         log_audit("create", "onboarding_plan", plan.id, None, {"employment_id": employment.id})
         return api_response(plan_dict(plan), status=201)
+
+    @bp.patch("/onboarding/plans/<int:plan_id>")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @transaction
+    def onboarding_update_plan(plan_id):
+        plan = find_plan(plan_id, get_request_company_id())
+        save_plan(plan, PlanUpdateSchema().load(get_json()))
+        return api_response(plan_dict(plan))
 
     @bp.patch("/onboarding/plans/<int:plan_id>/cells/<int:column_id>")
     @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)

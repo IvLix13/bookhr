@@ -134,6 +134,8 @@ export const api = {
   },
   createOnboardingPlan: (employment_id: number) =>
     request<OnboardingPlan>('/api/onboarding/plans', { method: 'POST', body: JSON.stringify({ employment_id }) }),
+  updateOnboardingPlan: (planId: number, body: { version: number; curator_name: string | null }) =>
+    request<OnboardingPlan>(`/api/onboarding/plans/${planId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   updateOnboardingCell: (planId: number, columnId: number, body: Partial<OnboardingCell> & { version: number; column_version: number; clear?: boolean }) =>
     request<OnboardingCell>(`/api/onboarding/plans/${planId}/cells/${columnId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   fetchCsrf: () =>

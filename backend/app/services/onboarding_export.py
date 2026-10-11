@@ -28,6 +28,10 @@ def _cell_value(column: OnboardingColumn, cell: OnboardingCell | None):
         return cell.text_value
     if column.field_type == "date":
         return cell.date_value
+    if cell.is_in_progress:
+        if column.field_type == "stage" and cell.planned_date:
+            return f"В работе: {cell.planned_date.strftime('%d.%m.%Y')}"
+        return "В работе"
     if column.field_type == "checkbox":
         return "Выполнено" if cell.is_completed else "Не выполнено"
     if cell.is_completed:

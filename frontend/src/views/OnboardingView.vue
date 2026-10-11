@@ -1,15 +1,25 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import { formatShortDate } from '@/utils/dates'
+import OnboardingPlanCard from '@/components/OnboardingPlanCard.vue'
+import { moscowToday } from '@/utils/onboarding'
 import OnboardingCellEditor from '@/components/OnboardingCellEditor.vue'
 import OnboardingColumnsModal from '@/components/OnboardingColumnsModal.vue'
 import type { Employee, Paginated } from '@/types'
 import type { OnboardingCell, OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 
 const auth = useAuthStore()
+const today = ref(moscowToday())
+const expanded = ref<Set<number>>(new Set())
+function togglePlan(id: number) {
+  const next = new Set(expanded.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expanded.value = next
+}
 const columns = ref<OnboardingColumn[]>([])
 const visibleColumns = computed(() => columns.value.filter(c => !c.is_archived))
 const plans = ref<OnboardingPlan[]>([])
@@ -100,21 +110,10 @@ function startEdit(plan: OnboardingPlan, column: OnboardingColumn) {
   if (!canEditCell(plan)) return
   editing.value = { planId: plan.id, employeeName: plan.full_name ?? 'Сотрудник', column: { ...column }, cell: plan.cells[column.id] ? { ...plan.cells[column.id]! } : undefined }
 }
-function cellLabel(plan: OnboardingPlan, column: OnboardingColumn) {
-  const cell = plan.cells[column.id]
-  if (cell?.is_not_required) return 'Не нужно'
-  if (column.field_type === 'checkbox') return cell?.is_completed ? '✓' : '□ Не выполнено'
-  if (!cell) return '—'
-  if (column.field_type === 'text') return cell.text_value || '—'
-  if (column.field_type === 'date') return formatShortDate(cell.date_value)
-  return cell.is_completed ? `✓ ${formatShortDate(cell.completed_date)}` : formatShortDate(cell.planned_date)
-}
-function overdue(column: OnboardingColumn, cell?: OnboardingCell) {
-  const today = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(new Date())
-  return column.field_type === 'stage' && !!cell?.planned_date && !cell.is_completed && !cell.is_not_required && cell.planned_date < today
-}
 function saved() { editing.value = null; void load() }
-onMounted(load)
+let dayTimer: ReturnType<typeof setInterval>
+onMounted(() => { void load(); dayTimer = setInterval(() => { today.value = moscowToday() }, 60000) })
+onUnmounted(() => clearInterval(dayTimer))
 </script>
 
 <template>
@@ -142,22 +141,12 @@ onMounted(load)
     </section>
     <p v-if="error" role="alert" class="error">{{ error }} <button class="btn secondary" @click="load">Повторить</button></p>
     <p v-if="loading" role="status">Загрузка…</p>
-    <template v-else-if="!error">
-      <p v-if="!plans.length">Планы не найдены. HR/admin может добавить сотрудника.</p>
-      <div v-else class="table-scroll" tabindex="0" aria-label="Таблица планов обучения">
-        <table :style="{ '--employee-count': plans.length }">
-          <thead><tr><th scope="col" class="sticky">Этап / сотрудник</th><th v-for="plan in plans" :key="plan.id" scope="col">{{ plan.full_name || '—' }}<small v-if="plan.employment_status === 'dismissed'">Уволен</small></th></tr></thead>
-          <tbody>
-          <tr><th scope="row" class="sticky">№</th><td v-for="(plan, index) in plans" :key="plan.id">{{ (page - 1) * 25 + index + 1 }}</td></tr>
-          <tr><th scope="row" class="sticky grade">Грейд</th><td v-for="plan in plans" :key="plan.id">{{ plan.grade || '—' }}</td></tr>
-          <tr v-for="column in visibleColumns" :key="column.id">
-            <th scope="row" class="sticky">{{ column.title }}</th>
-            <td v-for="plan in plans" :key="plan.id" :class="{ completed: plan.cells[column.id]?.is_completed && !plan.cells[column.id]?.is_not_required, overdue: overdue(column, plan.cells[column.id]), 'not-required': plan.cells[column.id]?.is_not_required }">
-              <button v-if="canEditCell(plan)" class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="startEdit(plan, column)">{{ cellLabel(plan, column) }}</button>
-              <span v-else>{{ cellLabel(plan, column) }}</span>
-            </td>
-          </tr></tbody>
-        </table>
+    <template v-if="!error || plans.length">
+      <p v-if="!plans.length && !loading">Планы не найдены. HR/admin может добавить сотрудника.</p>
+      <div v-if="plans.length" class="plan-list" aria-label="Планы обучения сотрудников" :aria-busy="loading">
+        <OnboardingPlanCard v-for="plan in plans" :key="plan.id" :plan="plan" :columns="visibleColumns" :today="today"
+          :expanded="expanded.has(plan.id)" :editable="canEditCell(plan)" :can-manage="auth.canEdit()"
+          @toggle="togglePlan(plan.id)" @edit="startEdit(plan, $event)" @changed="load" />
       </div>
       <footer class="toolbar"><span>Всего: {{ total }}</span><button class="btn secondary" :disabled="page <= 1" @click="changePage(-1)">Назад</button><span>{{ page }} / {{ pages || 1 }}</span><button class="btn secondary" :disabled="page >= pages" @click="changePage(1)">Далее</button></footer>
     </template>
@@ -166,22 +155,14 @@ onMounted(load)
 </template>
 
 <style scoped>
-.onboarding-page { padding: 1rem; min-width: 0; --label-width: 150px; --employee-width: 220px; }
+.onboarding-page { padding: 1.25rem; min-width: 0; }
+header h2 { margin: 0; } header p { color: var(--muted); margin: .4rem 0 0; }
 .toolbar, form, li { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
 .toolbar { margin: 1rem 0; }
-.add-panel { padding: 1rem; border: 1px solid var(--border); }
+.toolbar input, .add-panel input { border: 1px solid var(--border); border-radius: 8px; padding: .65rem .8rem; min-width: 0; }
+.plan-list { display: grid; gap: 1rem; }
+.add-panel { padding: 1rem; border: 1px solid var(--border); border-radius: 12px; }
 ul { padding: 0; list-style: none; } li { justify-content: space-between; padding: .5rem 0; }
-.table-scroll { overflow: auto; max-height: 65vh; }
-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: calc(var(--label-width) + var(--employee-count) * var(--employee-width)); }
-th, td { box-sizing: border-box; width: var(--employee-width); padding: .65rem; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; text-align: left; }
-thead th { position: sticky; top: 0; background: var(--surface, #fff); z-index: 3; }
-.sticky { position: sticky; left: 0; width: var(--label-width); background: var(--surface, #fff); z-index: 2; border-right: 1px solid var(--border); }
-thead .sticky { z-index: 4; }
-.sticky.grade { min-width: 130px; max-width: 150px; }
-.cell-button { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; width: 100%; min-height: 32px; white-space: pre-wrap; }
-.cell-button:hover { text-decoration: underline; }
-.completed { color: #16803c; background: #e2f5e9; } .overdue, .error { color: var(--danger); }
-.not-required { color: var(--muted, #64748b); }
-small { display: block; opacity: .7; }
-@media (max-width: 640px) { .onboarding-page { --label-width: 130px; --employee-width: 190px; } }
+.error { color: var(--danger); }
+@media (max-width: 640px) { .onboarding-page { padding: .8rem; } .toolbar form { width: 100%; } .toolbar input { flex: 1; width: 120px; } }
 </style>

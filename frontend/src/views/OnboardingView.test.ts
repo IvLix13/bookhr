@@ -13,7 +13,7 @@ const mock = vi.hoisted(() => ({
   fullName: 'HR User',
   columns: vi.fn(), plans: vi.fn(), employees: vi.fn(), createPlan: vi.fn(),
   saveCell: vi.fn(), createColumn: vi.fn(), updateColumn: vi.fn(), orderColumns: vi.fn(),
-  downloadOnboarding: vi.fn(),
+  downloadOnboarding: vi.fn(), updatePlan: vi.fn(),
 }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({
   canEdit: () => mock.editable,
@@ -24,10 +24,10 @@ vi.mock('@/api/client', () => ({ api: {
   createOnboardingPlan: mock.createPlan, updateOnboardingCell: mock.saveCell,
   createOnboardingColumn: mock.createColumn, updateOnboardingColumn: mock.updateColumn,
   orderOnboardingColumns: mock.orderColumns,
-  downloadOnboarding: mock.downloadOnboarding,
+  downloadOnboarding: mock.downloadOnboarding, updateOnboardingPlan: mock.updatePlan,
 } }))
 const column: OnboardingColumn = { id: 1, title: 'NDA', field_type: 'stage', sort_order: 0, is_archived: false, version: 1 }
-const cell = { version: 2, text_value: null, date_value: null, planned_date: '2026-10-01', is_completed: false, is_not_required: false, completed_date: null }
+const cell = { version: 2, text_value: null, date_value: null, planned_date: '2026-10-01', is_completed: false, is_in_progress: false, is_not_required: false, completed_date: null }
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -35,7 +35,7 @@ beforeEach(() => {
   mock.role = 'hr'
   mock.fullName = 'HR User'
   mock.columns.mockResolvedValue([{ ...column }])
-  mock.plans.mockResolvedValue({ items: [{ id: 1, employment_id: 2, full_name: 'Иванов', grade: 'Junior', employment_status: 'active', cells: { '1': { ...cell } } }], page: 1, per_page: 25, total: 1, pages: 1 })
+  mock.plans.mockResolvedValue({ items: [{ id: 1, employment_id: 2, full_name: 'Иванов', grade: 'Junior', employment_status: 'active', hire_date: '2020-01-01', curator_name: null, version: 1, cells: { '1': { ...cell } } }], page: 1, per_page: 25, total: 1, pages: 1 })
   mock.employees.mockResolvedValue({ items: [{ id: 2, full_name: 'Петров', hire_date: '2020-01-01', status: 'active' }], page: 1, pages: 1, total: 1 })
   mock.createPlan.mockResolvedValue({ id: 2 })
   mock.saveCell.mockResolvedValue({ ...cell, version: 3 })
@@ -45,8 +45,8 @@ beforeEach(() => {
   mock.downloadOnboarding.mockResolvedValue(undefined)
 })
 
-describe('Onboarding table', () => {
-  it('renders employees as columns and edits the selected employee and stage', async () => {
+describe('Onboarding cards', () => {
+  it('renders employee cards and expands the selected plan to edit its stages', async () => {
     mock.columns.mockResolvedValueOnce([column, { ...column, id: 2, title: 'Пропуск', field_type: 'checkbox' }, { ...column, id: 3, title: 'Архив', is_archived: true }])
     mock.plans.mockResolvedValueOnce({ items: [
       { id: 10, full_name: 'Иванов', grade: 'Junior', cells: { '1': cell } },
@@ -54,9 +54,11 @@ describe('Onboarding table', () => {
     ], total: 2, pages: 1 })
     const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
-    expect(wrapper.findAll('thead th').map(x => x.text())).toEqual(['Этап / сотрудник', 'Иванов', 'Петров'])
-    expect(wrapper.findAll('tbody th').map(x => x.text())).toEqual(['№', 'Грейд', 'NDA', 'Пропуск'])
-    expect(wrapper.findAll('tbody tr')[1]!.findAll('td').map(x => x.text())).toEqual(['Junior', 'Senior'])
+    expect(wrapper.findAll('.plan-card h3').map(x => x.text())).toEqual(['Иванов', 'Петров'])
+    expect(wrapper.find('table').exists()).toBe(false)
+    await wrapper.findAll('.expand-button')[1]!.trigger('click')
+    expect(wrapper.findAll('tbody th').map(x => x.text())).toEqual(['NDA', 'Пропуск'])
+    expect(wrapper.text()).not.toContain('Архив')
     await wrapper.get('button[aria-label="Пропуск, Петров: ✓"]').trigger('click')
     expect(wrapper.getComponent(OnboardingCellEditor).props('planId')).toBe(20)
     expect(wrapper.getComponent(OnboardingCellEditor).props('column').id).toBe(2)
@@ -67,8 +69,8 @@ describe('Onboarding table', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('Иванов')
     expect(wrapper.text()).toContain('Junior')
-    expect(wrapper.findAll('thead th').map(x => x.text())).toEqual(['Этап / сотрудник', 'Иванов'])
-    expect(wrapper.findAll('tbody th').map(x => x.text())).toEqual(['№', 'Грейд', 'NDA'])
+    await wrapper.get('.expand-button').trigger('click')
+    expect(wrapper.findAll('tbody th').map(x => x.text())).toEqual(['NDA'])
     await wrapper.get('.cell-button').trigger('click')
     expect(wrapper.findComponent(OnboardingCellEditor).exists()).toBe(true)
     wrapper.unmount()
@@ -86,6 +88,8 @@ describe('Onboarding table', () => {
     expect(wrapper.text()).not.toContain('Настроить этапы')
     expect(wrapper.text()).not.toContain('Добавить сотрудника')
     expect(wrapper.text()).toContain('Скачать Excel')
+    for (const button of wrapper.findAll('.expand-button')) await button.trigger('click')
+    expect(wrapper.text()).not.toContain('Изменить куратора')
     expect(wrapper.findAll('.cell-button').map(button => button.attributes('aria-label'))).toEqual(['NDA, Иванов: 1 октября 2026 г.'])
     expect(wrapper.text()).toContain('Петров')
     await wrapper.get('.cell-button').trigger('click')
@@ -149,7 +153,7 @@ describe('Cell editor', () => {
     await dates[1]!.setValue('2026-09-19')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(mock.saveCell).toHaveBeenCalledWith(1, 1, { version: 2, column_version: 1, planned_date: '2026-10-01', is_completed: true, is_not_required: false, completed_date: '2026-09-19' })
+    expect(mock.saveCell).toHaveBeenCalledWith(1, 1, { version: 2, column_version: 1, planned_date: '2026-10-01', is_completed: true, is_in_progress: false, is_not_required: false, completed_date: '2026-09-19' })
     expect(wrapper.emitted('saved')).toHaveLength(1)
     wrapper.unmount()
   })
@@ -204,7 +208,7 @@ describe('New onboarding states and clearing', () => {
     expect(wrapper.find('input[type="date"]').exists()).toBe(false)
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(mock.saveCell).toHaveBeenCalledWith(1, 1, { version: 0, column_version: 1, is_completed: true, is_not_required: false })
+    expect(mock.saveCell).toHaveBeenCalledWith(1, 1, { version: 0, column_version: 1, is_completed: true, is_in_progress: false, is_not_required: false })
     wrapper.unmount()
   })
   it('keeps the planned date for not-required stages', async () => {
@@ -213,7 +217,7 @@ describe('New onboarding states and clearing', () => {
     expect(wrapper.get('input[type="date"]').attributes('disabled')).toBeDefined()
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(mock.saveCell).toHaveBeenCalledWith(1, 1, { version: 2, column_version: 1, planned_date: '2026-10-01', is_completed: false, is_not_required: true, completed_date: null })
+    expect(mock.saveCell).toHaveBeenCalledWith(1, 1, { version: 2, column_version: 1, planned_date: '2026-10-01', is_completed: false, is_in_progress: false, is_not_required: true, completed_date: null })
     wrapper.unmount()
   })
   it('stages clearing until save and allows cancelling it', async () => {
@@ -233,6 +237,7 @@ describe('New onboarding states and clearing', () => {
     mock.plans.mockResolvedValueOnce({ items: [{ id: 1, full_name: 'Иванов', cells: { '1': { ...cell, planned_date: '2000-01-01', is_not_required: true } } }], total: 1, pages: 1 })
     const wrapper = mount(OnboardingView)
     await flushPromises()
+    await wrapper.get('.expand-button').trigger('click')
     expect(wrapper.get('.not-required').text()).toBe('Не нужно')
     expect(wrapper.find('.overdue').exists()).toBe(false)
     expect(wrapper.find('.completed').exists()).toBe(false)
@@ -242,7 +247,8 @@ describe('New onboarding states and clearing', () => {
     mock.plans.mockResolvedValueOnce({ items: [{ id: 1, full_name: 'Иванов', cells: { '1': { ...cell, is_completed: true, completed_date: '2026-09-22' } } }], total: 1, pages: 1 })
     const wrapper = mount(OnboardingView)
     await flushPromises()
-    expect(wrapper.get('td.completed').text()).toContain('✓')
+    await wrapper.get('.expand-button').trigger('click')
+    expect(wrapper.get('td.completed').text()).toContain('Выполнено')
     expect(wrapper.get('td.completed').classes()).not.toContain('not-required')
     wrapper.unmount()
   })
@@ -314,5 +320,44 @@ describe('Columns modal', () => {
     wrapper.unmount()
     expect(document.activeElement).toBe(opener)
     opener.remove()
+  })
+})
+
+describe('Card interactions', () => {
+  it('saves the curator and keeps the plan expanded after refresh', async () => {
+    const wrapper = mount(OnboardingView)
+    await flushPromises()
+    await wrapper.get('.expand-button').trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Изменить куратора')!.trigger('click')
+    await wrapper.get('.curator-form input').setValue('  Петров Пётр  ')
+    await wrapper.get('.curator-form').trigger('submit')
+    await flushPromises()
+    expect(mock.updatePlan).toHaveBeenCalledWith(1, { version: 1, curator_name: 'Петров Пётр' })
+    expect(wrapper.get('.expand-button').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('.curator-form').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('keeps curator input on conflict and blocks stale retry', async () => {
+    mock.updatePlan.mockRejectedValueOnce(new ApiError('Конфликт', 409))
+    const wrapper = mount(OnboardingView)
+    await flushPromises()
+    await wrapper.get('.expand-button').trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Изменить куратора')!.trigger('click')
+    await wrapper.get('.curator-form input').setValue('Мой ввод')
+    await wrapper.get('.curator-form').trigger('submit')
+    await flushPromises()
+    expect((wrapper.get('.curator-form input').element as HTMLInputElement).value).toBe('Мой ввод')
+    expect(wrapper.get('.curator-form button').attributes('disabled')).toBeDefined()
+    await wrapper.get('.curator-form').trigger('submit')
+    expect(mock.updatePlan).toHaveBeenCalledOnce()
+    wrapper.unmount()
+  })
+  it('saves an explicit in-progress state with dates preserved', async () => {
+    const wrapper = mount(OnboardingCellEditor, { props: { planId: 1, employeeName: 'Иванов', column, cell }, global: { stubs: { teleport: true } } })
+    await wrapper.get('select').setValue('in_progress')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mock.saveCell).toHaveBeenCalledWith(1, 1, { version: 2, column_version: 1, planned_date: '2026-10-01', is_completed: false, is_in_progress: true, is_not_required: false, completed_date: null })
+    wrapper.unmount()
   })
 })

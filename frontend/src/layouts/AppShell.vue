@@ -104,4 +104,11 @@ main {
   align-items: center;
   gap: 0.75rem;
 }
+@media (max-width: 900px) {
+  .topbar { flex-direction: column; align-items: stretch; }
+  .topbar-actions { flex-wrap: wrap; gap: .65rem; }
+  .user-block { flex-wrap: wrap; overflow-wrap: anywhere; }
+  .topbar-actions :deep(.global-search) { max-width: 100%; }
+  .topbar-actions :deep(.search-trigger) { min-width: 0; max-width: 100%; }
+}
 </style>

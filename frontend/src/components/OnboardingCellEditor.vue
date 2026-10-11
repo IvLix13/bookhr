@@ -13,7 +13,7 @@ onMounted(focus.activate)
 const text = ref(props.cell?.text_value ?? '')
 const date = ref(props.cell?.date_value ?? '')
 const planned = ref(props.cell?.planned_date ?? '')
-const state = ref<'pending' | 'completed' | 'not_required'>(props.cell?.is_not_required ? 'not_required' : props.cell?.is_completed ? 'completed' : 'pending')
+const state = ref<'pending' | 'in_progress' | 'completed' | 'not_required'>(props.cell?.is_not_required ? 'not_required' : props.cell?.is_completed ? 'completed' : props.cell?.is_in_progress ? 'in_progress' : 'pending')
 const isStage = computed(() => props.column.field_type === 'stage' || props.column.field_type === 'checkbox')
 const clear = ref(false)
 const completedDate = ref(props.cell?.completed_date ?? '')
@@ -37,6 +37,7 @@ async function save() {
   else if (props.column.field_type === 'text') body.text_value = text.value || null
   else if (props.column.field_type === 'date') body.date_value = date.value || null
   else if (isStage.value) {
+    body.is_in_progress = state.value === 'in_progress'
     body.is_completed = state.value === 'completed'
     body.is_not_required = state.value === 'not_required'
     if (props.column.field_type === 'stage') {
@@ -67,7 +68,7 @@ async function save() {
           <label v-if="column.field_type === 'text'">Значение<input v-model="text" maxlength="10000" /></label>
           <label v-if="column.field_type === 'date'">Дата<input v-model="date" type="date" /></label>
           <template v-if="isStage">
-            <label>Состояние<select v-model="state" aria-label="Состояние этапа" @change="changeState"><option value="pending">Не выполнено</option><option value="completed">Выполнено</option><option value="not_required">Не нужно</option></select></label>
+            <label>Состояние<select v-model="state" aria-label="Состояние этапа" @change="changeState"><option value="pending">Не начато</option><option value="in_progress">В работе</option><option value="completed">Выполнено</option><option value="not_required">Не нужно</option></select></label>
             <label v-if="column.field_type === 'stage'">Плановая дата<input v-model="planned" type="date" :disabled="state === 'not_required'" /></label>
             <label v-if="column.field_type === 'stage' && state === 'completed'">Дата выполнения<input v-model="completedDate" type="date" required /></label>
           </template>

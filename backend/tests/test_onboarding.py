@@ -125,7 +125,7 @@ def test_empty_type_change_and_protected_fields(admin_client, seed_company):
     plan, column = setup_plan(admin_client, seed_company.id, "text")
     data(patch_cell(admin_client, plan, column, text_value=""))
     data(admin_client.patch(f'/api/onboarding/columns/{column["id"]}', json={"version": 1, "field_type": "date"}))
-    assert admin_client.patch(f'/api/onboarding/plans/{plan["id"]}', json={"full_name": "hack"}).status_code == 405
+    assert admin_client.patch(f'/api/onboarding/plans/{plan["id"]}', json={"full_name": "hack"}).status_code == 400
     assert admin_client.post("/api/onboarding/columns", json={"title": " ", "field_type": "text"}).status_code == 400
     assert admin_client.post("/api/onboarding/columns", json={"title": "x", "field_type": "sql"}).status_code == 400
 
@@ -509,3 +509,104 @@ def test_states_migration_preserves_values_and_guards_downgrade():
                 migration.downgrade()
             with pytest.raises(sa.exc.IntegrityError):
                 conn.exec_driver_sql("UPDATE onboarding_cells SET is_completed=1 WHERE is_not_required=1")
+
+
+@pytest.mark.parametrize("kind", ["stage", "checkbox"])
+def test_in_progress_lifecycle_and_export(hr_client, seed_company, kind):
+    plan, column = setup_plan(hr_client, seed_company.id, kind)
+    extra = {"planned_date": "2020-01-01"} if kind == "stage" else {}
+    working = data(patch_cell(hr_client, plan, column, is_in_progress=True, **extra))
+    assert working["is_in_progress"] and not working["is_completed"] and not working["is_not_required"]
+    assert working["completed_date"] is None
+    assert data(hr_client.get("/api/onboarding/plans"))["items"][0]["cells"][str(column["id"])]["is_in_progress"]
+    sheet = load_workbook(BytesIO(hr_client.get("/api/onboarding/export").data)).active
+    assert sheet.cell(4, 2).value.startswith("В работе")
+    assert hr_client.patch(f'/api/onboarding/columns/{column["id"]}', json={"version": column["version"], "field_type": "text"}).status_code == 400
+    exempt = data(patch_cell(hr_client, plan, column, version=working["version"], is_not_required=True))
+    assert not exempt["is_in_progress"] and exempt["is_not_required"]
+    extra = {"completed_date": "2026-10-10"} if kind == "stage" else {}
+    done = data(patch_cell(hr_client, plan, column, version=exempt["version"], is_completed=True, **extra))
+    assert done["is_completed"] and not done["is_in_progress"] and not done["is_not_required"]
+    restarted = data(patch_cell(hr_client, plan, column, version=done["version"], is_in_progress=True))
+    assert restarted["completed_date"] is None and not restarted["is_completed"]
+    cleared = data(patch_cell(hr_client, plan, column, version=restarted["version"], clear=True))
+    assert not cleared["is_in_progress"]
+    with hr_client.application.app_context():
+        assert AuditLog.query.filter_by(entity_type="onboarding_cell").order_by(AuditLog.id).first().new_value["is_in_progress"]
+
+
+@pytest.mark.parametrize("kind,payload", [
+    ("stage", {"is_in_progress": True, "is_completed": True, "completed_date": "2026-10-10"}),
+    ("checkbox", {"is_in_progress": True, "is_not_required": True}),
+    ("text", {"is_in_progress": True}), ("date", {"is_in_progress": True}),
+    ("stage", {"is_in_progress": "true"}),
+])
+def test_invalid_in_progress(hr_client, seed_company, kind, payload):
+    plan, column = setup_plan(hr_client, seed_company.id, kind)
+    assert patch_cell(hr_client, plan, column, **payload).status_code == 400
+
+
+def test_curator_permissions_versions_and_tenant(hr_client, seed_company):
+    plan, _ = setup_plan(hr_client, seed_company.id)
+    assert plan["hire_date"] == "2020-01-01" and plan["curator_name"] is None and plan["version"] == 1
+    url = f'/api/onboarding/plans/{plan["id"]}'
+    updated = data(hr_client.patch(url, json={"version": 1, "curator_name": "  Петров Пётр  "}))
+    assert updated["curator_name"] == "Петров Пётр" and updated["version"] == 2
+    assert hr_client.patch(url, json={"version": 1, "curator_name": "Перезапись"}).status_code == 409
+    assert hr_client.patch(url, json={"version": 2, "curator_name": "x" * 257}).status_code == 400
+    cleared = data(hr_client.patch(url, json={"version": 2, "curator_name": " "}))
+    assert cleared["curator_name"] is None
+    with hr_client.application.app_context():
+        log = AuditLog.query.filter_by(entity_type="onboarding_plan", action="update").first()
+        assert log.old_value["curator_name"] is None and log.new_value["curator_name"] == "Петров Пётр"
+        other = Company(name="Other")
+        db.session.add(other)
+        db.session.flush()
+        employment_id = employee(other.id, "Другой")
+        other_plan = OnboardingPlan(employment_id=employment_id)
+        db.session.add(other_plan)
+        db.session.commit()
+        other_id = other_plan.id
+    assert hr_client.patch(f'/api/onboarding/plans/{other_id}', json={"version": 1, "curator_name": "Чужой"}).status_code == 404
+    with hr_client.application.app_context():
+        user = User.query.filter_by(username="hr_user").one()
+        viewer = Role(name=RoleName.VIEWER.value)
+        db.session.add(viewer)
+        db.session.flush()
+        user.role_id = viewer.id
+        user.full_name = "Иванов Иван"
+        db.session.commit()
+    assert hr_client.patch(url, json={"version": cleared["version"], "curator_name": "Запрет"}).status_code == 403
+
+
+def test_cards_migration_preserves_data_and_guards_downgrade():
+    first = importlib.import_module("migrations.versions.0016_onboarding")
+    states = importlib.import_module("migrations.versions.0017_onboarding_states")
+    cards = importlib.import_module("migrations.versions.0019_onboarding_cards")
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE companies (id INTEGER PRIMARY KEY)")
+        conn.exec_driver_sql("CREATE TABLE employments (id INTEGER PRIMARY KEY)")
+        conn.exec_driver_sql("INSERT INTO companies VALUES (1)")
+        conn.exec_driver_sql("INSERT INTO employments VALUES (1)")
+        with Operations.context(MigrationContext.configure(conn)):
+            first.upgrade()
+            states.upgrade()
+            conn.exec_driver_sql("INSERT INTO onboarding_plans (id, employment_id, created_at, updated_at) VALUES (1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+            conn.exec_driver_sql("INSERT INTO onboarding_cells (plan_id,column_id,planned_date,is_completed,is_not_required,completed_date,version,created_at,updated_at) VALUES (1,3,'2026-09-20',1,0,'2026-09-22',4,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+            before = conn.exec_driver_sql("SELECT planned_date,is_completed,completed_date,version FROM onboarding_cells").one()
+            cards.upgrade()
+            assert conn.exec_driver_sql("SELECT planned_date,is_completed,completed_date,version FROM onboarding_cells").one() == before
+            assert conn.exec_driver_sql("SELECT is_in_progress FROM onboarding_cells").scalar() == 0
+            assert conn.exec_driver_sql("SELECT curator_name,version FROM onboarding_plans").one() == (None, 1)
+            with pytest.raises(sa.exc.IntegrityError):
+                conn.exec_driver_sql("UPDATE onboarding_cells SET is_in_progress=1")
+            cards.downgrade()
+            cards.upgrade()
+            conn.exec_driver_sql("UPDATE onboarding_plans SET curator_name='Куратор'")
+            with pytest.raises(RuntimeError, match="Откат запрещён"):
+                cards.downgrade()
+            conn.exec_driver_sql("UPDATE onboarding_plans SET curator_name=NULL")
+            conn.exec_driver_sql("UPDATE onboarding_cells SET is_completed=0,completed_date=NULL,is_in_progress=1")
+            with pytest.raises(RuntimeError, match="Откат запрещён"):
+                cards.downgrade()
