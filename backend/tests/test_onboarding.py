@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 import importlib
 from io import BytesIO
 
@@ -158,18 +158,28 @@ def test_employee_delete_conflict_and_rollback(hr_client, seed_company, monkeypa
         assert AuditLog.query.filter_by(action='delete').count() == 0
 
 
-def test_newest_hire_sort_before_pagination_and_export(hr_client, seed_company):
+def test_newest_plan_sort_before_pagination_and_export(hr_client, seed_company):
     names = []
     with hr_client.application.app_context():
-        for name, hired in [('First', date(2026, 10, 1)), ('Second', date(2026, 10, 10)), ('Third', date(2026, 10, 10)), ('Last', date(2026, 9, 20))]:
+        for name, hired, created in [
+            ('First', date(2026, 10, 10), datetime(2026, 10, 9, 12)),
+            ('Second', date(2020, 1, 1), datetime(2026, 10, 11, 12)),
+            ('Third', date(2019, 1, 1), datetime(2026, 10, 11, 12)),
+            ('Last', date(2026, 10, 11), datetime(2026, 10, 1, 12)),
+        ]:
             eid = employee(seed_company.id, name)
             db.session.get(Employment, eid).hire_date = hired
-            db.session.add(OnboardingPlan(employment_id=eid))
+            db.session.add(OnboardingPlan(employment_id=eid, created_at=created))
             db.session.commit()
     for page in (1, 2):
         names.extend(p['full_name'] for p in data(hr_client.get(f'/api/onboarding/plans?page={page}&per_page=2'))['items'])
     assert names == ['Third', 'Second', 'First', 'Last']
     assert [p['full_name'] for p in data(hr_client.get('/api/onboarding/plans?q=ir'))['items']] == ['Third', 'First']
+    oldest = data(hr_client.get('/api/onboarding/plans'))['items'][-1]
+    data(hr_client.patch(f'/api/onboarding/plans/{oldest["id"]}', json={
+        'version': oldest['version'], 'curator_name': 'Новый куратор',
+    }))
+    assert [p['full_name'] for p in data(hr_client.get('/api/onboarding/plans'))['items']] == names
     sheet = load_workbook(BytesIO(hr_client.get('/api/onboarding/export').data)).active
     assert [cell.value for cell in sheet[1]][1:] == names
 

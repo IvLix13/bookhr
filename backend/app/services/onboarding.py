@@ -259,7 +259,7 @@ class EmployeeDeleteSchema(DeleteSchema):
 
 
 def newest_plans(query):
-    return query.order_by(Employment.hire_date.desc(), OnboardingPlan.id.desc())
+    return query.order_by(OnboardingPlan.created_at.desc(), OnboardingPlan.id.desc())
 
 
 def _snapshot(value):
