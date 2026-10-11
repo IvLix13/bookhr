@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 import importlib
 from io import BytesIO
 
@@ -12,6 +12,176 @@ from app.extensions import db
 from app.models import AuditLog, Company, Employment, Person, PersonNameHistory, GradeCatalog, EmployeeGradeHistory, Role, RoleName, User
 from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
 from app.services.purge_employees import purge_all_employees
+
+
+
+def deleted(response):
+    assert response.status_code == 200, response.get_json()
+
+def deletion_confirmation(client, kind, id_):
+    preview = data(client.get(f'/api/onboarding/{kind}/{id_}/delete-preview'))
+    return {key: preview[key] for key in ('version', 'snapshot')}
+
+
+@pytest.mark.parametrize('kind,values', [
+    ('stage', {'is_completed': True, 'completed_date': '2026-10-01'}),
+    ('checkbox', {'is_in_progress': True}), ('text', {'text_value': 'IT'}),
+    ('date', {'date_value': '2026-10-01'}),
+])
+def test_delete_filled_archived_column(hr_client, seed_company, kind, values):
+    plan, column = setup_plan(hr_client, seed_company.id, kind)
+    data(patch_cell(hr_client, plan, column, **values))
+    data(hr_client.patch(f'/api/onboarding/columns/{column["id"]}', json={'version': 1, 'is_archived': True}))
+    confirmation = deletion_confirmation(hr_client, 'columns', column['id'])
+    deleted(hr_client.delete(f'/api/onboarding/columns/{column["id"]}', json=confirmation))
+    assert data(hr_client.get(f'/api/onboarding/plans/{plan["id"]}'))['cells'] == {}
+    assert patch_cell(hr_client, plan, column, **values).status_code == 404
+    with hr_client.application.app_context():
+        assert db.session.get(OnboardingColumn, column['id']) is None
+        assert OnboardingCell.query.count() == 0
+        audit = AuditLog.query.filter_by(action='delete', entity_type='onboarding_column').one()
+        assert audit.old_value['cells'][0][next(iter(values))] == next(iter(values.values()))
+
+
+def test_delete_empty_column_and_plan(hr_client, seed_company):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    for kind, id_ in [('columns', column['id']), ('plans', plan['id'])]:
+        confirmation = deletion_confirmation(hr_client, kind, id_)
+        deleted(hr_client.delete(f'/api/onboarding/{kind}/{id_}', json=confirmation))
+    with hr_client.application.app_context():
+        assert db.session.get(Employment, plan['employment_id']) is not None
+
+
+def test_delete_plan_keeps_employee_and_allows_recreation(hr_client, seed_company):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    data(patch_cell(hr_client, plan, column, is_in_progress=True))
+    data(hr_client.patch(f'/api/onboarding/plans/{plan["id"]}', json={'version': 1, 'curator_name': 'Куратор'}))
+    confirmation = deletion_confirmation(hr_client, 'plans', plan['id'])
+    deleted(hr_client.delete(f'/api/onboarding/plans/{plan["id"]}', json=confirmation))
+    with hr_client.application.app_context():
+        assert db.session.get(Employment, plan['employment_id']) is not None
+        assert OnboardingCell.query.count() == 0
+        audit = AuditLog.query.filter_by(action='delete', entity_type='onboarding_plan').one()
+        assert audit.old_value['curator_name'] == 'Куратор'
+    recreated = data(hr_client.post('/api/onboarding/plans', json={'employment_id': plan['employment_id']}), 201)
+    assert recreated['cells'] == {}
+    assert recreated['curator_name'] is None
+
+
+@pytest.mark.parametrize('kind', ['plans', 'columns'])
+def test_delete_conflicts_on_cell_change(hr_client, seed_company, kind):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    saved = data(patch_cell(hr_client, plan, column, planned_date='2026-10-01'))
+    id_ = plan['id'] if kind == 'plans' else column['id']
+    confirmation = deletion_confirmation(hr_client, kind, id_)
+    data(patch_cell(hr_client, plan, column, version=saved['version'], planned_date='2026-11-01'))
+    assert hr_client.delete(f'/api/onboarding/{kind}/{id_}', json=confirmation).status_code == 409
+    fresh = deletion_confirmation(hr_client, kind, id_)
+    assert fresh['version'] == confirmation['version']
+    assert fresh['snapshot'] != confirmation['snapshot']
+    deleted(hr_client.delete(f'/api/onboarding/{kind}/{id_}', json=fresh))
+
+
+@pytest.mark.parametrize('kind', ['plans', 'columns'])
+def test_delete_stale_version_or_missing_confirmation(hr_client, seed_company, kind):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    id_ = plan['id'] if kind == 'plans' else column['id']
+    confirmation = deletion_confirmation(hr_client, kind, id_)
+    assert hr_client.delete(f'/api/onboarding/{kind}/{id_}', json={'version': 1}).status_code == 400
+    change = {'curator_name': 'Петров'} if kind == 'plans' else {'title': 'Новый этап'}
+    data(hr_client.patch(f'/api/onboarding/{kind}/{id_}', json={'version': 1, **change}))
+    assert hr_client.delete(f'/api/onboarding/{kind}/{id_}', json=confirmation).status_code == 409
+
+
+def test_delete_viewer_and_foreign_company(viewer_client, hr_client, seed_company):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    viewer_client.post('/api/login', json={'username': 'viewer_user', 'password': 'secret123'})
+    for kind, id_ in [('plans', plan['id']), ('columns', column['id'])]:
+        assert viewer_client.get(f'/api/onboarding/{kind}/{id_}/delete-preview').status_code == 403
+        assert viewer_client.delete(f'/api/onboarding/{kind}/{id_}', json={}).status_code == 403
+    hr_client.post('/api/login', json={'username': 'hr_user', 'password': 'secret123'})
+    with hr_client.application.app_context():
+        other = Company(name='Other deletion tenant')
+        db.session.add(other)
+        db.session.commit()
+        eid = employee(other.id)
+        foreign_plan = OnboardingPlan(employment_id=eid)
+        foreign_column = OnboardingColumn(company_id=other.id, title='Foreign', field_type='text', sort_order=0)
+        db.session.add_all([foreign_plan, foreign_column])
+        db.session.commit()
+        pid, cid = foreign_plan.id, foreign_column.id
+    for kind, id_ in [('plans', pid), ('columns', cid)]:
+        assert hr_client.get(f'/api/onboarding/{kind}/{id_}/delete-preview').status_code == 404
+        assert hr_client.delete(f'/api/onboarding/{kind}/{id_}', json={}).status_code == 404
+    assert hr_client.delete(f'/api/employees/{eid}', json={'delete_onboarding_plan': True, 'version': 1, 'snapshot': 'a' * 64}).status_code == 404
+
+
+def test_delete_employee_plan_preserves_other_period(hr_client, seed_company):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    data(patch_cell(hr_client, plan, column, planned_date='2026-10-01'))
+    with hr_client.application.app_context():
+        original = db.session.get(Employment, plan['employment_id'])
+        original.status = 'dismissed'
+        person_id = original.person_id
+        other = Employment(person_id=person_id, company_id=seed_company.id, hire_date=date(2026, 1, 1))
+        db.session.add(other)
+        db.session.commit()
+        other_id = other.id
+    other_plan = data(hr_client.post('/api/onboarding/plans', json={'employment_id': other_id}), 201)
+    confirmation = deletion_confirmation(hr_client, 'plans', plan['id'])
+    deleted(hr_client.delete(f'/api/employees/{plan["employment_id"]}', json={'delete_onboarding_plan': True, **confirmation}))
+    with hr_client.application.app_context():
+        assert db.session.get(Employment, plan['employment_id']) is None
+        assert db.session.get(Employment, other_id) is not None
+        assert db.session.get(Person, person_id) is not None
+        assert db.session.get(OnboardingPlan, other_plan['id']) is not None
+        assert OnboardingCell.query.filter_by(plan_id=plan['id']).count() == 0
+
+
+def test_employee_delete_conflict_and_rollback(hr_client, seed_company, monkeypatch):
+    plan, column = setup_plan(hr_client, seed_company.id)
+    confirmation = deletion_confirmation(hr_client, 'plans', plan['id'])
+    data(patch_cell(hr_client, plan, column, planned_date='2026-10-01'))
+    assert hr_client.delete(f'/api/employees/{plan["employment_id"]}', json={'delete_onboarding_plan': True, **confirmation}).status_code == 409
+    confirmation = deletion_confirmation(hr_client, 'plans', plan['id'])
+    import app.api.employees as api_employees
+    original = api_employees.delete_employment
+    def failing(*args, **kwargs):
+        original(*args, **kwargs)
+        raise ValueError('Simulated failure after deletion')
+    monkeypatch.setattr(api_employees, 'delete_employment', failing)
+    assert hr_client.delete(f'/api/employees/{plan["employment_id"]}', json={'delete_onboarding_plan': True, **confirmation}).status_code == 400
+    with hr_client.application.app_context():
+        assert db.session.get(Employment, plan['employment_id']) is not None
+        assert db.session.get(OnboardingPlan, plan['id']) is not None
+        assert OnboardingCell.query.filter_by(plan_id=plan['id']).count() == 1
+        assert AuditLog.query.filter_by(action='delete').count() == 0
+
+
+def test_newest_plan_sort_before_pagination_and_export(hr_client, seed_company):
+    names = []
+    with hr_client.application.app_context():
+        for name, hired, created in [
+            ('First', date(2026, 10, 10), datetime(2026, 10, 9, 12)),
+            ('Second', date(2020, 1, 1), datetime(2026, 10, 11, 12)),
+            ('Third', date(2019, 1, 1), datetime(2026, 10, 11, 12)),
+            ('Last', date(2026, 10, 11), datetime(2026, 10, 1, 12)),
+        ]:
+            eid = employee(seed_company.id, name)
+            db.session.get(Employment, eid).hire_date = hired
+            db.session.add(OnboardingPlan(employment_id=eid, created_at=created))
+            db.session.commit()
+    for page in (1, 2):
+        names.extend(p['full_name'] for p in data(hr_client.get(f'/api/onboarding/plans?page={page}&per_page=2'))['items'])
+    assert names == ['Third', 'Second', 'First', 'Last']
+    assert [p['full_name'] for p in data(hr_client.get('/api/onboarding/plans?q=ir'))['items']] == ['Third', 'First']
+    oldest = data(hr_client.get('/api/onboarding/plans'))['items'][-1]
+    data(hr_client.patch(f'/api/onboarding/plans/{oldest["id"]}', json={
+        'version': oldest['version'], 'curator_name': 'Новый куратор',
+    }))
+    assert [p['full_name'] for p in data(hr_client.get('/api/onboarding/plans'))['items']] == names
+    sheet = load_workbook(BytesIO(hr_client.get('/api/onboarding/export').data)).active
+    assert [cell.value for cell in sheet[1]][1:] == names
 
 
 def employee(company_id, name="Иванов Иван"):
@@ -125,7 +295,7 @@ def test_empty_type_change_and_protected_fields(admin_client, seed_company):
     plan, column = setup_plan(admin_client, seed_company.id, "text")
     data(patch_cell(admin_client, plan, column, text_value=""))
     data(admin_client.patch(f'/api/onboarding/columns/{column["id"]}', json={"version": 1, "field_type": "date"}))
-    assert admin_client.patch(f'/api/onboarding/plans/{plan["id"]}', json={"full_name": "hack"}).status_code == 405
+    assert admin_client.patch(f'/api/onboarding/plans/{plan["id"]}', json={"full_name": "hack"}).status_code == 400
     assert admin_client.post("/api/onboarding/columns", json={"title": " ", "field_type": "text"}).status_code == 400
     assert admin_client.post("/api/onboarding/columns", json={"title": "x", "field_type": "sql"}).status_code == 400
 
@@ -282,21 +452,22 @@ def test_export_contains_all_plans_visible_columns_and_states(hr_client, seed_co
     sheet = load_workbook(BytesIO(response.data)).active
 
     assert sheet.max_column == 27
-    assert sheet.cell(1, 2).value == "Иванов Иван"
+    assert sheet.cell(1, 27).value == "Иванов Иван"
+    assert sheet.cell(1, 2).value == "Сотрудник 24"
     assert sheet.cell(2, 27).value == 26
     assert "Чужой сотрудник" not in [cell.value for cell in sheet[1]]
     assert [sheet.cell(row, 1).value for row in range(1, sheet.max_row + 1)] == [
         "Этап / сотрудник", "№", "Грейд", "NDA", "Отдел", "Дата",
         "Ознакомление", "Не требуется",
     ]
-    assert sheet.cell(4, 2).value == "Выполнено: 19.09.2026"
-    assert sheet.cell(4, 2).fill.fgColor.rgb.endswith("E2F5E9")
-    assert sheet.cell(5, 2).value == "Разработка"
-    assert sheet.cell(6, 2).value.strftime("%d.%m.%Y") == "20.09.2026"
-    assert sheet.cell(6, 2).number_format == "DD.MM.YYYY"
-    assert sheet.cell(7, 2).value == "Выполнено"
-    assert sheet.cell(7, 2).fill.fgColor.rgb.endswith("E2F5E9")
-    assert sheet.cell(8, 2).value == "Не нужно"
+    assert sheet.cell(4, 27).value == "Выполнено: 19.09.2026"
+    assert sheet.cell(4, 27).fill.fgColor.rgb.endswith("E2F5E9")
+    assert sheet.cell(5, 27).value == "Разработка"
+    assert sheet.cell(6, 27).value.strftime("%d.%m.%Y") == "20.09.2026"
+    assert sheet.cell(6, 27).number_format == "DD.MM.YYYY"
+    assert sheet.cell(7, 27).value == "Выполнено"
+    assert sheet.cell(7, 27).fill.fgColor.rgb.endswith("E2F5E9")
+    assert sheet.cell(8, 27).value == "Не нужно"
 
 
 def test_duplicate_dismissal_deletion_and_rehire(hr_client, seed_company):
@@ -315,7 +486,7 @@ def test_duplicate_dismissal_deletion_and_rehire(hr_client, seed_company):
     data(hr_client.post("/api/onboarding/plans", json={"employment_id": new_id}), 201)
     listed = data(hr_client.get("/api/onboarding/plans"))
     assert listed["total"] == 2
-    assert listed["items"][0]["employment_status"] == "dismissed"
+    assert listed["items"][1]["employment_status"] == "dismissed"
 
 
 def test_current_name_grade_search_pagination(hr_client, seed_company):
@@ -509,3 +680,104 @@ def test_states_migration_preserves_values_and_guards_downgrade():
                 migration.downgrade()
             with pytest.raises(sa.exc.IntegrityError):
                 conn.exec_driver_sql("UPDATE onboarding_cells SET is_completed=1 WHERE is_not_required=1")
+
+
+@pytest.mark.parametrize("kind", ["stage", "checkbox"])
+def test_in_progress_lifecycle_and_export(hr_client, seed_company, kind):
+    plan, column = setup_plan(hr_client, seed_company.id, kind)
+    extra = {"planned_date": "2020-01-01"} if kind == "stage" else {}
+    working = data(patch_cell(hr_client, plan, column, is_in_progress=True, **extra))
+    assert working["is_in_progress"] and not working["is_completed"] and not working["is_not_required"]
+    assert working["completed_date"] is None
+    assert data(hr_client.get("/api/onboarding/plans"))["items"][0]["cells"][str(column["id"])]["is_in_progress"]
+    sheet = load_workbook(BytesIO(hr_client.get("/api/onboarding/export").data)).active
+    assert sheet.cell(4, 2).value.startswith("В работе")
+    assert hr_client.patch(f'/api/onboarding/columns/{column["id"]}', json={"version": column["version"], "field_type": "text"}).status_code == 400
+    exempt = data(patch_cell(hr_client, plan, column, version=working["version"], is_not_required=True))
+    assert not exempt["is_in_progress"] and exempt["is_not_required"]
+    extra = {"completed_date": "2026-10-10"} if kind == "stage" else {}
+    done = data(patch_cell(hr_client, plan, column, version=exempt["version"], is_completed=True, **extra))
+    assert done["is_completed"] and not done["is_in_progress"] and not done["is_not_required"]
+    restarted = data(patch_cell(hr_client, plan, column, version=done["version"], is_in_progress=True))
+    assert restarted["completed_date"] is None and not restarted["is_completed"]
+    cleared = data(patch_cell(hr_client, plan, column, version=restarted["version"], clear=True))
+    assert not cleared["is_in_progress"]
+    with hr_client.application.app_context():
+        assert AuditLog.query.filter_by(entity_type="onboarding_cell").order_by(AuditLog.id).first().new_value["is_in_progress"]
+
+
+@pytest.mark.parametrize("kind,payload", [
+    ("stage", {"is_in_progress": True, "is_completed": True, "completed_date": "2026-10-10"}),
+    ("checkbox", {"is_in_progress": True, "is_not_required": True}),
+    ("text", {"is_in_progress": True}), ("date", {"is_in_progress": True}),
+    ("stage", {"is_in_progress": "true"}),
+])
+def test_invalid_in_progress(hr_client, seed_company, kind, payload):
+    plan, column = setup_plan(hr_client, seed_company.id, kind)
+    assert patch_cell(hr_client, plan, column, **payload).status_code == 400
+
+
+def test_curator_permissions_versions_and_tenant(hr_client, seed_company):
+    plan, _ = setup_plan(hr_client, seed_company.id)
+    assert plan["hire_date"] == "2020-01-01" and plan["curator_name"] is None and plan["version"] == 1
+    url = f'/api/onboarding/plans/{plan["id"]}'
+    updated = data(hr_client.patch(url, json={"version": 1, "curator_name": "  Петров Пётр  "}))
+    assert updated["curator_name"] == "Петров Пётр" and updated["version"] == 2
+    assert hr_client.patch(url, json={"version": 1, "curator_name": "Перезапись"}).status_code == 409
+    assert hr_client.patch(url, json={"version": 2, "curator_name": "x" * 257}).status_code == 400
+    cleared = data(hr_client.patch(url, json={"version": 2, "curator_name": " "}))
+    assert cleared["curator_name"] is None
+    with hr_client.application.app_context():
+        log = AuditLog.query.filter_by(entity_type="onboarding_plan", action="update").first()
+        assert log.old_value["curator_name"] is None and log.new_value["curator_name"] == "Петров Пётр"
+        other = Company(name="Other")
+        db.session.add(other)
+        db.session.flush()
+        employment_id = employee(other.id, "Другой")
+        other_plan = OnboardingPlan(employment_id=employment_id)
+        db.session.add(other_plan)
+        db.session.commit()
+        other_id = other_plan.id
+    assert hr_client.patch(f'/api/onboarding/plans/{other_id}', json={"version": 1, "curator_name": "Чужой"}).status_code == 404
+    with hr_client.application.app_context():
+        user = User.query.filter_by(username="hr_user").one()
+        viewer = Role(name=RoleName.VIEWER.value)
+        db.session.add(viewer)
+        db.session.flush()
+        user.role_id = viewer.id
+        user.full_name = "Иванов Иван"
+        db.session.commit()
+    assert hr_client.patch(url, json={"version": cleared["version"], "curator_name": "Запрет"}).status_code == 403
+
+
+def test_cards_migration_preserves_data_and_guards_downgrade():
+    first = importlib.import_module("migrations.versions.0016_onboarding")
+    states = importlib.import_module("migrations.versions.0017_onboarding_states")
+    cards = importlib.import_module("migrations.versions.0019_onboarding_cards")
+    engine = sa.create_engine("sqlite://")
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE companies (id INTEGER PRIMARY KEY)")
+        conn.exec_driver_sql("CREATE TABLE employments (id INTEGER PRIMARY KEY)")
+        conn.exec_driver_sql("INSERT INTO companies VALUES (1)")
+        conn.exec_driver_sql("INSERT INTO employments VALUES (1)")
+        with Operations.context(MigrationContext.configure(conn)):
+            first.upgrade()
+            states.upgrade()
+            conn.exec_driver_sql("INSERT INTO onboarding_plans (id, employment_id, created_at, updated_at) VALUES (1,1,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+            conn.exec_driver_sql("INSERT INTO onboarding_cells (plan_id,column_id,planned_date,is_completed,is_not_required,completed_date,version,created_at,updated_at) VALUES (1,3,'2026-09-20',1,0,'2026-09-22',4,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)")
+            before = conn.exec_driver_sql("SELECT planned_date,is_completed,completed_date,version FROM onboarding_cells").one()
+            cards.upgrade()
+            assert conn.exec_driver_sql("SELECT planned_date,is_completed,completed_date,version FROM onboarding_cells").one() == before
+            assert conn.exec_driver_sql("SELECT is_in_progress FROM onboarding_cells").scalar() == 0
+            assert conn.exec_driver_sql("SELECT curator_name,version FROM onboarding_plans").one() == (None, 1)
+            with pytest.raises(sa.exc.IntegrityError):
+                conn.exec_driver_sql("UPDATE onboarding_cells SET is_in_progress=1")
+            cards.downgrade()
+            cards.upgrade()
+            conn.exec_driver_sql("UPDATE onboarding_plans SET curator_name='Куратор'")
+            with pytest.raises(RuntimeError, match="Откат запрещён"):
+                cards.downgrade()
+            conn.exec_driver_sql("UPDATE onboarding_plans SET curator_name=NULL")
+            conn.exec_driver_sql("UPDATE onboarding_cells SET is_completed=0,completed_date=NULL,is_in_progress=1")
+            with pytest.raises(RuntimeError, match="Откат запрещён"):
+                cards.downgrade()

@@ -270,12 +270,19 @@ def sync_passport(person: Person, passport_until: date | None) -> None:
     )
 
 
-def delete_employment(employment: Employment) -> None:
+def delete_employment(employment: Employment, onboarding_delete=None) -> None:
     """Hard-delete employment and orphaned person records."""
     from app.models.onboarding import OnboardingPlan
 
-    if OnboardingPlan.query.filter_by(employment_id=employment.id).first():
-        raise ValueError("Нельзя удалить сотрудника с планом обучения. Можно оформить увольнение.")
+    plan = OnboardingPlan.query.filter_by(employment_id=employment.id).first()
+    if plan:
+        if onboarding_delete is None:
+            raise ValueError("Нельзя удалить сотрудника с планом обучения. Можно оформить увольнение.")
+        from app.services.onboarding import delete_plan
+        delete_plan(plan, onboarding_delete)
+    elif onboarding_delete is not None:
+        from werkzeug.exceptions import Conflict
+        raise Conflict("План уже удалён. Обновите список сотрудников.")
     employment_id = employment.id
     person = employment.person
     person_id = person.id
@@ -302,6 +309,10 @@ def delete_employment(employment: Employment) -> None:
     PositionHistory.query.filter_by(employment_id=employment_id).delete(
         synchronize_session=False
     )
+    # Onboarding's snapshot may have loaded these collections. Bulk DELETE does
+    # not update them; reload before ORM deletes the parent to avoid NULLing
+    # foreign keys on already deleted history rows.
+    db.session.expire(employment, ["position_history", "contracts", "grade_history", "rewards", "events"])
     db.session.delete(employment)
     db.session.flush()
 
@@ -331,6 +342,7 @@ def delete_employment(employment: Employment) -> None:
         PersonNameHistory.query.filter_by(person_id=person_id).delete(
             synchronize_session=False
         )
+        db.session.expire(person, ["employments", "name_history", "passports", "tenure_awards"])
         db.session.delete(person)
 
     log_audit("delete", "employment", employment_id, {"person_id": person_id}, None)

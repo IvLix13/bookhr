@@ -1,6 +1,8 @@
 """Validation, serialization and transactional editing for onboarding."""
 
 from datetime import date
+import hashlib
+import json
 
 from marshmallow import Schema, fields, validate
 from sqlalchemy import select
@@ -33,12 +35,18 @@ class CellSchema(Schema):
     date_value = fields.Date(allow_none=True)
     planned_date = fields.Date(allow_none=True)
     is_completed = fields.Boolean(truthy={True}, falsy={False})
+    is_in_progress = fields.Boolean(truthy={True}, falsy={False})
     is_not_required = fields.Boolean(truthy={True}, falsy={False})
     completed_date = fields.Date(allow_none=True)
 
 
 class PlanSchema(Schema):
     employment_id = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
+
+
+class PlanUpdateSchema(Schema):
+    version = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
+    curator_name = fields.String(required=True, allow_none=True, validate=validate.Length(max=256))
 
 
 class OrderItemSchema(Schema):
@@ -64,9 +72,9 @@ def column_dict(column):
 def cell_dict(cell):
     if cell is None:
         return {"version": 0, "text_value": None, "date_value": None,
-                "planned_date": None, "is_completed": False, "is_not_required": False, "completed_date": None}
+                "planned_date": None, "is_completed": False, "is_in_progress": False, "is_not_required": False, "completed_date": None}
     result = {key: getattr(cell, key) for key in (
-        "version", "text_value", "date_value", "planned_date", "is_completed", "is_not_required", "completed_date"
+        "version", "text_value", "date_value", "planned_date", "is_completed", "is_in_progress", "is_not_required", "completed_date"
     )}
     return {key: value.isoformat() if isinstance(value, date) else value for key, value in result.items()}
 
@@ -112,6 +120,9 @@ def plan_dict(plan):
         "full_name": current_plan_name(plan),
         "grade": grade.grade.name if grade else None,
         "employment_status": employment.status,
+        "hire_date": employment.hire_date.isoformat(),
+        "curator_name": plan.curator_name,
+        "version": plan.version,
         "cells": {str(cell.column_id): cell_dict(cell) for cell in plan.cells},
     }
 
@@ -150,7 +161,7 @@ def save_column(column, payload):
             OnboardingCell.column_id == column.id,
             db.or_(OnboardingCell.text_value.isnot(None), OnboardingCell.date_value.isnot(None),
                    OnboardingCell.planned_date.isnot(None), OnboardingCell.is_completed.is_(True),
-                   OnboardingCell.is_not_required.is_(True)),
+                   OnboardingCell.is_not_required.is_(True), OnboardingCell.is_in_progress.is_(True)),
         ).first()
         if filled:
             raise ValueError("Нельзя изменить тип заполненного столбца")
@@ -165,8 +176,8 @@ def save_cell(plan, column, payload):
     if column.is_archived:
         raise Conflict("Столбец архивирован. Обновите таблицу.")
     allowed = {"text": {"text_value"}, "date": {"date_value"},
-               "stage": {"planned_date", "is_completed", "completed_date", "is_not_required"},
-               "checkbox": {"is_completed", "is_not_required"}}[column.field_type]
+               "stage": {"planned_date", "is_completed", "completed_date", "is_not_required", "is_in_progress"},
+               "checkbox": {"is_completed", "is_not_required", "is_in_progress"}}[column.field_type]
     version = payload.pop("version")
     clear = payload.pop("clear", False)
     if clear and payload:
@@ -185,27 +196,27 @@ def save_cell(plan, column, payload):
         else:
             cell.version += 1
         cell.text_value = cell.date_value = cell.planned_date = cell.completed_date = None
-        cell.is_completed = cell.is_not_required = False
+        cell.is_completed = cell.is_not_required = cell.is_in_progress = False
         db.session.flush()
         log_audit("clear", "onboarding_cell", cell.id,
                   {"plan_id": plan.id, "column_id": column.id, **old},
                   {"plan_id": plan.id, "column_id": column.id, **cell_dict(cell)})
         return cell
     values = {key: getattr(cell, key) if cell else None for key in allowed}
-    for flag in ("is_completed", "is_not_required"):
+    for flag in ("is_completed", "is_not_required", "is_in_progress"):
         if flag in values and values[flag] is None:
             values[flag] = False
     values.update(payload)
     if column.field_type in ("stage", "checkbox"):
-        if payload.get("is_completed") and payload.get("is_not_required"):
-            raise ValueError("Этап не может быть одновременно выполнен и не нужен")
-        if payload.get("is_not_required"):
-            values["is_completed"] = False
-        elif payload.get("is_completed"):
-            values["is_not_required"] = False
-        # Removing the exemption does not resurrect a previous completion.
-        if values["is_completed"] and values["is_not_required"]:
-            raise ValueError("Снимите отметку «Не нужно» перед выполнением")
+        flags = ("is_completed", "is_not_required", "is_in_progress")
+        selected = [flag for flag in flags if payload.get(flag)]
+        if len(selected) > 1:
+            raise ValueError("У этапа может быть только одно состояние")
+        if selected:
+            for flag in flags:
+                values[flag] = flag == selected[0]
+        if sum(bool(values[flag]) for flag in flags) > 1:
+            raise ValueError("У этапа может быть только одно состояние")
     if column.field_type == "stage":
         if values["is_completed"] and not values["completed_date"]:
             raise ValueError("Укажите дату выполнения")
@@ -226,3 +237,74 @@ def save_cell(plan, column, payload):
               {"plan_id": plan.id, "column_id": column.id, **old},
               {"plan_id": plan.id, "column_id": column.id, **cell_dict(cell)})
     return cell
+
+
+def save_plan(plan, payload):
+    check_version(payload["version"], plan.version)
+    old = {"curator_name": plan.curator_name, "version": plan.version}
+    name = payload["curator_name"]
+    plan.curator_name = (name.strip() or None) if name is not None else None
+    db.session.flush()
+    log_audit("update", "onboarding_plan", plan.id, old,
+              {"curator_name": plan.curator_name, "version": plan.version})
+
+
+class DeleteSchema(Schema):
+    version = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
+    snapshot = fields.String(required=True, validate=validate.Regexp(r"^[0-9a-f]{64}$"))
+
+
+class EmployeeDeleteSchema(DeleteSchema):
+    delete_onboarding_plan = fields.Boolean(required=True, truthy={True}, falsy={False}, validate=validate.Equal(True))
+
+
+def newest_plans(query):
+    return query.order_by(OnboardingPlan.created_at.desc(), OnboardingPlan.id.desc())
+
+
+def _snapshot(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def plan_delete_preview(plan):
+    value = plan_dict(plan)
+    return {"version": plan.version, "snapshot": _snapshot(value),
+            "cell_count": len(plan.cells), "full_name": value["full_name"],
+            "hire_date": value["hire_date"]}
+
+
+def column_delete_preview(column):
+    cells = OnboardingCell.query.filter_by(column_id=column.id).order_by(OnboardingCell.id).all()
+    value = {"column": column_dict(column), "cells": [
+        {"id": c.id, "plan_id": c.plan_id, **cell_dict(c)} for c in cells]}
+    return {"version": column.version, "snapshot": _snapshot(value), "cell_count": len(cells), "title": column.title}
+
+
+def check_delete_preview(payload, preview):
+    check_version(payload["version"], preview["version"])
+    if payload["snapshot"] != preview["snapshot"]:
+        raise Conflict("Данные изменились после подтверждения. Проверьте их и подтвердите удаление заново.")
+
+
+def delete_plan(plan, payload):
+    check_delete_preview(payload, plan_delete_preview(plan))
+    old = plan_dict(plan)
+    log_audit("delete", "onboarding_plan", plan.id, old, None)
+    for cell in list(plan.cells):
+        db.session.delete(cell)
+    db.session.flush()
+    db.session.delete(plan)
+    db.session.flush()
+
+
+def delete_column(column, payload):
+    check_delete_preview(payload, column_delete_preview(column))
+    cells = OnboardingCell.query.filter_by(column_id=column.id).all()
+    old = {"column": column_dict(column), "cells": [
+        {"id": c.id, "plan_id": c.plan_id, **cell_dict(c)} for c in cells]}
+    log_audit("delete", "onboarding_column", column.id, old, None)
+    for cell in cells:
+        db.session.delete(cell)
+    db.session.flush()
+    db.session.delete(column)
+    db.session.flush()

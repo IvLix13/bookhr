@@ -10,7 +10,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
-from app.services.onboarding import onboarding_plan_query, plan_dict
+from app.services.onboarding import onboarding_plan_query, plan_dict, newest_plans
 
 
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="E8EEF7")
@@ -28,6 +28,10 @@ def _cell_value(column: OnboardingColumn, cell: OnboardingCell | None):
         return cell.text_value
     if column.field_type == "date":
         return cell.date_value
+    if cell.is_in_progress:
+        if column.field_type == "stage" and cell.planned_date:
+            return f"В работе: {cell.planned_date.strftime('%d.%m.%Y')}"
+        return "В работе"
     if column.field_type == "checkbox":
         return "Выполнено" if cell.is_completed else "Не выполнено"
     if cell.is_completed:
@@ -43,7 +47,7 @@ def build_onboarding_workbook(company_id: int) -> BytesIO:
         .order_by(OnboardingColumn.sort_order.asc(), OnboardingColumn.id.asc())
         .all()
     )
-    plans = onboarding_plan_query(company_id).order_by(OnboardingPlan.id.asc()).all()
+    plans = newest_plans(onboarding_plan_query(company_id)).all()
     serialized_plans = [plan_dict(plan) for plan in plans]
     cells_by_plan = [
         {cell.column_id: cell for cell in plan.cells}

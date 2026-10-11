@@ -1,10 +1,10 @@
-import type { RouteLocationRaw } from 'vue-router'
+import type { RouteLocationRaw, RouteLocationAsRelativeGeneric } from 'vue-router'
 import type { useAuthStore } from '@/stores/auth'
 
 export type AuthStore = ReturnType<typeof useAuthStore>
 
 /** First screen after auth for the current role. Must not use `requiresEdit`. */
-export function defaultAppRoute(auth: AuthStore): RouteLocationRaw {
+export function defaultAppRoute(auth: AuthStore): RouteLocationAsRelativeGeneric {
   return auth.canEdit() ? { name: 'calendar' } : { name: 'employees' }
 }
 

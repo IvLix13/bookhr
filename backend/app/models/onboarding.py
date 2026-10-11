@@ -21,6 +21,9 @@ class OnboardingPlan(db.Model, TimestampMixin):
     __tablename__ = "onboarding_plans"
     id = db.Column(db.Integer, primary_key=True)
     employment_id = db.Column(db.Integer, db.ForeignKey("employments.id"), nullable=False, unique=True)
+    curator_name = db.Column(db.String(256), nullable=True)
+    version = db.Column(db.Integer, nullable=False, default=1, server_default="1")
+    __mapper_args__ = {"version_id_col": version}
     employment = db.relationship("Employment")
     cells = db.relationship("OnboardingCell", back_populates="plan")
 
@@ -34,6 +37,7 @@ class OnboardingCell(db.Model, TimestampMixin):
     date_value = db.Column(db.Date)
     planned_date = db.Column(db.Date)
     is_completed = db.Column(db.Boolean, nullable=False, default=False)
+    is_in_progress = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     is_not_required = db.Column(db.Boolean, nullable=False, default=False, server_default=db.false())
     completed_date = db.Column(db.Date)
     version = db.Column(db.Integer, nullable=False, default=1)
@@ -43,4 +47,5 @@ class OnboardingCell(db.Model, TimestampMixin):
         db.UniqueConstraint("plan_id", "column_id", name="uq_onboarding_cell"),
         db.CheckConstraint("is_completed OR completed_date IS NULL", name="ck_onboarding_completion"),
         db.CheckConstraint("NOT (is_completed AND is_not_required)", name="ck_onboarding_not_required"),
+        db.CheckConstraint("NOT (is_in_progress AND (is_completed OR is_not_required))", name="ck_onboarding_in_progress"),
     )

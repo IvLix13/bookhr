@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue'
+import OnboardingDeleteDialog from './OnboardingDeleteDialog.vue'
 import { api } from '@/api/client'
 import { ApiError, normalizeError } from '@/api/errors'
 import type { OnboardingColumn, OnboardingFieldType } from '@/types/onboarding'
@@ -10,10 +11,12 @@ const draft = reactive({ id: 0, version: 0, title: '', field_type: 'stage' as On
 const busy = ref(false)
 const error = ref('')
 const stale = ref(false)
+const deleteTarget = ref<OnboardingColumn | null>(null)
+const deleteBusy = computed(() => busy.value || !!deleteTarget.value)
 const archiveTarget = ref<OnboardingColumn | null>(null)
 const initialDraft = ref(JSON.stringify({ title: '', field_type: 'stage' }))
 const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: draft.field_type }) !== initialDraft.value)
-watch([dirty, busy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
+watch([dirty, deleteBusy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
 function edit(column?: OnboardingColumn) {
   Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage' })
   initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type })
@@ -58,7 +61,7 @@ function archive(column: OnboardingColumn) {
 <template>
   <section class="card columns-panel" aria-label="Настройка этапов">
     <h3>Структура таблицы</h3>
-    <p>Каждый сотрудник — отдельный столбец. Номер, грейд и ФИО — системные данные. Этапы и поля отображаются строками и общие для всей компании. Архивирование сохраняет значения.</p>
+    <p>Сотрудники отображаются карточками. Грейд и ФИО — системные данные. Этапы и поля общие для всей компании. Архивирование сохраняет значения.</p>
     <form class="column-form" @submit.prevent="save">
       <label>Название<input v-model="draft.title" required maxlength="256" :disabled="busy" /></label>
       <label>Тип<select v-model="draft.field_type" :disabled="busy"><option value="text">Текст</option><option value="date">Дата</option><option value="stage">Этап с датами</option><option value="checkbox">Этап без даты</option></select></label>
@@ -75,6 +78,7 @@ function archive(column: OnboardingColumn) {
           <button class="btn secondary" :disabled="busy || index === 0" :aria-label="`Переместить ${column.title} вверх`" @click="move(index, -1)">↑</button>
           <button class="btn secondary" :disabled="busy || index === columns.length - 1" :aria-label="`Переместить ${column.title} вниз`" @click="move(index, 1)">↓</button>
           <button class="btn secondary" :disabled="busy" @click="edit(column)">Изменить</button>
+          <button class="btn danger" :disabled="busy" @click="deleteTarget = column">Удалить</button>
           <button class="btn secondary" :disabled="busy" @click="column.is_archived ? archive(column) : archiveTarget = column">{{ column.is_archived ? 'Восстановить' : 'В архив' }}</button>
         </div>
       </li>
@@ -84,6 +88,7 @@ function archive(column: OnboardingColumn) {
       <button class="btn" :disabled="busy" @click="archive(archiveTarget)">Архивировать</button>
       <button class="btn secondary" :disabled="busy" @click="archiveTarget = null">Отмена</button>
     </div>
+    <OnboardingDeleteDialog v-if="deleteTarget" kind="columns" :id="deleteTarget.id" :title="`Удалить поле «${deleteTarget.title}»`" @close="deleteTarget = null" @conflict="emit('changed')" @deleted="if (draft.id === deleteTarget.id) edit(); deleteTarget = null; emit('changed')" />
   </section>
 </template>
 
@@ -95,4 +100,5 @@ li { justify-content: space-between; padding: .6rem 0; border-bottom: 1px solid 
 ol { padding-left: 0; list-style: none; }
 .error { color: var(--danger); }
 .archive-confirm { padding: .8rem; border: 1px solid var(--border); }
+.btn.danger { background: var(--danger); color: #fff; border-color: var(--danger); }
 </style>

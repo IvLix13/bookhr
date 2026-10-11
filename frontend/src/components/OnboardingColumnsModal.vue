@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import OnboardingColumns from '@/components/OnboardingColumns.vue'
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import type { OnboardingColumn } from '@/types/onboarding'
 
@@ -13,13 +14,8 @@ const closeButton = ref<HTMLButtonElement | null>(null)
 const confirming = ref(false)
 const busy = computed(() => !!props.refreshing || editorState.value.busy)
 const focus = useFocusTrap(modal, () => true)
-let previousOverflow = ''
-onMounted(() => {
-  previousOverflow = document.body.style.overflow
-  document.body.style.overflow = 'hidden'
-  focus.activate()
-})
-onUnmounted(() => { document.body.style.overflow = previousOverflow })
+useBodyScrollLock()
+onMounted(focus.activate)
 async function requestClose() {
   if (busy.value) return
   if (editorState.value.dirty) {

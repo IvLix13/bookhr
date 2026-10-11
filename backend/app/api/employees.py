@@ -10,6 +10,7 @@ from flask_login import login_required
 
 from app.api.helpers import (
     api_response,
+    get_json,
     apply_employment_name_search,
     apply_sort,
     join_active_contract,
@@ -27,6 +28,9 @@ from app.api.helpers import (
     require_roles,
     sort_sequence_with_nulls_last,
 )
+from app.api.onboarding import transaction
+from app.services.onboarding import EmployeeDeleteSchema
+
 from app.api.schemas import (
     CreateEmployeeSchema,
     DismissEmployeeSchema,
@@ -292,13 +296,14 @@ def register_routes(bp):
 
     @bp.delete("/employees/<int:employment_id>")
     @require_roles(RoleName.ADMIN, RoleName.HR)
+    @transaction
     def delete_employee(employment_id: int):
         employment = db.session.get(Employment, employment_id)
         if not employment or employment.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
-
-        delete_employment(employment)
-        db.session.commit()
+        payload = get_json()
+        expected = EmployeeDeleteSchema().load(payload) if payload else None
+        delete_employment(employment, onboarding_delete=expected)
         return api_response(message="Deleted")
 
     @bp.post("/employees/<int:employment_id>/dismiss")
