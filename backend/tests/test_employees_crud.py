@@ -246,6 +246,45 @@ def test_delete_employee_removes_events(hr_client, seed_company):
         assert Event.query.filter_by(employment_id=employment_id).count() == 0
 
 
+def test_delete_employee_with_onboarding_removes_dependents(hr_client, seed_company):
+    from app.models import Person
+    from app.models.onboarding import OnboardingPlan, OnboardingCell
+
+    with hr_client.application.app_context():
+        _seed_grades()
+    response = hr_client.post('/api/employees', json={
+        'company_id': seed_company.id, 'full_name': 'Удалить с планом',
+        'hire_date': '2021-01-01', 'education_status': 'no',
+        'title': 'Инженер', 'contract_term_years': 1,
+        'contract_end': '2026-12-01', 'passport_until': '2029-01-01',
+    })
+    assert response.status_code == 201
+    employment_id = response.get_json()['data']['id']
+    plan_response = hr_client.post('/api/onboarding/plans', json={'employment_id': employment_id})
+    plan_id = plan_response.get_json()['data']['id']
+    column_response = hr_client.post('/api/onboarding/columns', json={'title': 'NDA', 'field_type': 'checkbox'})
+    column = column_response.get_json()['data']
+    hr_client.patch(f'/api/onboarding/plans/{plan_id}/cells/{column["id"]}', json={
+        'version': 0, 'column_version': column['version'], 'is_completed': True,
+    })
+    with hr_client.application.app_context():
+        person_id = db.session.get(Employment, employment_id).person_id
+        assert Event.query.filter_by(employment_id=employment_id).count() > 0
+        assert Contract.query.filter_by(employment_id=employment_id).count() > 0
+    preview = hr_client.get(f'/api/onboarding/plans/{plan_id}/delete-preview').get_json()['data']
+    deleted = hr_client.delete(f'/api/employees/{employment_id}', json={
+        'delete_onboarding_plan': True, 'version': preview['version'], 'snapshot': preview['snapshot'],
+    })
+    assert deleted.status_code == 200, deleted.get_json()
+    with hr_client.application.app_context():
+        assert db.session.get(Employment, employment_id) is None
+        assert db.session.get(Person, person_id) is None
+        assert db.session.get(OnboardingPlan, plan_id) is None
+        assert OnboardingCell.query.filter_by(plan_id=plan_id).count() == 0
+        assert Event.query.filter_by(employment_id=employment_id).count() == 0
+        assert Contract.query.filter_by(employment_id=employment_id).count() == 0
+
+
 def test_viewer_cannot_mutate_employees(viewer_client, seed_company):
     with viewer_client.application.app_context():
         person, employment = create_person_with_employment(

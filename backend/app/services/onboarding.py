@@ -1,6 +1,8 @@
 """Validation, serialization and transactional editing for onboarding."""
 
 from datetime import date
+import hashlib
+import json
 
 from marshmallow import Schema, fields, validate
 from sqlalchemy import select
@@ -245,3 +247,64 @@ def save_plan(plan, payload):
     db.session.flush()
     log_audit("update", "onboarding_plan", plan.id, old,
               {"curator_name": plan.curator_name, "version": plan.version})
+
+
+class DeleteSchema(Schema):
+    version = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
+    snapshot = fields.String(required=True, validate=validate.Regexp(r"^[0-9a-f]{64}$"))
+
+
+class EmployeeDeleteSchema(DeleteSchema):
+    delete_onboarding_plan = fields.Boolean(required=True, truthy={True}, falsy={False}, validate=validate.Equal(True))
+
+
+def newest_plans(query):
+    return query.order_by(Employment.hire_date.desc(), OnboardingPlan.id.desc())
+
+
+def _snapshot(value):
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+
+
+def plan_delete_preview(plan):
+    value = plan_dict(plan)
+    return {"version": plan.version, "snapshot": _snapshot(value),
+            "cell_count": len(plan.cells), "full_name": value["full_name"],
+            "hire_date": value["hire_date"]}
+
+
+def column_delete_preview(column):
+    cells = OnboardingCell.query.filter_by(column_id=column.id).order_by(OnboardingCell.id).all()
+    value = {"column": column_dict(column), "cells": [
+        {"id": c.id, "plan_id": c.plan_id, **cell_dict(c)} for c in cells]}
+    return {"version": column.version, "snapshot": _snapshot(value), "cell_count": len(cells), "title": column.title}
+
+
+def check_delete_preview(payload, preview):
+    check_version(payload["version"], preview["version"])
+    if payload["snapshot"] != preview["snapshot"]:
+        raise Conflict("Данные изменились после подтверждения. Проверьте их и подтвердите удаление заново.")
+
+
+def delete_plan(plan, payload):
+    check_delete_preview(payload, plan_delete_preview(plan))
+    old = plan_dict(plan)
+    log_audit("delete", "onboarding_plan", plan.id, old, None)
+    for cell in list(plan.cells):
+        db.session.delete(cell)
+    db.session.flush()
+    db.session.delete(plan)
+    db.session.flush()
+
+
+def delete_column(column, payload):
+    check_delete_preview(payload, column_delete_preview(column))
+    cells = OnboardingCell.query.filter_by(column_id=column.id).all()
+    old = {"column": column_dict(column), "cells": [
+        {"id": c.id, "plan_id": c.plan_id, **cell_dict(c)} for c in cells]}
+    log_audit("delete", "onboarding_column", column.id, old, None)
+    for cell in cells:
+        db.session.delete(cell)
+    db.session.flush()
+    db.session.delete(column)
+    db.session.flush()

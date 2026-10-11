@@ -1,46 +1,17 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { api } from '@/api/client'
-import { ApiError, normalizeError } from '@/api/errors'
+import { computed } from 'vue'
 import { formatShortDate } from '@/utils/dates'
-import { cellLabel, planSummary, stageLabels, stageState } from '@/utils/onboarding'
+import { planSummary } from '@/utils/onboarding'
 import type { OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 
-const props = defineProps<{ plan: OnboardingPlan; columns: OnboardingColumn[]; today: string; expanded: boolean; editable: boolean; canManage: boolean }>()
-const emit = defineEmits<{ toggle: []; edit: [column: OnboardingColumn]; changed: [] }>()
+const props = defineProps<{ plan: OnboardingPlan; columns: OnboardingColumn[]; today: string;  }>()
+const emit = defineEmits<{ open: [] }>()
 const summary = computed(() => planSummary(props.plan, props.columns, props.today))
 const segments = computed(() => [
   { key: 'done', value: summary.value.counts.completed },
   { key: 'working', value: summary.value.counts.in_progress },
   { key: 'late', value: summary.value.counts.overdue },
 ])
-const curatorEditing = ref(false)
-const curator = ref('')
-const curatorVersion = ref(0)
-const curatorSaving = ref(false)
-const curatorError = ref('')
-const curatorConflict = ref(false)
-function editCurator() {
-  curator.value = props.plan.curator_name ?? ''
-  curatorVersion.value = props.plan.version
-  curatorError.value = ''
-  curatorConflict.value = false
-  curatorEditing.value = true
-}
-async function saveCurator() {
-  if (curatorSaving.value || curatorConflict.value) return
-  curatorSaving.value = true
-  curatorError.value = ''
-  try {
-    await api.updateOnboardingPlan(props.plan.id, { version: curatorVersion.value, curator_name: curator.value.trim() || null })
-    curatorEditing.value = false
-    emit('changed')
-  } catch (err) {
-    curatorError.value = normalizeError(err)
-    if (err instanceof ApiError && err.status === 409) { curatorConflict.value = true; emit('changed') }
-  } finally { curatorSaving.value = false }
-}
-function isStage(column: OnboardingColumn) { return column.field_type === 'stage' || column.field_type === 'checkbox' }
 </script>
 
 <template>
@@ -74,38 +45,11 @@ function isStage(column: OnboardingColumn) { return column.field_type === 'stage
         </div>
         <div class="summary-footer">
           <p class="curator"><span>Куратор:</span> {{ plan.curator_name || 'Не назначен' }}</p>
-          <button type="button" class="btn secondary expand-button" :aria-expanded="expanded" :aria-controls="`plan-details-${plan.id}`" @click="emit('toggle')">{{ expanded ? 'Свернуть план' : 'Открыть план' }} <span aria-hidden="true">{{ expanded ? '⌃' : '⌄' }}</span></button>
+          <button type="button" class="btn secondary expand-button" aria-haspopup="dialog" @click="emit('open')">Открыть план</button>
         </div>
       </div>
     </div>
-    <section v-if="expanded" :id="`plan-details-${plan.id}`" class="plan-details" :aria-label="`Этапы: ${plan.full_name}`">
-      <div class="details-header">
-        <h4>Этапы и данные плана</h4>
-        <button v-if="canManage && !curatorEditing" class="btn secondary" @click="editCurator">Изменить куратора</button>
-      </div>
-      <form v-if="curatorEditing && canManage" class="curator-form" @submit.prevent="saveCurator">
-        <label :for="`curator-${plan.id}`">ФИО куратора</label>
-        <input :id="`curator-${plan.id}`" v-model="curator" maxlength="256" :disabled="curatorSaving || curatorConflict" />
-        <div class="form-actions"><button class="btn" :disabled="curatorSaving || curatorConflict">{{ curatorSaving ? 'Сохранение…' : 'Сохранить куратора' }}</button><button type="button" class="btn secondary" :disabled="curatorSaving" @click="curatorEditing = false">Отмена</button></div>
-        <p v-if="curatorError" role="alert" class="error">{{ curatorError }}</p>
-        <p v-if="curatorConflict">Ваш ввод сохранён. Закройте форму и откройте её снова для редактирования актуальной версии.</p>
-      </form>
-      <p v-if="!columns.length" class="muted">Этапы пока не настроены.</p>
-      <div v-else class="details-scroll">
-        <table>
-          <thead><tr><th scope="col">Этап / поле</th><th scope="col">Состояние / значение</th><th scope="col">Плановый срок</th><th scope="col">Выполнено</th></tr></thead>
-          <tbody><tr v-for="column in columns" :key="column.id">
-            <th scope="row">{{ column.title }}</th>
-            <td :class="isStage(column) ? stageState(column, plan.cells[column.id], today).replace('_', '-') : ''">
-              <button v-if="editable" type="button" class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="emit('edit', column)">{{ isStage(column) ? stageLabels[stageState(column, plan.cells[column.id], today)] : cellLabel(plan, column) }}</button>
-              <span v-else>{{ isStage(column) ? stageLabels[stageState(column, plan.cells[column.id], today)] : cellLabel(plan, column) }}</span>
-            </td>
-            <td>{{ column.field_type === 'stage' && !plan.cells[column.id]?.is_not_required ? formatShortDate(plan.cells[column.id]?.planned_date) : '—' }}</td>
-            <td>{{ column.field_type === 'stage' && plan.cells[column.id]?.is_completed ? formatShortDate(plan.cells[column.id]?.completed_date) : '—' }}</td>
-          </tr></tbody>
-        </table>
-      </div>
-    </section>
+
   </article>
 </template>
 
@@ -127,13 +71,6 @@ p { line-height: 1.5; } .facts p { margin: .2rem 0; font-size: .9rem; } .facts p
 .status-counts > span { white-space: nowrap; } .count-done, .all-done { color: #16803c; } .count-working { color: #886200; } .count-late { color: #b73535; } .count-pending, .muted { color: var(--muted); }
 .summary-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; margin-top: .8rem; }
 .curator { margin: 0; font-size: .9rem; flex: 1; overflow-wrap: anywhere; } .expand-button { font-size: .85rem; padding: .5rem .8rem; }
-.plan-details { border-top: 1px solid var(--border); padding: 1rem 1.5rem 1.4rem; background: var(--bg); }
-.details-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .7rem; margin-bottom: .8rem; } h4 { margin: 0; }
-.details-scroll { overflow-x: auto; } table { width: 100%; border-collapse: collapse; font-size: .9rem; } th, td { padding: .7rem .6rem; border-bottom: 1px solid var(--border); text-align: left; overflow-wrap: anywhere; min-width: 110px; }
-thead th { color: var(--muted); font-weight: 500; } tbody th { width: 30%; font-weight: 500; min-width: 150px; }
-.cell-button { background: transparent; border: 0; color: inherit; font: inherit; cursor: pointer; text-align: left; width: 100%; min-height: 32px; padding: 0; white-space: pre-wrap; } .cell-button:hover { text-decoration: underline; }
-.completed { color: #16803c; background: #e2f5e9; } .overdue { color: #b73535; background: #fdecec; } .in-progress { color: #886200; background: #fff4df; } .not-required { color: var(--muted); }
-.curator-form { display: grid; gap: .6rem; max-width: 600px; margin: 0 0 1rem; } .curator-form input { padding: .65rem; border: 1px solid var(--border); border-radius: 8px; width: 100%; } .curator-form p { margin: 0; } .form-actions { display: flex; flex-wrap: wrap; gap: .6rem; } .error { color: var(--danger); }
 @media (max-width: 1000px) { .card-summary { gap: 1.25rem; grid-template-columns: minmax(170px, 28%) minmax(0, 1fr); } .overview-grid { grid-template-columns: 1fr; gap: .6rem; } .status-counts { justify-content: flex-start; } }
-@media (max-width: 640px) { .card-summary { grid-template-columns: 1fr; padding: 1rem; gap: 1rem; } .plan-details { padding: .8rem 1rem; } .summary-footer { align-items: flex-start; } .curator { flex-basis: 100%; } }
+@media (max-width: 640px) { .card-summary { grid-template-columns: 1fr; padding: 1rem; gap: 1rem; } .summary-footer { align-items: flex-start; } .curator { flex-basis: 100%; } }
 </style>

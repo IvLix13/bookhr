@@ -1,5 +1,5 @@
 import { ApiError } from '@/api/errors'
-import type { OnboardingColumn, OnboardingCell, OnboardingPlan, OnboardingFieldType } from '@/types/onboarding'
+import type { OnboardingColumn, OnboardingCell, OnboardingPlan, OnboardingFieldType, OnboardingDeletePreview } from '@/types/onboarding'
 import { localizeApiMessage } from '@/utils/labels'
 import type {
   ApiResponse,
@@ -132,6 +132,13 @@ export const api = {
     }
     triggerDownload(await response.blob(), 'onboarding_plan.xlsx')
   },
+  onboardingPlan: (id: number) => request<OnboardingPlan>(`/api/onboarding/plans/${id}`),
+  onboardingDeletePreview: (kind: 'plans' | 'columns', id: number) =>
+    request<OnboardingDeletePreview>(`/api/onboarding/${kind}/${id}/delete-preview`),
+  deleteOnboarding: (kind: 'plans' | 'columns', id: number, preview: OnboardingDeletePreview) =>
+    request(`/api/onboarding/${kind}/${id}`, { method: 'DELETE', body: JSON.stringify({ version: preview.version, snapshot: preview.snapshot }) }),
+  deleteEmployeeWithPlan: (id: number, preview: OnboardingDeletePreview) =>
+    request(`/api/employees/${id}`, { method: 'DELETE', body: JSON.stringify({ delete_onboarding_plan: true, version: preview.version, snapshot: preview.snapshot }) }),
   createOnboardingPlan: (employment_id: number) =>
     request<OnboardingPlan>('/api/onboarding/plans', { method: 'POST', body: JSON.stringify({ employment_id }) }),
   updateOnboardingPlan: (planId: number, body: { version: number; curator_name: string | null }) =>

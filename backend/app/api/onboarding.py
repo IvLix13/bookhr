@@ -15,6 +15,7 @@ from app.models import Employment, RoleName
 from app.models.onboarding import OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
 from app.services.onboarding import (
+    DeleteSchema, delete_plan, delete_column, plan_delete_preview, column_delete_preview, newest_plans,
     CellSchema, ColumnSchema, ColumnUpdateSchema, OrderSchema, PlanSchema, PlanUpdateSchema,
     cell_dict, check_version, column_dict, current_plan_name, find_column, find_plan,
     lock_company, names_match, onboarding_plan_query, plan_dict, save_cell, save_column, save_plan,
@@ -99,7 +100,7 @@ def register_routes(bp):
         query = onboarding_plan_query(get_request_company_id())
         query = apply_employment_name_search(query, parse_search_q())
         total = query.count()
-        plans = query.order_by(OnboardingPlan.id).offset((page - 1) * per_page).limit(per_page).all()
+        plans = newest_plans(query).offset((page - 1) * per_page).limit(per_page).all()
         return api_response({"items": [plan_dict(p) for p in plans], "page": page,
                              "per_page": per_page, "total": total, "pages": ceil(total / per_page)})
 
@@ -152,3 +153,28 @@ def register_routes(bp):
             raise Forbidden("Можно изменять только этапы сотрудника с совпадающим ФИО")
         cell = save_cell(plan, find_column(column_id, company_id), CellSchema().load(get_json()))
         return api_response(cell_dict(cell))
+
+
+    @bp.get("/onboarding/plans/<int:plan_id>/delete-preview")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def onboarding_plan_delete_preview(plan_id):
+        return api_response(plan_delete_preview(find_plan(plan_id, get_request_company_id())))
+
+    @bp.delete("/onboarding/plans/<int:plan_id>")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @transaction
+    def onboarding_delete_plan(plan_id):
+        delete_plan(find_plan(plan_id, get_request_company_id()), DeleteSchema().load(get_json()))
+        return api_response(message="План удалён")
+
+    @bp.get("/onboarding/columns/<int:column_id>/delete-preview")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def onboarding_column_delete_preview(column_id):
+        return api_response(column_delete_preview(find_column(column_id, get_request_company_id())))
+
+    @bp.delete("/onboarding/columns/<int:column_id>")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @transaction
+    def onboarding_delete_column(column_id):
+        delete_column(find_column(column_id, get_request_company_id()), DeleteSchema().load(get_json()))
+        return api_response(message="Поле удалено")

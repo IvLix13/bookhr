@@ -1,11 +1,14 @@
-import { DOMWrapper, flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DOMWrapper, enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import OnboardingView from '@/views/OnboardingView.vue'
 import OnboardingCellEditor from '@/components/OnboardingCellEditor.vue'
 import OnboardingColumns from '@/components/OnboardingColumns.vue'
 import OnboardingColumnsModal from '@/components/OnboardingColumnsModal.vue'
+import OnboardingPlanModal from '@/components/OnboardingPlanModal.vue'
 import { ApiError } from '@/api/errors'
 import type { OnboardingColumn } from '@/types/onboarding'
+
+enableAutoUnmount(afterEach)
 
 const mock = vi.hoisted(() => ({
   editable: true,
@@ -13,7 +16,7 @@ const mock = vi.hoisted(() => ({
   fullName: 'HR User',
   columns: vi.fn(), plans: vi.fn(), employees: vi.fn(), createPlan: vi.fn(),
   saveCell: vi.fn(), createColumn: vi.fn(), updateColumn: vi.fn(), orderColumns: vi.fn(),
-  downloadOnboarding: vi.fn(), updatePlan: vi.fn(),
+  downloadOnboarding: vi.fn(), updatePlan: vi.fn(), plan: vi.fn(), preview: vi.fn(), remove: vi.fn(), removeEmployee: vi.fn(),
 }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({
   canEdit: () => mock.editable,
@@ -25,6 +28,7 @@ vi.mock('@/api/client', () => ({ api: {
   createOnboardingColumn: mock.createColumn, updateOnboardingColumn: mock.updateColumn,
   orderOnboardingColumns: mock.orderColumns,
   downloadOnboarding: mock.downloadOnboarding, updateOnboardingPlan: mock.updatePlan,
+  onboardingPlan: mock.plan, onboardingDeletePreview: mock.preview, deleteOnboarding: mock.remove, deleteEmployeeWithPlan: mock.removeEmployee,
 } }))
 const column: OnboardingColumn = { id: 1, title: 'NDA', field_type: 'stage', sort_order: 0, is_archived: false, version: 1 }
 const cell = { version: 2, text_value: null, date_value: null, planned_date: '2026-10-01', is_completed: false, is_in_progress: false, is_not_required: false, completed_date: null }
@@ -36,6 +40,13 @@ beforeEach(() => {
   mock.fullName = 'HR User'
   mock.columns.mockResolvedValue([{ ...column }])
   mock.plans.mockResolvedValue({ items: [{ id: 1, employment_id: 2, full_name: 'Иванов', grade: 'Junior', employment_status: 'active', hire_date: '2020-01-01', curator_name: null, version: 1, cells: { '1': { ...cell } } }], page: 1, per_page: 25, total: 1, pages: 1 })
+  mock.plan.mockImplementation(async (id) => {
+    const result = await mock.plans.mock.results.at(-1)?.value
+    return result.items.find((plan: { id: number }) => plan.id === id) ?? result.items[0]
+  })
+  mock.preview.mockResolvedValue({ version: 1, snapshot: 'a'.repeat(64), cell_count: 1 })
+  mock.remove.mockResolvedValue(undefined)
+  mock.removeEmployee.mockResolvedValue(undefined)
   mock.employees.mockResolvedValue({ items: [{ id: 2, full_name: 'Петров', hire_date: '2020-01-01', status: 'active' }], page: 1, pages: 1, total: 1 })
   mock.createPlan.mockResolvedValue({ id: 2 })
   mock.saveCell.mockResolvedValue({ ...cell, version: 3 })
@@ -46,6 +57,26 @@ beforeEach(() => {
 })
 
 describe('Onboarding cards', () => {
+  it('returns to the last valid page after deleting its final plan and preserves search', async () => {
+    const first = { id: 1, full_name: 'Иванов', cells: {} }
+    const second = { id: 2, full_name: 'Иванов Второй', cells: {} }
+    mock.plans.mockResolvedValueOnce({ items: [first], total: 26, pages: 2 })
+      .mockResolvedValueOnce({ items: [second], total: 26, pages: 2 })
+      .mockResolvedValueOnce({ items: [], total: 25, pages: 1 })
+      .mockResolvedValueOnce({ items: [first], total: 25, pages: 1 })
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
+    await flushPromises()
+    await wrapper.get('input[aria-label="Поиск планов по ФИО"]').setValue('Иванов')
+    await wrapper.findAll('button').find(b => b.text() === 'Далее')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('.expand-button').trigger('click')
+    await flushPromises()
+    wrapper.getComponent(OnboardingPlanModal).vm.$emit('deleted')
+    await flushPromises()
+    expect(mock.plans).toHaveBeenLastCalledWith({ page: 1, per_page: 25, q: 'Иванов' })
+    expect(wrapper.findComponent(OnboardingPlanModal).exists()).toBe(false)
+    expect(wrapper.text()).toContain('Всего: 25')
+  })
   it('renders employee cards and expands the selected plan to edit its stages', async () => {
     mock.columns.mockResolvedValueOnce([column, { ...column, id: 2, title: 'Пропуск', field_type: 'checkbox' }, { ...column, id: 3, title: 'Архив', is_archived: true }])
     mock.plans.mockResolvedValueOnce({ items: [
@@ -57,6 +88,7 @@ describe('Onboarding cards', () => {
     expect(wrapper.findAll('.plan-card h3').map(x => x.text())).toEqual(['Иванов', 'Петров'])
     expect(wrapper.find('table').exists()).toBe(false)
     await wrapper.findAll('.expand-button')[1]!.trigger('click')
+    await flushPromises()
     expect(wrapper.findAll('tbody th').map(x => x.text())).toEqual(['NDA', 'Пропуск'])
     expect(wrapper.text()).not.toContain('Архив')
     await wrapper.get('button[aria-label="Пропуск, Петров: ✓"]').trigger('click')
@@ -70,6 +102,7 @@ describe('Onboarding cards', () => {
     expect(wrapper.text()).toContain('Иванов')
     expect(wrapper.text()).toContain('Junior')
     await wrapper.get('.expand-button').trigger('click')
+    await flushPromises()
     expect(wrapper.findAll('tbody th').map(x => x.text())).toEqual(['NDA'])
     await wrapper.get('.cell-button').trigger('click')
     expect(wrapper.findComponent(OnboardingCellEditor).exists()).toBe(true)
@@ -88,7 +121,8 @@ describe('Onboarding cards', () => {
     expect(wrapper.text()).not.toContain('Настроить этапы')
     expect(wrapper.text()).not.toContain('Добавить сотрудника')
     expect(wrapper.text()).toContain('Скачать Excel')
-    for (const button of wrapper.findAll('.expand-button')) await button.trigger('click')
+    await wrapper.findAll('.expand-button')[0]!.trigger('click')
+    await flushPromises()
     expect(wrapper.text()).not.toContain('Изменить куратора')
     expect(wrapper.findAll('.cell-button').map(button => button.attributes('aria-label'))).toEqual(['NDA, Иванов: 1 октября 2026 г.'])
     expect(wrapper.text()).toContain('Петров')
@@ -97,7 +131,7 @@ describe('Onboarding cards', () => {
     wrapper.unmount()
   })
   it('downloads the full table and reports download errors', async () => {
-    const wrapper = mount(OnboardingView)
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
     const button = wrapper.findAll('button').find(item => item.text() === 'Скачать Excel')!
     await button.trigger('click')
@@ -113,7 +147,7 @@ describe('Onboarding cards', () => {
   it('prevents duplicate downloads while the export is running', async () => {
     let finish!: () => void
     mock.downloadOnboarding.mockReturnValueOnce(new Promise<void>((resolve) => { finish = resolve }))
-    const wrapper = mount(OnboardingView)
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
     const button = wrapper.findAll('button').find(item => item.text() === 'Скачать Excel')!
     await button.trigger('click')
@@ -126,7 +160,7 @@ describe('Onboarding cards', () => {
     wrapper.unmount()
   })
   it('searches on submit and creates a plan for a selected employee', async () => {
-    const wrapper = mount(OnboardingView)
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
     await wrapper.get('input[aria-label="Поиск планов по ФИО"]').setValue('Иванов')
     await wrapper.get('form').trigger('submit')
@@ -235,9 +269,10 @@ describe('New onboarding states and clearing', () => {
   })
   it('shows exemptions without completion or overdue styling', async () => {
     mock.plans.mockResolvedValueOnce({ items: [{ id: 1, full_name: 'Иванов', cells: { '1': { ...cell, planned_date: '2000-01-01', is_not_required: true } } }], total: 1, pages: 1 })
-    const wrapper = mount(OnboardingView)
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
     await wrapper.get('.expand-button').trigger('click')
+    await flushPromises()
     expect(wrapper.get('.not-required').text()).toBe('Не нужно')
     expect(wrapper.find('.overdue').exists()).toBe(false)
     expect(wrapper.find('.completed').exists()).toBe(false)
@@ -245,9 +280,10 @@ describe('New onboarding states and clearing', () => {
   })
   it('marks completed cells for green background styling', async () => {
     mock.plans.mockResolvedValueOnce({ items: [{ id: 1, full_name: 'Иванов', cells: { '1': { ...cell, is_completed: true, completed_date: '2026-09-22' } } }], total: 1, pages: 1 })
-    const wrapper = mount(OnboardingView)
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
     await wrapper.get('.expand-button').trigger('click')
+    await flushPromises()
     expect(wrapper.get('td.completed').text()).toContain('Выполнено')
     expect(wrapper.get('td.completed').classes()).not.toContain('not-required')
     wrapper.unmount()
@@ -324,24 +360,30 @@ describe('Columns modal', () => {
 })
 
 describe('Card interactions', () => {
-  it('saves the curator and keeps the plan expanded after refresh', async () => {
-    const wrapper = mount(OnboardingView)
+  it('saves the curator and keeps the plan modal open after refresh', async () => {
+    const root = mount(OnboardingView, { attachTo: document.body })
+    const dom = new DOMWrapper(document.body)
+    const wrapper = { get: dom.get.bind(dom), find: dom.find.bind(dom), findAll: dom.findAll.bind(dom), unmount: root.unmount.bind(root) }
     await flushPromises()
     await wrapper.get('.expand-button').trigger('click')
+    await flushPromises()
     await wrapper.findAll('button').find(b => b.text() === 'Изменить куратора')!.trigger('click')
     await wrapper.get('.curator-form input').setValue('  Петров Пётр  ')
     await wrapper.get('.curator-form').trigger('submit')
     await flushPromises()
     expect(mock.updatePlan).toHaveBeenCalledWith(1, { version: 1, curator_name: 'Петров Пётр' })
-    expect(wrapper.get('.expand-button').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
     expect(wrapper.find('.curator-form').exists()).toBe(false)
     wrapper.unmount()
   })
   it('keeps curator input on conflict and blocks stale retry', async () => {
     mock.updatePlan.mockRejectedValueOnce(new ApiError('Конфликт', 409))
-    const wrapper = mount(OnboardingView)
+    const root = mount(OnboardingView, { attachTo: document.body })
+    const dom = new DOMWrapper(document.body)
+    const wrapper = { get: dom.get.bind(dom), find: dom.find.bind(dom), findAll: dom.findAll.bind(dom), unmount: root.unmount.bind(root) }
     await flushPromises()
     await wrapper.get('.expand-button').trigger('click')
+    await flushPromises()
     await wrapper.findAll('button').find(b => b.text() === 'Изменить куратора')!.trigger('click')
     await wrapper.get('.curator-form input').setValue('Мой ввод')
     await wrapper.get('.curator-form').trigger('submit')

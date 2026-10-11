@@ -28,3 +28,12 @@ export interface OnboardingPlan {
   version: number
   cells: Record<string, OnboardingCell>
 }
+
+export interface OnboardingDeletePreview {
+  version: number
+  snapshot: string
+  cell_count: number
+  title?: string
+  full_name?: string | null
+  hire_date?: string
+}

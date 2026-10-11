@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { ApiError, normalizeError } from '@/api/errors'
+import { useBodyScrollLock } from '@/composables/useBodyScrollLock'
 import { useFocusTrap } from '@/composables/useFocusTrap'
 import type { OnboardingCell, OnboardingColumn } from '@/types/onboarding'
 
@@ -9,6 +10,7 @@ const props = defineProps<{ planId: number; employeeName: string; column: Onboar
 const emit = defineEmits<{ close: []; saved: []; conflict: [] }>()
 const modal = ref<HTMLElement | null>(null)
 const focus = useFocusTrap(modal, () => true)
+useBodyScrollLock()
 onMounted(focus.activate)
 const text = ref(props.cell?.text_value ?? '')
 const date = ref(props.cell?.date_value ?? '')
@@ -20,6 +22,19 @@ const completedDate = ref(props.cell?.completed_date ?? '')
 const saving = ref(false)
 const error = ref('')
 const conflict = ref(false)
+const discard = ref(false)
+const keepEditing = ref<HTMLButtonElement | null>(null)
+const draftValue = computed(() => JSON.stringify([text.value, date.value, planned.value, state.value, completedDate.value, clear.value]))
+const initialDraft = draftValue.value
+async function requestClose() {
+  if (saving.value) return
+  if (draftValue.value !== initialDraft) {
+    discard.value = true
+    await nextTick()
+    keepEditing.value?.focus()
+  }
+  else emit('close')
+}
 
 function changeState() {
   if (props.column.field_type === 'stage' && state.value === 'completed' && !completedDate.value) {
@@ -60,10 +75,11 @@ async function save() {
 
 <template>
   <Teleport to="body">
-    <div class="onboarding-overlay" @keydown.esc="!saving && emit('close')">
+    <div class="onboarding-overlay" @keydown.esc.stop.prevent="discard ? discard = false : requestClose()">
       <section ref="modal" class="card onboarding-editor" role="dialog" aria-modal="true" aria-labelledby="cell-title" tabindex="-1">
         <h3 id="cell-title">{{ column.title }} — {{ employeeName }}</h3>
-        <form @submit.prevent="save">
+        <div v-if="discard" role="alert"><p>Есть несохранённые изменения. Закрыть редактор?</p><button ref="keepEditing" class="btn" @click="discard = false">Продолжить редактирование</button><button class="btn secondary" @click="emit('close')">Закрыть без сохранения</button></div>
+        <form v-show="!discard" @submit.prevent="save">
           <fieldset :disabled="saving || clear || conflict">
           <label v-if="column.field_type === 'text'">Значение<input v-model="text" maxlength="10000" /></label>
           <label v-if="column.field_type === 'date'">Дата<input v-model="date" type="date" /></label>
@@ -79,7 +95,7 @@ async function save() {
           <p v-if="conflict">Ваш ввод сохранён в этой форме. Скопируйте его при необходимости и откройте ячейку заново: таблица обновляется.</p>
           <div class="actions">
             <button class="btn" :disabled="saving || conflict">{{ saving ? 'Сохранение…' : 'Сохранить' }}</button>
-            <button type="button" class="btn secondary" :disabled="saving" @click="emit('close')">Отмена</button>
+            <button type="button" class="btn secondary" :disabled="saving" @click="requestClose">Отмена</button>
           </div>
         </form>
       </section>
@@ -88,7 +104,7 @@ async function save() {
 </template>
 
 <style scoped>
-.onboarding-overlay { position: fixed; inset: 0; z-index: 1100; background: #0f172a80; display: grid; place-items: center; padding: 1rem; }
+.onboarding-overlay { position: fixed; inset: 0; z-index: 1200; background: #0f172a80; display: grid; place-items: center; padding: 1rem; }
 .onboarding-editor { width: min(520px, 100%); padding: 1.25rem; max-height: 90vh; overflow: auto; }
 label { display: grid; gap: .4rem; margin: 1rem 0; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
