@@ -55,6 +55,7 @@ def test_create_employee_creates_rule_events(hr_client, seed_company):
         ).all()
         types = {event.event_type for event in events}
         assert types == {
+            EventType.CONTRACT.value,
             EventType.REPORT.value,
             EventType.GRADE.value,
             EventType.PASSPORT.value,

@@ -38,6 +38,7 @@ RULE_VERSION = 1
 OPEN_EVENT_STATUSES = {EventStatus.PLANNED.value, EventStatus.OVERDUE.value}
 
 CONTRACT_RULE_PREFIX = "contract-renewal-report"
+CONTRACT_EXPIRY_RULE_PREFIX = "contract-expiry"
 GRADE_PREP_RULE_PREFIX = "grade-preparation"
 GRADE_PROMOTION_RULE_PREFIX = "grade-promotion"
 # Legacy prefix kept for backward compatibility with existing events.
@@ -48,6 +49,10 @@ TENURE_AWARD_RULE_PREFIX = "tenure-award"
 
 def contract_rule_key(contract: Contract) -> str:
     return f"{CONTRACT_RULE_PREFIX}:{contract.id}:{contract.end_date.isoformat()}"
+
+
+def contract_expiry_rule_key(contract: Contract) -> str:
+    return f"{CONTRACT_EXPIRY_RULE_PREFIX}:{contract.id}:{contract.end_date.isoformat()}"
 
 
 def grade_preparation_rule_key(grade_history_id: int, eligible_date: date) -> str:
@@ -288,6 +293,7 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
     contract = get_active_contract(employment)
     if contract:
         keys.add(contract_rule_key(contract))
+        keys.add(contract_expiry_rule_key(contract))
 
     current = get_current_grade(employment)
     if current:
@@ -348,7 +354,18 @@ def process_contract_rules(employment: Employment) -> int:
         reference_type="contract",
         reference_id=contract.id,
     )
-    return 1
+    _upsert_rule_event(
+        company_id=employment.company_id,
+        employment_id=employment.id,
+        rule_key=contract_expiry_rule_key(contract),
+        title=f"Договор до {format_long_date_ru(contract.end_date)}: {name}",
+        event_type=EventType.CONTRACT,
+        event_date=contract.end_date,
+        description="Окончание срока действия договора",
+        reference_type="contract",
+        reference_id=contract.id,
+    )
+    return 2
 
 
 def _release_cancelled_rule_key(rule_key: str, *, keep_event_id: int | None = None) -> None:

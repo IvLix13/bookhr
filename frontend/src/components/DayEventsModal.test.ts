@@ -63,6 +63,34 @@ describe('DayEventsModal', () => {
     document.body.innerHTML = ''
   })
 
+  it('shows contract expiry on a later page and opens its own event', async () => {
+    vi.mocked(api.events).mockResolvedValueOnce({ items: [], page: 1, pages: 2, per_page: 200, total: 201 })
+    vi.mocked(api.events).mockResolvedValueOnce({
+      items: [{
+        id: 201,
+        title: 'Договор до 24 июля 2026 г.: Иван Иванов',
+        event_type: 'contract',
+        event_date: '2026-07-24',
+        status: 'planned',
+        source: 'rule',
+        employee_name: 'Иван Иванов',
+      }],
+      page: 2,
+      pages: 2,
+      per_page: 200,
+      total: 201,
+    })
+    const wrapper = mount(DayEventsModal, {
+      props: { open: true, date: '2026-07-24' },
+      global: { stubs: { teleport: true, EventDetailModal: true } },
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('Договор до 24 июля 2026 г.: Иван Иванов')
+    await wrapper.get('.item-button').trigger('click')
+    expect(wrapper.getComponent({ name: 'EventDetailModal' }).props('eventId')).toBe(201)
+    wrapper.unmount()
+  })
+
   it('hides complete action for viewer', async () => {
     const auth = useAuthStore()
     auth.user = {

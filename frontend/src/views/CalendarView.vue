@@ -8,9 +8,9 @@ import MonthCalendar from '@/components/MonthCalendar.vue'
 import PageState from '@/components/PageState.vue'
 import { api } from '@/api/client'
 import { useAsyncResource } from '@/composables/useAsyncResource'
-import type { EventItem, Paginated } from '@/types'
+import type { EventItem } from '@/types'
+import { loadCalendarEvents } from '@/utils/calendar'
 import { formatLocalDate, monthRange } from '@/utils/dates'
-import { isShownOnCalendar } from '@/utils/statuses'
 
 const route = useRoute()
 const router = useRouter()
@@ -38,11 +38,11 @@ async function loadEvents() {
   const { from, to } = monthRange(month.value)
   await calendarResource.execute(async () => {
     const [monthData, upcomingData] = await Promise.all([
-      api.events({ from, to, per_page: 200 }) as Promise<Paginated<EventItem>>,
+      loadCalendarEvents(from, to),
       api.upcomingEvents(8) as Promise<EventItem[]>,
     ])
     return {
-      events: monthData.items.filter((event) => isShownOnCalendar(event.status)),
+      events: monthData,
       upcoming: upcomingData,
     }
   })
