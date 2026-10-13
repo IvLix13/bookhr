@@ -2,14 +2,14 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import EventDetailModal from '@/components/EventDetailModal.vue'
 import EventForm from '@/components/EventForm.vue'
-import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
 import { useFocusTrap } from '@/composables/useFocusTrap'
-import type { EventItem, Paginated } from '@/types'
+import type { EventItem } from '@/types'
+import { loadCalendarEvents } from '@/utils/calendar'
 import StatusBadge from '@/components/StatusBadge.vue'
 import { formatDisplayDate, humanizeDatesInText } from '@/utils/dates'
 import { labelEventType } from '@/utils/labels'
-import { getEventStatusMeta, isShownOnCalendar, resolveEventStatus } from '@/utils/statuses'
+import { getEventStatusMeta, resolveEventStatus } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
 
 const props = defineProps<{
@@ -39,12 +39,7 @@ async function loadDayEvents() {
   loading.value = true
   error.value = ''
   try {
-    const data = (await api.events({
-      from: props.date,
-      to: props.date,
-      per_page: 200,
-    })) as Paginated<EventItem>
-    events.value = data.items.filter((event) => isShownOnCalendar(event.status))
+    events.value = await loadCalendarEvents(props.date, props.date)
   } catch (err) {
     error.value = normalizeError(err)
     events.value = []

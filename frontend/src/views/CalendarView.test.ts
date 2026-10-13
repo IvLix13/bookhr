@@ -102,6 +102,28 @@ describe('CalendarView', () => {
     expect(wrapper.text()).not.toContain('Отменённое')
   })
 
+  it('shows contract expiry from a later page on the correct day', async () => {
+    const expiry = makeEvent({
+      id: 201,
+      title: 'Договор до…: Иван Иванов',
+      event_type: 'contract',
+      source: 'rule',
+      reference_type: 'contract',
+      reference_id: 15,
+    })
+    events.mockResolvedValueOnce({ items: [], page: 1, pages: 2 })
+    events.mockResolvedValueOnce({ items: [expiry], page: 2, pages: 2 })
+
+    const wrapper = await mountView()
+    expect(wrapper.getComponent(MonthCalendar).props('events')).toEqual([expiry])
+    expect(events).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, per_page: 200 }))
+    const day = wrapper.findAll('.day-button').find((button) => button.text().includes(expiry.title))!
+    expect(day.text()).toContain(String(new Date().getDate()))
+    await day.trigger('click')
+    expect(wrapper.getComponent({ name: 'DayEventsModal' }).props('date')).toBe(expiry.event_date)
+    wrapper.unmount()
+  })
+
   it('shows both attestation events and hides an explicitly cancelled one', async () => {
     events.mockResolvedValue({ items: [
       makeEvent({ id: 1, event_type: 'attestation', title: 'Проведение аттестации', source: 'rule' }),
