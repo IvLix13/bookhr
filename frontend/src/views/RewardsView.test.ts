@@ -21,14 +21,16 @@ const sampleReward: RewardRow = {
 
 const statisticsPayload = {
   items: [
-    { status: 'not_delivered', label: 'Не вручено', count: 2 },
-    { status: 'in_hr', label: 'В кадрах', count: 0 },
-    { status: 'delivered', label: 'Вручено', count: 1 },
-    { status: 'extra_1', label: 'Доп. статус 1', count: 0 },
-    { status: 'extra_2', label: 'Доп. статус 2', count: 0 },
-    { status: 'extra_3', label: 'Доп. статус 3', count: 0 },
+    { status: 'not_delivered', label: 'Не вручено', count: 10 },
+    { status: 'in_hr', label: 'В кадрах', count: 20 },
+    { status: 'delivered', label: 'Вручено', count: 40 },
+    { status: 'extra_1', label: 'Доп. статус 1', count: 10 },
+    { status: 'extra_2', label: 'Доп. статус 2', count: 10 },
+    { status: 'extra_3', label: 'Доп. статус 3', count: 10 },
   ],
-  total: 3,
+  total: 100,
+  delivered: 40,
+  undelivered: 60,
 }
 
 const { rewards, createReward, updateReward, employees, rewardStatistics, downloadRewardStatistics } = vi.hoisted(() => ({
@@ -124,14 +126,21 @@ describe('RewardsView', () => {
     expect(document.body.textContent).toContain('Редактирование поощрения')
   })
 
-  it('opens status counts and downloads them', async () => {
-    const wrapper = await mountView('viewer')
+  it('opens delivery totals and exact status counts and downloads them', async () => {
+    const wrapper = await mountView('hr')
     await wrapper.findAll('button').find(button => button.text() === 'Статистика')!.trigger('click')
     await flushPromises()
     expect(rewardStatistics).toHaveBeenCalledOnce()
     expect(document.body.textContent).toContain('Статистика поощрений')
     expect(document.body.textContent).toContain('Не вручено')
     expect(document.body.textContent).toContain('Всего')
+    expect(wrapper.findAll('.stats-summary tr').map(row => row.text())).toEqual([
+      'Всего100', 'Вручено40', 'Не вручено60',
+    ])
+    const breakdown = wrapper.get('table[aria-labelledby="reward-stats-breakdown"]')
+    expect(breakdown.findAll('tbody tr').map(row => row.text())).toContain('Состояние: Не вручено10')
+    expect(breakdown.findAll('tbody tr')).toHaveLength(6)
+    expect(document.body.textContent).toContain('Разбивка по состояниям')
     const download = wrapper.findAll('button').find(button => button.text() === 'Скачать Excel')!
     await download.trigger('click')
     await flushPromises()
@@ -143,4 +152,26 @@ describe('RewardsView', () => {
     expect(document.body.textContent).toContain('Ошибка выгрузки')
     wrapper.unmount()
   })
+
+  it('shows loading, retries a failed statistics request and closes on Escape', async () => {
+    const wrapper = await mountView('hr')
+    let rejectRequest!: (reason: unknown) => void
+    rewardStatistics.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectRequest = reject
+    }))
+    await wrapper.findAll('button').find(button => button.text() === 'Статистика')!.trigger('click')
+    expect(wrapper.text()).toContain('Загрузка…')
+    rejectRequest(new ApiError('Ошибка статистики', 500))
+    await flushPromises()
+    expect(wrapper.text()).toContain('Ошибка статистики')
+    expect(wrapper.find('.stats-summary').exists()).toBe(false)
+    await wrapper.findAll('button').find(button => button.text() === 'Повторить')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('.stats-summary').text()).toContain('Не вручено60')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+    await flushPromises()
+    expect(wrapper.find('[aria-labelledby="reward-stats-title"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
 })

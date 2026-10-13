@@ -219,19 +219,25 @@ async function downloadStatistics() {
           <p v-if="statisticsLoading" role="status">Загрузка…</p>
           <p v-else-if="statisticsError" role="alert" class="error">{{ statisticsError }} <button class="btn secondary" type="button" @click="openStatistics">Повторить</button></p>
           <template v-else-if="statistics">
-            <table class="stats-table">
+            <table class="stats-table stats-summary" aria-label="Итоги поощрений">
+              <tbody>
+                <tr><th scope="row">Всего</th><td>{{ statistics.total }}</td></tr>
+                <tr><th scope="row">Вручено</th><td>{{ statistics.delivered }}</td></tr>
+                <tr><th scope="row">Не вручено</th><td>{{ statistics.undelivered }}</td></tr>
+              </tbody>
+            </table>
+            <p class="stats-note">Не вручено — все поощрения, кроме состояния “Вручено”.</p>
+            <h4 id="reward-stats-breakdown">Разбивка по состояниям</h4>
+            <table class="stats-table" aria-labelledby="reward-stats-breakdown">
               <thead>
                 <tr><th scope="col">Состояние</th><th scope="col">Количество</th></tr>
               </thead>
               <tbody>
                 <tr v-for="item in statistics.items" :key="item.status">
-                  <th scope="row">{{ item.label }}</th>
+                  <th scope="row">{{ item.status === 'not_delivered' ? 'Состояние: Не вручено' : item.label }}</th>
                   <td>{{ item.count }}</td>
                 </tr>
               </tbody>
-              <tfoot>
-                <tr><th scope="row">Всего</th><td>{{ statistics.total }}</td></tr>
-              </tfoot>
             </table>
             <p v-if="exportError" role="alert" class="error">{{ exportError }}</p>
             <div class="stats-actions">
@@ -310,8 +316,11 @@ async function downloadStatistics() {
   border-bottom: 1px solid var(--border, #e2e8f0);
 }
 
-.stats-table tfoot th,
-.stats-table tfoot td {
+.stats-summary {
+  margin-bottom: 0.75rem;
+}
+
+.stats-summary td {
   font-weight: 700;
 }
 
