@@ -24,6 +24,8 @@ export const EVENT_TYPE_LABELS: Record<string, string> = {
   award: 'Поощрение',
   report: 'Рапорт',
   passport: 'Паспорт',
+  attestation_preparation: 'Подготовка документов для аттестации',
+  attestation: 'Проведение аттестации',
   manual: 'Другое',
 }
 

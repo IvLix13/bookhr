@@ -119,6 +119,7 @@ Systemd unit/timer файлы: `deploy/`
 - Сотрудники и история
 - Импорт Excel (сопоставление по ФИО)
 - Контракты, грейды, паспорта, поощрения
+- [Аттестация: подготовка за 14 дней и проведение](docs/attestation.md)
 - Мероприятия и rule engine
 - Nextcloud Talk уведомления
 - RBAC: admin / hr / viewer

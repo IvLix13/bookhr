@@ -121,5 +121,20 @@ describe('CalendarView', () => {
     expect(day.text()).toContain(String(new Date().getDate()))
     await day.trigger('click')
     expect(wrapper.getComponent({ name: 'DayEventsModal' }).props('date')).toBe(expiry.event_date)
+    wrapper.unmount()
+  })
+
+  it('shows both attestation events and hides an explicitly cancelled one', async () => {
+    events.mockResolvedValue({ items: [
+      makeEvent({ id: 1, event_type: 'attestation', title: 'Проведение аттестации', source: 'rule' }),
+      makeEvent({ id: 2, event_type: 'attestation_preparation', title: 'Подготовка документов для аттестации', source: 'rule' }),
+      makeEvent({ id: 3, event_type: 'attestation', title: 'Отменённая аттестация', status: 'cancelled', source: 'rule' }),
+    ], total: 3, page: 1, per_page: 200, pages: 1 })
+    const wrapper = await mountView()
+    expect((wrapper.getComponent(MonthCalendar).props('events') as EventItem[]).map((event) => event.id)).toEqual([1, 2])
+    expect(wrapper.text()).toContain('Проведение аттестации')
+    expect(wrapper.text()).toContain('Подготовка документов для аттестации')
+    expect(wrapper.text()).not.toContain('Отменённая аттестация')
+    wrapper.unmount()
   })
 })

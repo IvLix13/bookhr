@@ -20,6 +20,7 @@ from app.models import (
     TenureAward,
 )
 from app.services.employees import get_active_contract, get_current_grade, get_current_name
+from app.services.attestations import attestation_rule_keys, synchronize_attestation_events
 from app.services.events import (
     record_event_created,
     refresh_overdue_events,
@@ -289,6 +290,8 @@ def _active_passport(employment: Employment) -> Passport | None:
 
 def _expected_rule_keys(employment: Employment) -> set[str]:
     keys: set[str] = set()
+    if employment.attestation_date:
+        keys.update(attestation_rule_keys(employment).values())
 
     contract = get_active_contract(employment)
     if contract:
@@ -536,6 +539,7 @@ def process_tenure_rules(employment: Employment) -> int:
 
 # Registry of rule processors keyed by stats field name.
 RULE_PROCESSORS: list[tuple[str, Callable[[Employment], int]]] = [
+    ("attestations", synchronize_attestation_events),
     ("contracts", process_contract_rules),
     ("grades", process_grade_rules),
     ("passports", process_passport_rules),
@@ -548,6 +552,7 @@ def recalculate_employment_events(employment: Employment) -> dict[str, int]:
     if employment.status != EmploymentStatus.ACTIVE.value:
         cancelled = cancel_stale_rule_events(employment, set())
         return {
+            "attestations": 0,
             "contracts": 0,
             "grades": 0,
             "passports": 0,
@@ -569,6 +574,7 @@ def run_rule_engine(company_id: int | None = None) -> dict[str, int]:
         query = query.filter_by(company_id=company_id)
 
     stats = {
+        "attestations": 0,
         "contracts": 0,
         "grades": 0,
         "passports": 0,

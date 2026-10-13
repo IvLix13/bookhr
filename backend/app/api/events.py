@@ -36,6 +36,7 @@ from app.models import (
     User,
 )
 from app.services.event_completion import apply_completion_effects
+from app.services.attestations import validate_attestation_mutation
 from app.services.events import (
     EventMutationError,
     InvalidEventTransition,
@@ -194,6 +195,7 @@ def register_routes(bp):
                 employment=event.employment or employment_before,
             )
         except EventMutationError as exc:
+            db.session.rollback()
             return api_response(message=str(exc), status=409)
         db.session.commit()
         return api_response(event_to_dict(event))
@@ -222,6 +224,7 @@ def register_routes(bp):
             return api_response(message="Not found", status=404)
         payload = load_schema(EventActionSchema)
         try:
+            validate_attestation_mutation(event)
             transition_event_status(
                 event,
                 EventStatus.COMPLETED,
@@ -251,6 +254,7 @@ def register_routes(bp):
             return api_response(message="Not found", status=404)
         payload = load_schema(CancelEventSchema)
         try:
+            validate_attestation_mutation(event)
             transition_event_status(
                 event,
                 EventStatus.CANCELLED,
@@ -258,6 +262,9 @@ def register_routes(bp):
             )
         except InvalidEventTransition as exc:
             return api_response(message=str(exc), status=409)
+        except ValueError as exc:
+            db.session.rollback()
+            return api_response(message=str(exc), status=400)
         refresh_events_after_mutation(
             company_id=event.company_id,
             employment=event.employment,
@@ -272,6 +279,7 @@ def register_routes(bp):
         if not event or event.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
         try:
+            validate_attestation_mutation(event)
             transition_event_status(
                 event,
                 EventStatus.PLANNED,
@@ -280,6 +288,9 @@ def register_routes(bp):
             )
         except InvalidEventTransition as exc:
             return api_response(message=str(exc), status=409)
+        except ValueError as exc:
+            db.session.rollback()
+            return api_response(message=str(exc), status=400)
         refresh_events_after_mutation(
             company_id=event.company_id,
             employment=event.employment,

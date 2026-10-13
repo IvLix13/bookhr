@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+from flask import current_app
+
 from app.extensions import db
 from app.models import (
     DeliveryStatus,
@@ -135,6 +137,15 @@ def queue_notifications_for_event(event: Event) -> int:
 
         created += queue_escalation_for_event(event, rule)
     return created
+
+
+def refresh_attestation_notifications(event: Event) -> None:
+    """Replace unsent deliveries after a date change; preserve sent history."""
+    NotificationDelivery.query.filter(
+        NotificationDelivery.event_id == event.id,
+        NotificationDelivery.status.in_([DeliveryStatus.PENDING.value, DeliveryStatus.FAILED.value]),
+    ).delete(synchronize_session="fetch")
+    queue_notifications_for_event(event)
 
 
 def queue_escalation_for_event(event: Event, rule: NotificationRule) -> int:

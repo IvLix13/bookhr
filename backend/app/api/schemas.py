@@ -76,6 +76,11 @@ class CreateEventSchema(BaseSchema):
     description = fields.Str(allow_none=True)
     employment_id = fields.Int(allow_none=True)
 
+    @validates_schema
+    def reject_automatic_types(self, data, **kwargs):
+        if data.get("event_type") in {EventType.ATTESTATION, EventType.ATTESTATION_PREPARATION}:
+            raise ValidationError({"event_type": ["Аттестация создаётся автоматически через модуль «Аттестация»"]})
+
 
 class UpdateEventSchema(BaseSchema):
     title = fields.Str(validate=validate.Length(min=1, max=512))
@@ -83,6 +88,11 @@ class UpdateEventSchema(BaseSchema):
     event_type = EventTypeField()
     description = fields.Str(allow_none=True)
     employment_id = fields.Int(allow_none=True)
+
+    @validates_schema
+    def reject_automatic_types(self, data, **kwargs):
+        if data.get("event_type") in {EventType.ATTESTATION, EventType.ATTESTATION_PREPARATION}:
+            raise ValidationError({"event_type": ["Нельзя назначить автоматический тип вручную"]})
 
 
 class EventActionSchema(BaseSchema):

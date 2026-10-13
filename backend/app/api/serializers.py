@@ -28,6 +28,7 @@ from app.services.employees import (
 )
 from app.services.event_completion import grade_promotion_blocked_reason
 from app.services.events import effective_event_status
+from app.services.attestations import attestation_mutation_blocked_reason
 from app.services.grade_catalog import grade_usage_employment_ids
 from app.services.grades import compute_grade_eligibility
 from app.services.passports import (
@@ -335,6 +336,7 @@ def event_to_dict(event: Event) -> dict:
         "grade_event_kind": grade_event_kind,
         "grade_completion": grade_completion,
         "passport_completion": passport_completion,
+        "attestation_mutation_blocked_reason": attestation_mutation_blocked_reason(event),
         "last_status_change": _last_status_change_to_dict(event),
     }
     return humanize_user_text_fields(payload)
