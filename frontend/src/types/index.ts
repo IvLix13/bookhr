@@ -111,6 +111,7 @@ export interface EventItem {
     suggested_new_valid_until?: string | null
     requires_new_date: boolean
   } | null
+  attestation_mutation_blocked_reason?: string | null
 }
 
 export interface ContractRow {

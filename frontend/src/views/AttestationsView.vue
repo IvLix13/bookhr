@@ -2,29 +2,39 @@
 import { computed, onUnmounted, ref } from 'vue'
 import DataTable from '@/components/DataTable.vue'
 import PageState from '@/components/PageState.vue'
+import EventDetailModal from '@/components/EventDetailModal.vue'
+import StatusBadge from '@/components/StatusBadge.vue'
 import { api, type AttestationRow } from '@/api/client'
 import { useServerTable } from '@/composables/useServerTable'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { Paginated, TableQueryState } from '@/types'
 import { formatShortDate } from '@/utils/dates'
 import { useAuthStore } from '@/stores/auth'
+import { getEventStatusMeta } from '@/utils/statuses'
 
 const auth = useAuthStore()
 const editing = ref<AttestationRow | null>(null)
 const modalOpen = ref(false)
+const eventModalOpen = ref(false)
 const dateValue = ref('')
 const saving = ref(false)
 const saveError = ref<string | null>(null)
 
 const table = useServerTable<AttestationRow>({
   tableId: 'attestations',
-  schemaVersion: 1,
+  schemaVersion: 2,
   fetcher: (params) => api.attestations(params) as Promise<Paginated<AttestationRow>>,
   defaultSort: { key: 'full_name', direction: 'asc' },
 })
 
 const columns: ColumnDef<AttestationRow>[] = [
   { key: 'full_name', label: 'ФИО сотрудника' },
+  {
+    key: 'attestation_preparation_date',
+    label: 'Дата подготовки документов',
+    getValue: (row) => row.attestation_preparation_date,
+    format: (value) => formatShortDate(value as string | null),
+  },
   {
     key: 'attestation_date',
     label: 'Дата проведения',
@@ -34,8 +44,10 @@ const columns: ColumnDef<AttestationRow>[] = [
 ]
 
 const pageHint = computed(
-  () => 'Дата аттестации проставляется HR вручную. В таблице отображаются активные сотрудники.',
+  () => 'Дата аттестации проставляется HR вручную. Подготовка документов — за 14 календарных дней до проведения.',
 )
+const conductionStatus = computed(() => getEventStatusMeta(editing.value?.attestation_status))
+const hasUnsavedDate = computed(() => dateValue.value !== (editing.value?.attestation_date ?? ''))
 
 function onQueryUpdate(patch: Partial<TableQueryState>) {
   table.setQuery(patch)
@@ -50,7 +62,7 @@ function startEdit(row: AttestationRow) {
 }
 
 function closeModal() {
-  if (saving.value) return
+  if (saving.value || eventModalOpen.value) return
   modalOpen.value = false
   editing.value = null
   dateValue.value = ''
@@ -62,9 +74,8 @@ async function save() {
   saving.value = true
   saveError.value = null
   try {
-    await api.updateAttestation(editing.value.employment_id, dateValue.value || null)
-    saving.value = false
-    closeModal()
+    editing.value = await api.updateAttestation(editing.value.employment_id, dateValue.value || null)
+    dateValue.value = editing.value.attestation_date ?? ''
     await table.reload()
   } catch (error) {
     saveError.value = error instanceof Error ? error.message : 'Не удалось сохранить дату'
@@ -73,8 +84,21 @@ async function save() {
   }
 }
 
+async function onEventChanged() {
+  if (!editing.value) return
+  saveError.value = null
+  try {
+    const row = await api.attestation(editing.value.employment_id)
+    editing.value = row
+    dateValue.value = row.attestation_date ?? ''
+    await table.reload()
+  } catch (error) {
+    saveError.value = error instanceof Error ? error.message : 'Не удалось обновить аттестацию'
+  }
+}
+
 function onKeydown(event: KeyboardEvent) {
-  if (event.key === 'Escape' && modalOpen.value) closeModal()
+  if (event.key === 'Escape' && modalOpen.value && !eventModalOpen.value) closeModal()
 }
 
 window.addEventListener('keydown', onKeydown)
@@ -121,14 +145,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
     </PageState>
 
     <Teleport to="body">
-      <div v-if="modalOpen && editing" class="overlay" @click.self="closeModal">
+      <div v-if="modalOpen && editing && !eventModalOpen" class="overlay" @click.self="closeModal">
         <section class="card modal" role="dialog" aria-modal="true" aria-label="Дата аттестации">
           <header class="modal-header">
             <div>
               <h3>Дата аттестации</h3>
               <p>{{ editing.full_name }}</p>
             </div>
-            <button class="btn ghost" type="button" aria-label="Закрыть" @click="closeModal">×</button>
+            <button class="btn ghost" type="button" aria-label="Закрыть" :disabled="saving" @click="closeModal">×</button>
           </header>
 
           <label class="field">
@@ -136,17 +160,38 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
             <input v-model="dateValue" type="date" :disabled="saving" />
           </label>
 
+          <p class="hint">
+            Дата подготовки документов: {{ formatShortDate(editing.attestation_preparation_date) }}.
+            За 14 календарных дней до аттестации.
+          </p>
+          <p v-if="hasUnsavedDate" class="hint">Сохраните дату, чтобы пересчитать подготовку документов.</p>
+          <div v-if="editing.attestation_event_id" class="conduction">
+            <span>Проведение аттестации</span>
+            <StatusBadge :label="conductionStatus.label" :variant="conductionStatus.variant" />
+            <button
+              class="btn secondary" type="button"
+              :disabled="saving || hasUnsavedDate"
+              @click="eventModalOpen = true"
+            >Мероприятие</button>
+          </div>
+
           <p v-if="saveError" class="error-text">{{ saveError }}</p>
 
           <footer class="actions">
             <button class="btn secondary" type="button" :disabled="saving" @click="closeModal">Отмена</button>
-            <button class="btn" type="button" :disabled="saving" @click="save">
+            <button class="btn" type="button" :disabled="saving || !hasUnsavedDate" @click="save">
               {{ saving ? 'Сохранение…' : 'Сохранить' }}
             </button>
           </footer>
         </section>
       </div>
     </Teleport>
+    <EventDetailModal
+      :open="eventModalOpen"
+      :event-id="editing?.attestation_event_id ?? null"
+      @close="eventModalOpen = false"
+      @changed="onEventChanged"
+    />
   </section>
 </template>
 
@@ -211,6 +256,14 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 .actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.conduction {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 1rem;
 }

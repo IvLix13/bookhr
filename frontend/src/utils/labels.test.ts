@@ -12,6 +12,8 @@ describe('labels', () => {
   it('maps known event types', () => {
     expect(labelEventType('contract')).toBe(EVENT_TYPE_LABELS.contract)
     expect(labelEventType('manual')).toBe('Другое')
+    expect(labelEventType('attestation')).toBe('Проведение аттестации')
+    expect(labelEventType('attestation_preparation')).toBe('Подготовка документов для аттестации')
   })
 
   it('falls back for unknown event types', () => {

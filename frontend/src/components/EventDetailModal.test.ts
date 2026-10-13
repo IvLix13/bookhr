@@ -353,6 +353,54 @@ describe('EventDetailModal', () => {
     expect(text).not.toContain('Удалить')
   })
 
+  it.each(['planned', 'completed'])('edits attestation date while preserving its %s status', async (status) => {
+    const event: EventItem = { ...plannedEvent, event_type: 'attestation', title: 'Проведение аттестации',
+      reference_type: 'employment', reference_id: 1, status, event_date: '2026-10-30' }
+    getEvent.mockResolvedValue(event)
+    updateEvent.mockResolvedValue({ ...event, event_date: '2026-11-06' })
+    const wrapper = await mountModal('hr')
+    const input = document.body.querySelector('#attestation-date-input') as HTMLInputElement
+    expect(input.value).toBe('2026-10-30')
+    await new DOMWrapper(input).setValue('2026-11-06')
+    getEvent.mockResolvedValue({ ...event, event_date: '2026-11-06' })
+    const button = Array.from(document.body.querySelectorAll('button')).find((item) => item.textContent?.includes('Сохранить дату'))!
+    await button.click()
+    await flushPromises()
+    expect(updateEvent).toHaveBeenCalledWith(7, { event_date: '2026-11-06' })
+    expect(wrapper.emitted('changed')).toBeTruthy()
+    expect(document.body.querySelector('#attestation-date-input')).toHaveProperty('value', '2026-11-06')
+    wrapper.unmount()
+  })
+
+  it('does not offer an independent preparation date', async () => {
+    getEvent.mockResolvedValue({ ...plannedEvent, event_type: 'attestation_preparation',
+      reference_type: 'employment', reference_id: 1 })
+    const wrapper = await mountModal('hr')
+    expect(document.body.textContent).toContain('14 календарных дней')
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    wrapper.unmount()
+  })
+
+  it('requires saving a date draft before changing the attestation status', async () => {
+    getEvent.mockResolvedValue({ ...plannedEvent, event_type: 'attestation', reference_type: 'employment', reference_id: 1 })
+    const wrapper = await mountModal('hr')
+    await new DOMWrapper(document.body.querySelector('#attestation-date-input') as HTMLInputElement).setValue('2026-11-06')
+    const button = Array.from(document.body.querySelectorAll('button')).find((item) => item.textContent?.includes('Выполнить')) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    expect(document.body.textContent).toContain('Сохраните изменённую дату')
+    wrapper.unmount()
+  })
+
+  it('hides mutations on an attestation whose date was cleared', async () => {
+    getEvent.mockResolvedValue({ ...completedEvent, event_type: 'attestation', reference_type: 'employment',
+      reference_id: 1, attestation_mutation_blocked_reason: 'Сначала задайте дату в модуле «Аттестация»' })
+    const wrapper = await mountModal('hr')
+    expect(document.body.textContent).toContain('Сначала задайте дату')
+    expect(document.body.textContent).not.toContain('Переоткрыть')
+    expect(document.body.querySelector('input[type="date"]')).toBeNull()
+    wrapper.unmount()
+  })
+
   it('deletes manual event and closes modal', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     getEvent.mockResolvedValueOnce({ ...plannedEvent, source: 'manual' })

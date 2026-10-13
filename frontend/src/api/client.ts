@@ -24,6 +24,9 @@ export interface AttestationRow {
   employment_id: number
   full_name: string | null
   attestation_date: string | null
+  attestation_preparation_date: string | null
+  attestation_event_id: number | null
+  attestation_status: string | null
 }
 
 let csrfToken: string | null = null
@@ -187,6 +190,8 @@ export const api = {
     request<Paginated<unknown>>(`/api/grades${buildQuery(params)}`),
   attestations: (params: TableQueryParams = {}) =>
     request<Paginated<AttestationRow>>(`/api/attestations${buildQuery(params)}`),
+  attestation: (employmentId: number) =>
+    request<AttestationRow>(`/api/attestations/${employmentId}`),
   updateAttestation: (employmentId: number, attestationDate: string | null) =>
     request<AttestationRow>(`/api/attestations/${employmentId}`, {
       method: 'PATCH',

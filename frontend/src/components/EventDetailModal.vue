@@ -83,7 +83,22 @@ const isClosedStatus = computed(() => {
   return status === 'completed' || status === 'cancelled'
 })
 
-const canAct = computed(() => auth.canEdit() && !!event.value)
+const canAct = computed(
+  () => auth.canEdit() && !!event.value && !event.value.attestation_mutation_blocked_reason,
+)
+
+const isAttestation = computed(() =>
+  event.value?.source === 'rule' && event.value?.reference_type === 'employment' &&
+  ['attestation', 'attestation_preparation'].includes(event.value?.event_type ?? ''),
+)
+const canEditAttestationDate = computed(() =>
+  canAct.value && isAttestation.value && event.value?.event_type === 'attestation' &&
+  event.value.status !== 'cancelled',
+)
+const attestationDateDraft = ref('')
+const hasUnsavedAttestationDate = computed(() =>
+  canEditAttestationDate.value && attestationDateDraft.value !== event.value?.event_date,
+)
 
 const isManualEvent = computed(() => event.value?.source === 'manual')
 
@@ -118,6 +133,7 @@ async function loadEvent() {
   error.value = ''
   try {
     event.value = (await api.getEvent(props.eventId)) as EventItem
+    attestationDateDraft.value = event.value.event_date
     reportDateDraft.value =
       event.value.status === 'completed' && event.value.completed_at
         ? event.value.completed_at.slice(0, 10)
@@ -152,6 +168,7 @@ watch(
       targetGradeId.value = ''
       newPassportValidUntil.value = ''
       reportDateDraft.value = ''
+      attestationDateDraft.value = ''
       editing.value = false
     }
   },
@@ -293,6 +310,21 @@ async function saveReportDate() {
     actionBusy.value = false
   }
 }
+
+async function saveAttestationDate() {
+  if (!event.value || !canEditAttestationDate.value || !attestationDateDraft.value || actionBusy.value) return
+  actionBusy.value = true
+  error.value = ''
+  try {
+    await api.updateEvent(event.value.id, { event_date: attestationDateDraft.value })
+    await loadEvent()
+    emit('changed')
+  } catch (err) {
+    error.value = normalizeError(err)
+  } finally {
+    actionBusy.value = false
+  }
+}
 </script>
 
 <template>
@@ -389,8 +421,30 @@ async function saveReportDate() {
             </dl>
 
             <p v-if="error" class="state error inline">{{ error }}</p>
+            <p v-if="event.attestation_mutation_blocked_reason" class="hint inline">
+              {{ event.attestation_mutation_blocked_reason }}
+            </p>
+            <p v-if="isAttestation && event.event_type === 'attestation_preparation'" class="hint inline">
+              Дата подготовки рассчитывается за 14 календарных дней до аттестации.
+              Измените дату проведения, чтобы пересчитать подготовку.
+            </p>
 
             <footer v-if="canAct" class="actions">
+              <p v-if="hasUnsavedAttestationDate" class="hint inline">
+                Сохраните изменённую дату перед изменением статуса аттестации.
+              </p>
+              <div v-if="canEditAttestationDate" class="extension-row">
+                <label for="attestation-date-input">Дата проведения аттестации:</label>
+                <input
+                  id="attestation-date-input" v-model="attestationDateDraft" type="date"
+                  :disabled="actionBusy" required
+                />
+                <button
+                  class="btn secondary" type="button"
+                  :disabled="actionBusy || !attestationDateDraft || attestationDateDraft === event.event_date"
+                  @click="saveAttestationDate"
+                >Сохранить дату</button>
+              </div>
               <div v-if="canEditEvent" class="action-buttons">
                 <button
                   class="btn secondary"
@@ -491,6 +545,7 @@ async function saveReportDate() {
                     type="button"
                     :disabled="
                       actionBusy ||
+                      hasUnsavedAttestationDate ||
                       Boolean(gradeCompletion?.blocked_reason) ||
                       (requiresGradeChoice && !targetGradeId) ||
                       (requiresPassportDate && !newPassportValidUntil)
@@ -502,7 +557,7 @@ async function saveReportDate() {
                   <button
                     class="btn secondary"
                     type="button"
-                    :disabled="actionBusy || !comment.trim()"
+                    :disabled="actionBusy || hasUnsavedAttestationDate || !comment.trim()"
                     @click="runAction('cancel')"
                   >
                     Отменить
@@ -513,7 +568,7 @@ async function saveReportDate() {
                 <button
                   class="btn secondary"
                   type="button"
-                  :disabled="actionBusy"
+                  :disabled="actionBusy || hasUnsavedAttestationDate"
                   @click="runAction('reopen')"
                 >
                   {{ actionBusy ? '...' : 'Переоткрыть' }}

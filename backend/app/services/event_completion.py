@@ -12,6 +12,7 @@ from datetime import date
 from app.extensions import db
 from app.models import Contract, EmployeeGradeHistory, Event, EventStatus, EventType, Passport, TenureAward
 from app.services.audit import _current_user_id, log_audit
+from app.services.attestations import ATTESTATION_TYPES, validate_attestation_mutation
 from app.services.employees import get_active_contract, get_active_passport, get_current_grade
 from app.services.grades import assign_grade_to_employment, compute_grade_eligibility
 from app.services.passports import calculate_passport_renewal_date
@@ -285,7 +286,11 @@ def apply_completion_effects(
     extended_contract = None
     renewed_passport = None
     tenure_award = None
-    if event.event_type == EventType.GRADE.value:
+    if event.event_type in ATTESTATION_TYPES:
+        validate_attestation_mutation(event)
+        # The event status is the fact of completion; neither event completes
+        # the other, assigns a grade or changes the recorded attestation date.
+    elif event.event_type == EventType.GRADE.value:
         if is_grade_preparation_event(event):
             assigned_grade = None
         elif is_grade_promotion_event(event):
