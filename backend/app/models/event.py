@@ -14,6 +14,8 @@ class EventType(str, Enum):
     AWARD = "award"
     REPORT = "report"
     PASSPORT = "passport"
+    ATTESTATION_PREPARATION = "attestation_preparation"
+    ATTESTATION = "attestation"
     MANUAL = "manual"
 
 

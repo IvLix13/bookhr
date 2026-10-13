@@ -251,6 +251,12 @@ def refresh_events_after_mutation(
 
 
 def update_manual_event(event: Event, payload: dict) -> Event:
+    from app.services.attestations import ATTESTATION_TYPES, update_attestation_event_date
+    if event.event_type in ATTESTATION_TYPES:
+        try:
+            return update_attestation_event_date(event, payload)
+        except ValueError as exc:
+            raise EventMutationError(str(exc)) from exc
     if event.source != EventSource.MANUAL.value:
         return _update_rule_report_date(event, payload)
     if event.status not in OPEN_EDIT_STATUSES:

@@ -7,7 +7,7 @@ import { normalizeError } from '@/api/errors'
 import { useToast } from '@/composables/useToast'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type { NextcloudUser, NotificationRule } from '@/types'
-import { labelEventType } from '@/utils/labels'
+import { EVENT_TYPE_LABELS, labelEventType } from '@/utils/labels'
 
 const toast = useToast()
 
@@ -285,7 +285,10 @@ async function testSend() {
       </div>
       <label>
         Тип события
-        <input v-model="form.event_type" placeholder="contract / grade / ..." />
+        <input v-model="form.event_type" list="notification-event-types" placeholder="Все типы" />
+        <datalist id="notification-event-types">
+          <option v-for="(label, key) in EVENT_TYPE_LABELS" :key="key" :value="key">{{ label }}</option>
+        </datalist>
       </label>
       <label class="checkbox">
         <input v-model="form.is_enabled" type="checkbox" />

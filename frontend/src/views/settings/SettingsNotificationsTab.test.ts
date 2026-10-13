@@ -38,6 +38,13 @@ beforeEach(() => {
 })
 
 describe('Nextcloud 26 notification recipients', () => {
+  it('offers both automatic attestation types for notification rules', async () => {
+    const wrapper = mount(SettingsNotificationsTab)
+    await flushPromises()
+    expect(wrapper.get('datalist option[value="attestation"]').text()).toBe('Проведение аттестации')
+    expect(wrapper.get('datalist option[value="attestation_preparation"]').text()).toBe('Подготовка документов для аттестации')
+    wrapper.unmount()
+  })
   it('searches a person, selects the exact user and sends a test message', async () => {
     const wrapper = mount(SettingsNotificationsTab)
     await flushPromises()
