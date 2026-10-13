@@ -15,6 +15,7 @@ from app.models import (
     Event,
     EventSource,
     EventStatus,
+    EventStatusHistory,
     EventType,
     Passport,
     TenureAward,
@@ -339,11 +340,50 @@ def cancel_stale_rule_events(employment: Employment, keep_keys: set[str]) -> int
     return cancelled
 
 
+def _restore_auto_cancelled_contract_expiry(
+    employment: Employment,
+    contract: Contract,
+) -> None:
+    """Restore only a current expiry superseded by automatic recalculation."""
+    if employment.status != EmploymentStatus.ACTIVE.value:
+        return
+    event = Event.query.filter_by(
+        rule_key=contract_expiry_rule_key(contract),
+        company_id=employment.company_id,
+        employment_id=employment.id,
+        source=EventSource.RULE.value,
+        event_type=EventType.CONTRACT.value,
+        reference_type="contract",
+        reference_id=contract.id,
+        event_date=contract.end_date,
+        status=EventStatus.CANCELLED.value,
+    ).first()
+    if event is None:
+        return
+    last_change = (
+        EventStatusHistory.query.filter_by(event_id=event.id)
+        .order_by(EventStatusHistory.id.desc())
+        .first()
+    )
+    if (
+        last_change is None
+        or last_change.new_status != EventStatus.CANCELLED.value
+        or last_change.comment != "Superseded by recalculation"
+    ):
+        return
+    transition_event_status(
+        event, EventStatus.PLANNED, "Current contract expiry restored by recalculation",
+    )
+    if event.event_date < today_moscow():
+        transition_event_status(event, EventStatus.OVERDUE, "Auto-marked overdue")
+
+
 def process_contract_rules(employment: Employment) -> int:
     contract = get_active_contract(employment)
     if not contract:
         return 0
 
+    _restore_auto_cancelled_contract_expiry(employment, contract)
     event_date = subtract_months(contract.end_date, 4)
     name = get_current_name(employment.person) or "Сотрудник"
     _upsert_rule_event(
