@@ -31,7 +31,15 @@ const statisticsPayload = {
   total: 3,
 }
 
-const { rewards, createReward, updateReward, employees, rewardStatistics, downloadRewardStatistics } = vi.hoisted(() => ({
+const {
+  rewards,
+  createReward,
+  updateReward,
+  employees,
+  rewardStatistics,
+  downloadRewardStatistics,
+  downloadRewardsPersonalized,
+} = vi.hoisted(() => ({
   rewards: vi.fn(async () => ({
     items: [sampleReward],
     total: 1,
@@ -50,6 +58,7 @@ const { rewards, createReward, updateReward, employees, rewardStatistics, downlo
   })),
   rewardStatistics: vi.fn(async () => statisticsPayload),
   downloadRewardStatistics: vi.fn(async () => undefined),
+  downloadRewardsPersonalized: vi.fn(async () => undefined),
 }))
 
 vi.mock('@/api/client', () => ({
@@ -60,6 +69,7 @@ vi.mock('@/api/client', () => ({
     employees,
     rewardStatistics,
     downloadRewardStatistics,
+    downloadRewardsPersonalized,
   },
 }))
 
@@ -72,8 +82,10 @@ describe('RewardsView', () => {
     employees.mockClear()
     rewardStatistics.mockClear()
     downloadRewardStatistics.mockClear()
+    downloadRewardsPersonalized.mockClear()
     rewardStatistics.mockResolvedValue(statisticsPayload)
     downloadRewardStatistics.mockResolvedValue(undefined)
+    downloadRewardsPersonalized.mockResolvedValue(undefined)
     document.body.innerHTML = ''
   })
 
@@ -95,6 +107,13 @@ describe('RewardsView', () => {
     })
     await flushPromises()
     return wrapper
+  }
+
+  async function openStatisticsAndPersonalized(wrapper: Awaited<ReturnType<typeof mountView>>) {
+    await wrapper.findAll('button').find(button => button.text() === 'Статистика')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'Выгрузить пофамильно')!.trigger('click')
+    await flushPromises()
   }
 
   it('shows add button for hr and hides form until clicked', async () => {
@@ -142,5 +161,68 @@ describe('RewardsView', () => {
     await flushPromises()
     expect(document.body.textContent).toContain('Ошибка выгрузки')
     wrapper.unmount()
+  })
+
+  it('opens personalized export with all statuses selected by default', async () => {
+    const wrapper = await mountView('hr')
+    await openStatisticsAndPersonalized(wrapper)
+
+    expect(document.body.textContent).toContain('Пофамильная выгрузка')
+    const select = wrapper.get('.export-modal select')
+    expect((select.element as HTMLSelectElement).value).toBe('')
+    expect(select.text()).toContain('Все состояния')
+    expect(select.text()).toContain('Вручено')
+  })
+
+  it('downloads personalized export without filter for all statuses', async () => {
+    const wrapper = await mountView('hr')
+    await openStatisticsAndPersonalized(wrapper)
+
+    const download = wrapper.findAll('.export-modal button').find(button => button.text() === 'Скачать Excel')!
+    await download.trigger('click')
+    await flushPromises()
+
+    expect(downloadRewardsPersonalized).toHaveBeenCalledOnce()
+    expect(downloadRewardsPersonalized).toHaveBeenCalledWith(undefined)
+  })
+
+  it('passes selected status to personalized export', async () => {
+    const wrapper = await mountView('hr')
+    await openStatisticsAndPersonalized(wrapper)
+
+    await wrapper.get('.export-modal select').setValue('delivered')
+    const download = wrapper.findAll('.export-modal button').find(button => button.text() === 'Скачать Excel')!
+    await download.trigger('click')
+    await flushPromises()
+
+    expect(downloadRewardsPersonalized).toHaveBeenCalledWith('delivered')
+  })
+
+  it('shows personalized export error and keeps statistics open after cancel', async () => {
+    const wrapper = await mountView('hr')
+    await openStatisticsAndPersonalized(wrapper)
+    downloadRewardsPersonalized.mockRejectedValueOnce(new ApiError('Ошибка пофамильной выгрузки', 500))
+
+    const download = wrapper.findAll('.export-modal button').find(button => button.text() === 'Скачать Excel')!
+    await download.trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).toContain('Ошибка пофамильной выгрузки')
+
+    await wrapper.findAll('.export-modal button').find(button => button.text() === 'Отмена')!.trigger('click')
+    await flushPromises()
+    expect(document.body.textContent).not.toContain('Пофамильная выгрузка')
+    expect(document.body.textContent).toContain('Статистика поощрений')
+  })
+
+  it('resets personalized status every time the modal opens', async () => {
+    const wrapper = await mountView('hr')
+    await openStatisticsAndPersonalized(wrapper)
+    await wrapper.get('.export-modal select').setValue('delivered')
+    await wrapper.findAll('.export-modal button').find(button => button.text() === 'Отмена')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.findAll('button').find(button => button.text() === 'Выгрузить пофамильно')!.trigger('click')
+    await flushPromises()
+    expect((wrapper.get('.export-modal select').element as HTMLSelectElement).value).toBe('')
   })
 })
