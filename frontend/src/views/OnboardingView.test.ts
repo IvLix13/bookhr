@@ -23,7 +23,7 @@ vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({
   user: { id: 1, username: 'user', full_name: mock.fullName, role: mock.role },
 }) }))
 vi.mock('@/api/client', () => ({ api: {
-  onboardingColumns: mock.columns, onboardingPlans: mock.plans, employees: mock.employees,
+  onboardingDocumentStages: vi.fn().mockResolvedValue([{ key: 'nda', title: 'NDA' }]), downloadOnboardingDocx: vi.fn().mockResolvedValue(undefined), onboardingColumns: mock.columns, onboardingPlans: mock.plans, employees: mock.employees,
   createOnboardingPlan: mock.createPlan, updateOnboardingCell: mock.saveCell,
   createOnboardingColumn: mock.createColumn, updateOnboardingColumn: mock.updateColumn,
   orderOnboardingColumns: mock.orderColumns,
@@ -47,7 +47,7 @@ beforeEach(() => {
   mock.preview.mockResolvedValue({ version: 1, snapshot: 'a'.repeat(64), cell_count: 1 })
   mock.remove.mockResolvedValue(undefined)
   mock.removeEmployee.mockResolvedValue(undefined)
-  mock.employees.mockResolvedValue({ items: [{ id: 2, full_name: 'Петров', hire_date: '2020-01-01', status: 'active' }], page: 1, pages: 1, total: 1 })
+  mock.employees.mockResolvedValue({ items: [{ id: 3, full_name: 'Мой ввод', hire_date: '2020-01-01', status: 'active' }], page: 1, pages: 1, total: 1 })
   mock.createPlan.mockResolvedValue({ id: 2 })
   mock.saveCell.mockResolvedValue({ ...cell, version: 3 })
   mock.createColumn.mockResolvedValue({ ...column, id: 2 })
@@ -170,7 +170,7 @@ describe('Onboarding cards', () => {
     await flushPromises()
     await wrapper.findAll('button').find(b => b.text() === 'Создать план')!.trigger('click')
     await flushPromises()
-    expect(mock.createPlan).toHaveBeenCalledWith(2)
+    expect(mock.createPlan).toHaveBeenCalledWith(3)
     wrapper.unmount()
   })
 })
@@ -218,7 +218,7 @@ describe('Column management', () => {
     await wrapper.get('select').setValue('text')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Отдел', field_type: 'text' })
+    expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Отдел', field_type: 'text', document_stage_key: null })
     await wrapper.findAll('button').find(b => b.text() === 'В архив')!.trigger('click')
     expect(mock.updateColumn).not.toHaveBeenCalled()
     await wrapper.findAll('button').find(b => b.text() === 'Архивировать')!.trigger('click')
@@ -294,7 +294,7 @@ describe('New onboarding states and clearing', () => {
     await wrapper.get('select').setValue('checkbox')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Ознакомление', field_type: 'checkbox' })
+    expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Ознакомление', field_type: 'checkbox', document_stage_key: null })
     wrapper.unmount()
   })
 })
@@ -369,9 +369,12 @@ describe('Card interactions', () => {
     await flushPromises()
     await wrapper.findAll('button').find(b => b.text() === 'Изменить куратора')!.trigger('click')
     await wrapper.get('.curator-form input').setValue('  Петров Пётр  ')
+    await wrapper.findAll('button').find(b => b.text() === 'Найти куратора')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(b => b.text() === 'Выбрать куратора')!.trigger('click')
     await wrapper.get('.curator-form').trigger('submit')
     await flushPromises()
-    expect(mock.updatePlan).toHaveBeenCalledWith(1, { version: 1, curator_name: 'Петров Пётр' })
+    expect(mock.updatePlan).toHaveBeenCalledWith(1, { version: 1, curator_employment_id: 3 })
     expect(wrapper.find('[role="dialog"]').exists()).toBe(true)
     expect(wrapper.find('.curator-form').exists()).toBe(false)
     wrapper.unmount()
@@ -386,6 +389,9 @@ describe('Card interactions', () => {
     await flushPromises()
     await wrapper.findAll('button').find(b => b.text() === 'Изменить куратора')!.trigger('click')
     await wrapper.get('.curator-form input').setValue('Мой ввод')
+    await wrapper.findAll('button').find(b => b.text() === 'Найти куратора')!.trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find(b => b.text() === 'Выбрать куратора')!.trigger('click')
     await wrapper.get('.curator-form').trigger('submit')
     await flushPromises()
     expect((wrapper.get('.curator-form input').element as HTMLInputElement).value).toBe('Мой ввод')

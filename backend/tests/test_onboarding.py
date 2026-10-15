@@ -373,7 +373,7 @@ def test_viewer_cannot_edit_employee_with_different_name(hr_client, seed_company
     assert hr_client.post("/api/login", json={"username": "viewer_user", "password": "secret123"}).status_code == 200
     response = patch_cell(hr_client, other, column, version=1, planned_date="2026-12-01")
     assert response.status_code == 403
-    assert response.get_json()["message"] == "Можно изменять только этапы сотрудника с совпадающим ФИО"
+    assert response.get_json()["message"] == "Можно изменять только свой план или план назначенного вам сотрудника"
     with hr_client.application.app_context():
         cell = OnboardingCell.query.filter_by(plan_id=other["id"], column_id=column["id"]).one()
         assert cell.planned_date == date(2026, 11, 1)

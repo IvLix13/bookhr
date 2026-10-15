@@ -12,9 +12,10 @@ class OnboardingColumn(db.Model, TimestampMixin):
     field_type = db.Column(db.String(16), nullable=False)
     sort_order = db.Column(db.Integer, nullable=False)
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
+    document_stage_key = db.Column(db.String(64), nullable=True)
     version = db.Column(db.Integer, nullable=False, default=1)
     __mapper_args__ = {"version_id_col": version}
-    __table_args__ = (db.CheckConstraint("field_type IN ('text', 'date', 'stage', 'checkbox')", name="ck_onboarding_column_type"),)
+    __table_args__ = (db.UniqueConstraint("company_id", "document_stage_key", name="uq_onboarding_document_stage"), db.CheckConstraint("field_type IN ('text', 'date', 'stage', 'checkbox')", name="ck_onboarding_column_type"),)
 
 
 class OnboardingPlan(db.Model, TimestampMixin):
@@ -22,9 +23,11 @@ class OnboardingPlan(db.Model, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     employment_id = db.Column(db.Integer, db.ForeignKey("employments.id"), nullable=False, unique=True)
     curator_name = db.Column(db.String(256), nullable=True)
+    curator_employment_id = db.Column(db.Integer, db.ForeignKey("employments.id", ondelete="SET NULL"), nullable=True)
+    curator = db.relationship("Employment", foreign_keys=[curator_employment_id])
     version = db.Column(db.Integer, nullable=False, default=1, server_default="1")
     __mapper_args__ = {"version_id_col": version}
-    employment = db.relationship("Employment")
+    employment = db.relationship("Employment", foreign_keys=[employment_id])
     cells = db.relationship("OnboardingCell", back_populates="plan")
 
 

@@ -3,6 +3,7 @@ export interface OnboardingColumn {
   id: number
   title: string
   field_type: OnboardingFieldType
+  document_stage_key?: string | null
   sort_order: number
   is_archived: boolean
   version: number
@@ -25,6 +26,8 @@ export interface OnboardingPlan {
   employment_status: string
   hire_date: string
   curator_name: string | null
+  curator_employment_id?: number | null
+  can_edit_cells?: boolean
   version: number
   cells: Record<string, OnboardingCell>
 }

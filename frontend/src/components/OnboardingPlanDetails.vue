@@ -4,21 +4,62 @@ import { api } from '@/api/client'
 import { ApiError, normalizeError } from '@/api/errors'
 import { formatShortDate } from '@/utils/dates'
 import { cellLabel, stageLabels, stageState } from '@/utils/onboarding'
+import type { Employee, Paginated } from '@/types'
 import type { OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 
 const props = defineProps<{ plan: OnboardingPlan; columns: OnboardingColumn[]; today: string; editable: boolean; canManage: boolean }>()
 const emit = defineEmits<{ edit: [column: OnboardingColumn]; changed: []; state: [value: { dirty: boolean; busy: boolean }] }>()
 const curatorEditing = ref(false)
 const curator = ref('')
+const curatorId = ref<number | null>(null)
+const initialCuratorId = ref<number | null>(null)
+const searchResults = ref<Employee[]>([])
+const searchBusy = ref(false)
+const searchError = ref('')
+const searchPage = ref(1)
+const searchPages = ref(0)
+let searchRequest = 0
+async function searchCurator(reset = true) {
+  if (reset) searchPage.value = 1
+  const id = ++searchRequest
+  searchBusy.value = true
+  searchError.value = ''
+  try {
+    const result = await api.employees({ q: curator.value, active_only: true, page: searchPage.value, per_page: 15 }) as Paginated<Employee>
+    if (id === searchRequest) {
+      searchResults.value = result.items.filter(item => item.id !== props.plan.employment_id)
+      searchPages.value = result.pages
+    }
+  } catch (err) { if (id === searchRequest) searchError.value = normalizeError(err) }
+  finally { if (id === searchRequest) searchBusy.value = false }
+}
+function chooseCurator(employee: Employee) {
+  curatorId.value = employee.id
+  curator.value = employee.full_name || ''
+  searchResults.value = []
+  searchPages.value = 0
+}
+function clearCurator() {
+  curatorId.value = null
+  curator.value = ''
+  searchResults.value = []
+  searchPages.value = 0
+}
+function curatorTyped() { curatorId.value = null }
 const curatorVersion = ref(0)
 const initialCurator = ref('')
-const dirty = computed(() => curatorEditing.value && curator.value !== initialCurator.value)
+const dirty = computed(() => curatorEditing.value && (curator.value !== initialCurator.value || curatorId.value !== initialCuratorId.value))
 const curatorSaving = ref(false)
 const curatorError = ref('')
 const curatorConflict = ref(false)
 watch([dirty, curatorSaving], ([dirty, busy]) => emit('state', { dirty, busy }))
 function editCurator() {
   curator.value = props.plan.curator_name ?? ''
+  curatorId.value = props.plan.curator_employment_id ?? null
+  initialCuratorId.value = curatorId.value
+  searchResults.value = []
+  searchError.value = ''
+  searchPages.value = 0
   initialCurator.value = curator.value
   curatorVersion.value = props.plan.version
   curatorError.value = ''
@@ -27,10 +68,11 @@ function editCurator() {
 }
 async function saveCurator() {
   if (curatorSaving.value || curatorConflict.value || !props.canManage) return
+  if (curator.value.trim() && curatorId.value === null) { curatorError.value = 'Выберите куратора из результатов поиска'; return }
   curatorSaving.value = true
   curatorError.value = ''
   try {
-    await api.updateOnboardingPlan(props.plan.id, { version: curatorVersion.value, curator_name: curator.value.trim() || null })
+    await api.updateOnboardingPlan(props.plan.id, { version: curatorVersion.value, curator_employment_id: curatorId.value })
     curatorEditing.value = false
     emit('changed')
   } catch (err) {
@@ -49,7 +91,13 @@ function isStage(column: OnboardingColumn) { return column.field_type === 'stage
       </div>
       <form v-if="curatorEditing" class="curator-form" @submit.prevent="saveCurator">
         <label :for="`curator-${plan.id}`">ФИО куратора</label>
-        <input :id="`curator-${plan.id}`" v-model="curator" maxlength="256" :disabled="curatorSaving || curatorConflict || !canManage" />
+        <input :id="`curator-${plan.id}`" v-model="curator" maxlength="256" @input="curatorTyped" :disabled="curatorSaving || curatorConflict || !canManage" />
+        <div class="form-actions"><button type="button" class="btn secondary" :disabled="searchBusy || curatorSaving || curatorConflict" @click="searchCurator()">Найти куратора</button><button type="button" class="btn secondary" :disabled="curatorSaving || curatorConflict" @click="clearCurator">Убрать куратора</button></div>
+        <p v-if="searchBusy" role="status">Поиск…</p>
+        <p v-if="searchError" role="alert" class="error">{{ searchError }}</p>
+        <ul v-if="searchResults.length"><li v-for="employee in searchResults" :key="employee.id">{{ employee.full_name }} · {{ formatShortDate(employee.hire_date) }} <button type="button" class="btn secondary" :disabled="curatorSaving || curatorConflict || searchBusy" @click="chooseCurator(employee)">Выбрать куратора</button></li></ul>
+        <div v-if="searchPages > 0" class="form-actions"><button type="button" class="btn secondary" :disabled="searchPage <= 1 || searchBusy || curatorSaving || curatorConflict" @click="searchPage--; searchCurator(false)">Назад</button><span>{{ searchPage }} / {{ searchPages }}</span><button type="button" class="btn secondary" :disabled="searchPage >= searchPages || searchBusy || curatorSaving || curatorConflict" @click="searchPage++; searchCurator(false)">Далее</button></div>
+        <p v-if="curator && !curatorId">Найдите и выберите сотрудника для назначения куратора.</p>
         <div class="form-actions"><button class="btn" :disabled="curatorSaving || curatorConflict || !canManage">{{ curatorSaving ? 'Сохранение…' : 'Сохранить куратора' }}</button><button type="button" class="btn secondary" :disabled="curatorSaving" @click="curatorEditing = false">Отмена</button></div>
         <p v-if="curatorError" role="alert" class="error">{{ curatorError }}</p>
         <p v-if="curatorConflict">Ваш ввод сохранён. Закройте форму и откройте её снова для редактирования актуальной версии.</p>
