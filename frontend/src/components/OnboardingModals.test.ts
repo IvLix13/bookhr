@@ -9,7 +9,7 @@ import type { OnboardingPlan, OnboardingColumn } from '@/types/onboarding'
 
 const mocks = vi.hoisted(() => ({ plan: vi.fn(), savePlan: vi.fn(), employees: vi.fn(), create: vi.fn(), preview: vi.fn(), remove: vi.fn(), employeeRemove: vi.fn(), edit: true }))
 vi.mock('@/api/client', () => ({ api: {
-  onboardingPlan: mocks.plan, updateOnboardingPlan: mocks.savePlan,
+  onboardingDocumentStages: vi.fn().mockResolvedValue([{ key: 'nda', title: 'NDA' }]), downloadOnboardingDocx: vi.fn().mockResolvedValue(undefined), onboardingPlan: mocks.plan, updateOnboardingPlan: mocks.savePlan,
   employees: mocks.employees, createOnboardingPlan: mocks.create,
   onboardingDeletePreview: mocks.preview, deleteOnboarding: mocks.remove, deleteEmployeeWithPlan: mocks.employeeRemove,
 } }))
@@ -29,7 +29,7 @@ beforeEach(() => {
   mocks.preview.mockResolvedValue(preview)
   mocks.remove.mockResolvedValue(undefined)
   mocks.employeeRemove.mockResolvedValue(undefined)
-  mocks.employees.mockResolvedValue({ items: [{ id: 2, full_name: 'Иванов', hire_date: plan.hire_date, status: 'active' }], pages: 1 })
+  mocks.employees.mockResolvedValue({ items: [{ id: 3, full_name: 'Мой куратор', hire_date: plan.hire_date, status: 'active' }], pages: 1 })
   mocks.create.mockResolvedValue(plan)
 })
 
@@ -45,9 +45,12 @@ describe('Onboarding modal workflows with real Teleport', () => {
     expect(dom().text()).toContain('несохранённые изменения')
     await button('Продолжить редактирование').trigger('click')
     expect((dom().get('.curator-form input').element as HTMLInputElement).value).toBe('Мой куратор')
+    await button('Найти куратора').trigger('click')
+    await flushPromises()
+    await button('Выбрать куратора').trigger('click')
     await dom().get('.curator-form').trigger('submit')
     await flushPromises()
-    expect(mocks.savePlan).toHaveBeenCalledWith(1, { version: 1, curator_name: 'Мой куратор' })
+    expect(mocks.savePlan).toHaveBeenCalledWith(1, { version: 1, curator_employment_id: 3 })
     expect(root.emitted('close')).toBeUndefined()
   })
 

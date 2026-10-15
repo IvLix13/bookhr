@@ -13,11 +13,13 @@ from app.extensions import db
 from app.models import Company, EmployeeGradeHistory, Employment, Person
 from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
+from app.services.onboarding_document_catalog import document_stages
 
 
 class ColumnSchema(Schema):
     title = fields.String(required=True, validate=validate.Length(min=1, max=256))
     field_type = fields.String(required=True, validate=validate.OneOf(["text", "date", "stage", "checkbox"]))
+    document_stage_key = fields.String(allow_none=True, validate=validate.Length(max=64))
 
 
 class ColumnUpdateSchema(Schema):
@@ -25,6 +27,7 @@ class ColumnUpdateSchema(Schema):
     title = fields.String(validate=validate.Length(min=1, max=256))
     field_type = fields.String(validate=validate.OneOf(["text", "date", "stage", "checkbox"]))
     is_archived = fields.Boolean(truthy={True}, falsy={False})
+    document_stage_key = fields.String(allow_none=True, validate=validate.Length(max=64))
 
 
 class CellSchema(Schema):
@@ -46,7 +49,8 @@ class PlanSchema(Schema):
 
 class PlanUpdateSchema(Schema):
     version = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
-    curator_name = fields.String(required=True, allow_none=True, validate=validate.Length(max=256))
+    curator_name = fields.String(allow_none=True, validate=validate.Length(max=256))
+    curator_employment_id = fields.Integer(allow_none=True, strict=True, validate=validate.Range(min=1))
 
 
 class OrderItemSchema(Schema):
@@ -65,7 +69,7 @@ def lock_company(company_id):
 
 def column_dict(column):
     return {key: getattr(column, key) for key in (
-        "id", "title", "field_type", "sort_order", "is_archived", "version"
+        "id", "title", "field_type", "sort_order", "is_archived", "version", "document_stage_key"
     )}
 
 
@@ -82,10 +86,12 @@ def cell_dict(cell):
 def onboarding_plan_query(company_id):
     """Return the company-scoped plan query with all display data preloaded."""
     return (
-        OnboardingPlan.query.join(Employment)
+        OnboardingPlan.query.join(Employment, OnboardingPlan.employment_id == Employment.id)
         .filter(Employment.company_id == company_id)
         .options(
             selectinload(OnboardingPlan.cells),
+            selectinload(OnboardingPlan.curator).selectinload(Employment.person).selectinload(Person.name_history),
+            selectinload(OnboardingPlan.curator).selectinload(Employment.grade_history).selectinload(EmployeeGradeHistory.grade),
             selectinload(OnboardingPlan.employment)
             .selectinload(Employment.person)
             .selectinload(Person.name_history),
@@ -110,10 +116,46 @@ def names_match(left, right):
     return bool(folded_left) and folded_left == folded_right
 
 
+def employment_name(employment):
+    names = [n for n in employment.person.name_history if n.valid_to is None]
+    name = max(names, key=lambda n: (n.valid_from, n.id)) if names else None
+    return name.full_name if name else None
+
+
+def can_edit_plan_cells(plan):
+    from flask_login import current_user
+    from app.models import RoleName
+    if not current_user or not current_user.is_authenticated:
+        return False
+    if current_user.company_id != plan.employment.company_id:
+        return False
+    if current_user.has_role(RoleName.ADMIN) or current_user.has_role(RoleName.HR):
+        return True
+    return names_match(current_user.full_name, current_plan_name(plan)) or (
+        plan.curator is not None and plan.curator.company_id == plan.employment.company_id
+        and plan.curator.is_active and names_match(current_user.full_name, employment_name(plan.curator))
+    )
+
+
+def validate_document_mapping(company_id, payload, column=None):
+    key = payload.get("document_stage_key", column.document_stage_key if column else None)
+    kind = payload.get("field_type", column.field_type if column else None)
+    if key is None:
+        return
+    if key not in document_stages() or kind != "stage":
+        raise ValueError("Выберите этап документа для поля типа «Этап с датами»")
+    duplicate = OnboardingColumn.query.filter_by(company_id=company_id, document_stage_key=key)
+    if column:
+        duplicate = duplicate.filter(OnboardingColumn.id != column.id)
+    if duplicate.first():
+        raise ValueError("Этап документа уже связан с другим полем (в том числе архивным)")
+
+
 def plan_dict(plan):
     employment = plan.employment
     grades = [item for item in employment.grade_history if item.valid_to is None]
     grade = max(grades, key=lambda item: (item.assigned_date, item.id)) if grades else None
+    curator_name = employment_name(plan.curator) if plan.curator else plan.curator_name
     return {
         "id": plan.id,
         "employment_id": employment.id,
@@ -121,7 +163,9 @@ def plan_dict(plan):
         "grade": grade.grade.name if grade else None,
         "employment_status": employment.status,
         "hire_date": employment.hire_date.isoformat(),
-        "curator_name": plan.curator_name,
+        "curator_name": curator_name,
+        "curator_employment_id": plan.curator_employment_id,
+        "can_edit_cells": can_edit_plan_cells(plan),
         "version": plan.version,
         "cells": {str(cell.column_id): cell_dict(cell) for cell in plan.cells},
     }
@@ -136,7 +180,7 @@ def find_column(column_id, company_id):
 
 def find_plan(plan_id, company_id):
     from app.models import Employment
-    plan = OnboardingPlan.query.join(Employment).filter(
+    plan = OnboardingPlan.query.join(Employment, OnboardingPlan.employment_id == Employment.id).filter(
         OnboardingPlan.id == plan_id, Employment.company_id == company_id
     ).first()
     if plan is None:
@@ -152,6 +196,7 @@ def check_version(expected, actual):
 def save_column(column, payload):
     check_version(payload.pop("version"), column.version)
     old = column_dict(column)
+    validate_document_mapping(column.company_id, payload, column)
     if "title" in payload:
         payload["title"] = payload["title"].strip()
         if not payload["title"]:
@@ -241,12 +286,29 @@ def save_cell(plan, column, payload):
 
 def save_plan(plan, payload):
     check_version(payload["version"], plan.version)
-    old = {"curator_name": plan.curator_name, "version": plan.version}
-    name = payload["curator_name"]
-    plan.curator_name = (name.strip() or None) if name is not None else None
+    old = {"curator_name": plan.curator_name, "curator_employment_id": plan.curator_employment_id, "version": plan.version}
+    if "curator_employment_id" in payload:
+        if "curator_name" in payload:
+            raise ValueError("Выберите куратора или укажите старое текстовое имя, но не оба поля")
+        curator_id = payload["curator_employment_id"]
+        curator = Employment.query.filter_by(id=curator_id, company_id=plan.employment.company_id, status="active").first() if curator_id else None
+        if curator_id and curator is None:
+            raise ValueError("Куратор должен быть действующим сотрудником вашей компании")
+        if curator_id == plan.employment_id:
+            raise ValueError("Сотрудник не может быть собственным куратором")
+        plan.curator = curator
+        plan.curator_name = employment_name(curator) if curator else None
+    elif "curator_name" in payload:
+        # Compatibility with existing clients: a free-text name never grants access.
+        name = payload["curator_name"]
+        plan.curator = None
+        plan.curator_name = (name.strip() or None) if name is not None else None
+    else:
+        raise ValueError("Выберите куратора")
     db.session.flush()
     log_audit("update", "onboarding_plan", plan.id, old,
-              {"curator_name": plan.curator_name, "version": plan.version})
+              {"curator_name": plan.curator_name, "curator_employment_id": plan.curator_employment_id, "version": plan.version})
+
 
 
 class DeleteSchema(Schema):

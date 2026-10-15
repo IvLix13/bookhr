@@ -283,6 +283,9 @@ def delete_employment(employment: Employment, onboarding_delete=None) -> None:
     elif onboarding_delete is not None:
         from werkzeug.exceptions import Conflict
         raise Conflict("План уже удалён. Обновите список сотрудников.")
+    from app.services.onboarding import save_plan
+    for mentee in OnboardingPlan.query.filter_by(curator_employment_id=employment.id).all():
+        save_plan(mentee, {"version": mentee.version, "curator_employment_id": None})
     employment_id = employment.id
     person = employment.person
     person_id = person.id

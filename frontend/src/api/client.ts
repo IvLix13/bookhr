@@ -111,10 +111,11 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export const api = {
+  onboardingDocumentStages: () => request<Array<{ key: string; title: string }>>('/api/onboarding/document-stages'),
   onboardingColumns: () => request<OnboardingColumn[]>('/api/onboarding/columns'),
-  createOnboardingColumn: (body: { title: string; field_type: OnboardingFieldType }) =>
+  createOnboardingColumn: (body: { title: string; field_type: OnboardingFieldType; document_stage_key?: string | null }) =>
     request<OnboardingColumn>('/api/onboarding/columns', { method: 'POST', body: JSON.stringify(body) }),
-  updateOnboardingColumn: (id: number, body: { version: number; title?: string; field_type?: OnboardingFieldType; is_archived?: boolean }) =>
+  updateOnboardingColumn: (id: number, body: { version: number; title?: string; field_type?: OnboardingFieldType; is_archived?: boolean; document_stage_key?: string | null }) =>
     request<OnboardingColumn>(`/api/onboarding/columns/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   orderOnboardingColumns: (columns: Array<{ id: number; version: number }>) =>
     request<OnboardingColumn[]>('/api/onboarding/columns/order', { method: 'PATCH', body: JSON.stringify({ columns }) }),
@@ -135,6 +136,16 @@ export const api = {
     }
     triggerDownload(await response.blob(), 'onboarding_plan.xlsx')
   },
+  downloadOnboardingDocx: async (id: number) => {
+    const response = await fetch(`/api/onboarding/plans/${id}/export-docx`, { credentials: 'include' })
+    if (response.status === 401) unauthorizedHandler?.()
+    if (!response.ok) {
+      let message = 'Не удалось выгрузить план'
+      try { message = (await parseJsonResponse<unknown>(response)).message || message } catch { /* retain fallback */ }
+      throw new ApiError(message, response.status)
+    }
+    triggerDownload(await response.blob(), `onboarding_plan_${id}.docx`)
+  },
   onboardingPlan: (id: number) => request<OnboardingPlan>(`/api/onboarding/plans/${id}`),
   onboardingDeletePreview: (kind: 'plans' | 'columns', id: number) =>
     request<OnboardingDeletePreview>(`/api/onboarding/${kind}/${id}/delete-preview`),
@@ -144,7 +155,7 @@ export const api = {
     request(`/api/employees/${id}`, { method: 'DELETE', body: JSON.stringify({ delete_onboarding_plan: true, version: preview.version, snapshot: preview.snapshot }) }),
   createOnboardingPlan: (employment_id: number) =>
     request<OnboardingPlan>('/api/onboarding/plans', { method: 'POST', body: JSON.stringify({ employment_id }) }),
-  updateOnboardingPlan: (planId: number, body: { version: number; curator_name: string | null }) =>
+  updateOnboardingPlan: (planId: number, body: { version: number; curator_name?: string | null; curator_employment_id?: number | null }) =>
     request<OnboardingPlan>(`/api/onboarding/plans/${planId}`, { method: 'PATCH', body: JSON.stringify(body) }),
   updateOnboardingCell: (planId: number, columnId: number, body: Partial<OnboardingCell> & { version: number; column_version: number; clear?: boolean }) =>
     request<OnboardingCell>(`/api/onboarding/plans/${planId}/cells/${columnId}`, { method: 'PATCH', body: JSON.stringify(body) }),

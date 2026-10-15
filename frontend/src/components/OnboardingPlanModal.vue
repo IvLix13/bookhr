@@ -26,7 +26,17 @@ const deletion = ref<'plan' | 'employee' | null>(null)
 const editing = ref<{ column: OnboardingColumn; cell?: OnboardingCell } | null>(null)
 const today = computed(() => props.today ?? moscowToday())
 const summary = computed(() => plan.value ? planSummary(plan.value, props.columns, today.value) : null)
-const editable = computed(() => auth.canEdit() || (auth.user?.role === 'viewer' && !!auth.user.full_name?.trim() && auth.user.full_name.trim().toLocaleLowerCase('ru') === plan.value?.full_name?.trim().toLocaleLowerCase('ru')))
+const editable = computed(() => plan.value?.can_edit_cells ?? (auth.canEdit() || (auth.user?.role === 'viewer' && !!auth.user.full_name?.trim() && auth.user.full_name.trim().toLocaleLowerCase('ru') === plan.value?.full_name?.trim().toLocaleLowerCase('ru'))))
+const exporting = ref(false)
+const exportError = ref('')
+async function exportPlan() {
+  if (!plan.value || exporting.value || state.value.dirty || state.value.busy || editing.value) return
+  exporting.value = true
+  exportError.value = ''
+  try { await api.downloadOnboardingDocx(plan.value.id) }
+  catch (err) { exportError.value = normalizeError(err) }
+  finally { exporting.value = false }
+}
 let requestId = 0
 async function load() {
   const id = ++requestId
@@ -73,7 +83,8 @@ onMounted(load)
           <button class="btn danger" :disabled="state.busy || state.dirty || loading || !!error" @click="deletion = 'employee'">Удалить сотрудника и план</button>
         </div>
       </template>
-      <footer><button class="btn secondary" :disabled="state.busy" @click="close">Закрыть</button></footer>
+      <p v-if="exportError" role="alert" class="error">{{ exportError }}</p>
+      <footer><button v-if="plan" class="btn" :disabled="exporting || loading || !!error || state.busy || state.dirty || !!editing" @click="exportPlan">{{ exporting ? 'Выгрузка…' : 'Выгрузить план' }}</button><button class="btn secondary" :disabled="state.busy" @click="close">Закрыть</button></footer>
     </div>
     <OnboardingCellEditor v-if="editing && plan" :plan-id="plan.id" :employee-name="plan.full_name || 'Сотрудник'" v-bind="editing" @close="editing = null" @saved="saved" @conflict="changed" />
     <OnboardingDeleteDialog v-if="deletion && plan" kind="plans" :id="plan.id" :employment-id="deletion === 'employee' ? plan.employment_id : undefined" :title="deletion === 'employee' ? 'Удалить сотрудника и план' : 'Удалить план'" @close="deletion = null" @deleted="emit('deleted')" @conflict="changed" />
