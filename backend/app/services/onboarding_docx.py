@@ -46,8 +46,6 @@ def build_onboarding_document(plan):
     for column in columns:
         cell = next((cell for cell in plan.cells if cell.column_id == column.id), None)
         parts = [_run(column.title)]
-        if column.responsible_department:
-            parts.append(_run(" (отв " + column.responsible_department + ")", italic=True))
         if column.field_type == "stage":
             planned = cell.planned_date.strftime("%d.%m.%Y") if cell and cell.planned_date and not cell.is_not_required else "—"
             parts.append(_run(": " + planned))
@@ -55,6 +53,8 @@ def build_onboarding_document(plan):
             parts.append(_run(": " + cell.date_value.strftime("%d.%m.%Y") if cell and cell.date_value else ": —"))
         elif column.field_type == "text":
             parts.append(_run(": " + (cell.text_value if cell and cell.text_value else "—")))
+        if column.responsible_department:
+            parts.append(_run(" (отв " + column.responsible_department + ")", italic=True))
         paragraphs.append(_paragraph(*parts))
     body = "".join(paragraphs)
     document = ('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
