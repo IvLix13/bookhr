@@ -88,7 +88,14 @@ def _replace_xml(xml, variables, departments=None):
         placeholders = list(PLACEHOLDER.finditer(joined))
         if not placeholders:
             return fragment
-        stage_key = next((key for key, source in document_variables().items() if source == f"stages.{stage}.planned_date" and any(p.group(1) == key for p in placeholders)) for stage in (departments or {}), None) if departments else None
+        stage_key = None
+        for stage in (departments or {}):
+            for variable, source in document_variables().items():
+                if source == f"stages.{stage}.planned_date" and any(p.group(1) == variable for p in placeholders):
+                    stage_key = stage
+                    break
+            if stage_key:
+                break
         for placeholder in reversed(placeholders):
             key = placeholder.group(1)
             if key not in variables:
