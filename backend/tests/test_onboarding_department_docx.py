@@ -44,6 +44,8 @@ def test_docx_department_is_italic_and_planned_date_kept(hr_client, seed_company
     assert text(runs[-1]) == " (отв 3 отдел)"
     assert runs[0].find(W + "rPr") is None
     assert runs[-1].find(W + "rPr/" + W + "i") is not None
+    assert runs[-1].find(W + "rPr/" + W + "sz").get(W + "val") == "24"
+    assert runs[-1].find(W + "rPr/" + W + "rFonts").get(W + "ascii") == "Times New Roman"
     assert "21.11.2026" in "".join(text(run) for run in runs)
 
 
@@ -86,7 +88,6 @@ def test_word_template_department_placeholder_controls_position_and_typography()
     """The department can live independently of the date, with only its text restyled."""
     from app.services.onboarding_docx import _replace_xml
     from app.services.onboarding_document_catalog import document_variables
-    from html import escape as escape_html
 
     variables = {key: "—" for key in document_variables()}
     variables["nda_planned_date"] = "21.11.2026"
