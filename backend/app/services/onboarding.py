@@ -28,6 +28,7 @@ class ColumnUpdateSchema(Schema):
     title = fields.String(validate=validate.Length(min=1, max=256))
     field_type = fields.String(validate=validate.OneOf(["text", "date", "stage", "checkbox"]))
     responsible_department = fields.String(allow_none=True, validate=validate.Length(max=256))
+    document_stage_key = fields.String(allow_none=True, validate=validate.Length(max=64))
     is_archived = fields.Boolean(truthy={True}, falsy={False})
 
 
