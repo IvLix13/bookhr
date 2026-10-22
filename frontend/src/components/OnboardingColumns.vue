@@ -29,7 +29,7 @@ const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: dr
 watch([dirty, deleteBusy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
 function edit(column?: OnboardingColumn) {
   Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage', responsible_department: column?.responsible_department ?? '' })
-  initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type })
+  initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department })
   error.value = ''
   stale.value = false
 }
