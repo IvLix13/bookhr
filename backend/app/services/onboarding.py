@@ -13,12 +13,14 @@ from app.extensions import db
 from app.models import Company, EmployeeGradeHistory, Employment, Person
 from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
+from app.services.onboarding_document_catalog import document_stages
 
 
 class ColumnSchema(Schema):
     title = fields.String(required=True, validate=validate.Length(min=1, max=256))
     field_type = fields.String(required=True, validate=validate.OneOf(["text", "date", "stage", "checkbox"]))
     responsible_department = fields.String(allow_none=True, validate=validate.Length(max=256))
+    document_stage_key = fields.String(allow_none=True, validate=validate.Length(max=64))
 
 
 class ColumnUpdateSchema(Schema):
@@ -67,7 +69,7 @@ def lock_company(company_id):
 
 def column_dict(column):
     return {key: getattr(column, key) for key in (
-        "id", "title", "field_type", "responsible_department", "sort_order", "is_archived", "version"
+        "id", "title", "field_type", "responsible_department", "document_stage_key", "sort_order", "is_archived", "version"
     )}
 
 
@@ -151,6 +153,21 @@ def check_version(expected, actual):
         raise Conflict("Данные изменены другим пользователем. Обновите таблицу перед повторным сохранением.")
 
 
+def validate_document_mapping(company_id, payload, exclude_id=None):
+    key = payload.get("document_stage_key")
+    if not key:
+        payload["document_stage_key"] = None
+        return
+    if key not in document_stages():
+        raise ValueError("Неизвестный этап документа")
+    if payload.get("field_type") not in (None, "stage"):
+        raise ValueError("Сопоставление доступно только для этапов с датами")
+    query = OnboardingColumn.query.filter_by(company_id=company_id, document_stage_key=key)
+    if exclude_id is not None:
+        query = query.filter(OnboardingColumn.id != exclude_id)
+    if query.first():
+        raise ValueError("Этот этап документа уже сопоставлен")
+
 def save_column(column, payload):
     check_version(payload.pop("version"), column.version)
     old = column_dict(column)
@@ -169,6 +186,8 @@ def save_column(column, payload):
             raise ValueError("Нельзя изменить тип заполненного столбца")
     if "responsible_department" in payload:
         payload["responsible_department"] = (payload["responsible_department"] or "").strip() or None
+    if "document_stage_key" in payload:
+        validate_document_mapping(column.company_id, payload, column.id)
     for key, value in payload.items():
         setattr(column, key, value)
     db.session.flush()
