@@ -22,6 +22,7 @@ async function loadDocumentStages() {
   catch (err) { stagesError.value = normalizeError(err) }
 }
 onMounted(loadDocumentStages)
+watch(() => draft.field_type, value => { if (value !== "stage") draft.document_stage_key = "" })
 const props = defineProps<{ columns: OnboardingColumn[] }>()
 const emit = defineEmits<{ changed: []; state: [value: { dirty: boolean; busy: boolean }] }>()
 const draft = reactive({ id: 0, version: 0, title: '', field_type: 'stage' as OnboardingFieldType, responsible_department: '', document_stage_key: '' })
@@ -36,7 +37,7 @@ const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: dr
 watch([dirty, deleteBusy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
 function edit(column?: OnboardingColumn) {
   Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage', responsible_department: column?.responsible_department ?? '', document_stage_key: column?.document_stage_key ?? '' })
-  initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department })
+  initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department, document_stage_key: draft.document_stage_key })
   error.value = ''
   stale.value = false
 }
