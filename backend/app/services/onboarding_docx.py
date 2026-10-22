@@ -170,17 +170,6 @@ def _replace_xml(xml, variables, departments=None, explicit_department_stages=fr
         if not placeholders:
             return fragment
 
-        # Old DOCX templates without a department variable keep automatic
-        # suffixes after the date. A document containing the new variable
-        # gets only the explicitly positioned department.
-        fallback_stage = None
-        for stage in (departments or {}):
-            if stage in explicit_department_stages:
-                continue
-            if any(sources.get(p.group(1)) == f"stages.{stage}.planned_date" for p in placeholders):
-                fallback_stage = stage
-                break
-
         markers = []
         for i, placeholder in reversed(list(enumerate(placeholders))):
             key = placeholder.group(1)
@@ -214,11 +203,6 @@ def _replace_xml(xml, variables, departments=None, explicit_department_stages=fr
         for marker, value in markers:
             fragment = _style_department_marker(fragment, marker, value, prefix)
 
-        if fallback_stage:
-            department = departments[fallback_stage]
-            suffix = " (отв " + department + ")"
-            closing = f"</{prefix + ':' if prefix else ''}p>"
-            fragment = fragment.rsplit(closing, 1)[0] + _department_run(suffix, prefix) + closing
         return fragment
 
     return paragraph.sub(replace_paragraph, text).encode("utf-8")
