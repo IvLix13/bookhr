@@ -55,3 +55,28 @@ def test_docx_old_column_without_department(hr_client, seed_company):
         xml = archive.read("word/document.xml").decode()
     assert "NDA" in xml
     assert "(отв" not in xml
+
+
+def test_custom_word_template_keeps_variables_and_italic_department(hr_client, seed_company, tmp_path):
+    from app.services.onboarding_docx import _default_template
+    plan, column = setup_plan(hr_client, seed_company.id)
+    data(patch_cell(hr_client, plan, column, planned_date="2026-11-21"))
+    data(hr_client.patch(f'/api/onboarding/columns/{column["id"]}', json={
+        "version": column["version"], "responsible_department": "3 отдел", "document_stage_key": "nda",
+    }))
+    custom = tmp_path / "onboarding.docx"
+    custom.write_bytes(_default_template().getvalue())
+    hr_client.application.config["ONBOARDING_DOCX_TEMPLATE"] = str(custom)
+    try:
+        response = hr_client.get(f'/api/onboarding/plans/{plan["id"]}/docx')
+        assert response.status_code == 200
+        with ZipFile(BytesIO(response.data)) as archive:
+            root = ET.fromstring(archive.read("word/document.xml"))
+        target = next(p for p in root.findall(".//" + W + "p")
+                      if "NDA" in "".join(t.text or "" for t in p.findall(".//" + W + "t")))
+        runs = target.findall(W + "r")
+        assert "21.11.2026" in "".join(t.text or "" for t in target.findall(".//" + W + "t"))
+        assert "".join(t.text or "" for t in runs[-1].findall(W + "t")) == " (отв 3 отдел)"
+        assert runs[-1].find(W + "rPr/" + W + "i") is not None
+    finally:
+        hr_client.application.config["ONBOARDING_DOCX_TEMPLATE"] = ""
