@@ -29,7 +29,7 @@ def test_docx_department_is_italic_and_planned_date_kept(hr_client, seed_company
     plan, column = setup_plan(hr_client, seed_company.id)
     data(patch_cell(hr_client, plan, column, planned_date="2026-11-21"))
     column = data(hr_client.patch(f'/api/onboarding/columns/{column["id"]}', json={
-        "version": column["version"], "responsible_department": "3 отдел",
+        "version": column["version"], "responsible_department": "3 отдел", "document_stage_key": "nda",
     }))
     response = hr_client.get(f'/api/onboarding/plans/{plan["id"]}/docx')
     assert response.status_code == 200
