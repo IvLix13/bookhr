@@ -222,6 +222,7 @@ def test_reward_statistics_counts_statuses_for_current_company(hr_client, seed_c
 def test_reward_statistics_requires_login(client):
     assert client.get("/api/rewards/statistics").status_code == 401
     assert client.get("/api/rewards/statistics/export").status_code == 401
+    assert client.get("/api/rewards/export").status_code == 401
 
 
 def test_reward_statistics_export_for_hr(hr_client, seed_company):
@@ -243,3 +244,115 @@ def test_reward_statistics_export_for_hr(hr_client, seed_company):
     assert [sheet.cell(1, 1).value, sheet.cell(1, 2).value] == ["Состояние", "Количество"]
     assert [sheet.cell(3, 1).value, sheet.cell(3, 2).value] == ["В кадрах", 1]
     assert [sheet.cell(8, 1).value, sheet.cell(8, 2).value] == ["Всего", 1]
+
+
+def test_rewards_personalized_export_for_hr_filters_status_and_company(hr_client, seed_company):
+    employment = _create_employment(seed_company.id)
+    with hr_client.application.app_context():
+        other = Company(name="Другая компания")
+        db.session.add(other)
+        db.session.commit()
+        other_employment = _create_employment(other.id)
+        db.session.add_all(
+            [
+                Reward(
+                    employment_id=employment.id,
+                    reward_type="Благодарность",
+                    status=RewardStatus.NOT_DELIVERED.value,
+                    status_changed_date=date(2026, 10, 1),
+                    directive_text="Приказ №1",
+                    notes="Ожидает",
+                ),
+                Reward(
+                    employment_id=employment.id,
+                    reward_type="Грамота",
+                    status=RewardStatus.DELIVERED.value,
+                    status_changed_date=date(2026, 10, 2),
+                    delivered_date=date(2026, 10, 3),
+                    notes="Вручено лично",
+                ),
+                Reward(
+                    employment_id=other_employment.id,
+                    reward_type="Чужая запись",
+                    status=RewardStatus.DELIVERED.value,
+                ),
+            ]
+        )
+        db.session.commit()
+
+    response = hr_client.get("/api/rewards/export?status=delivered")
+    assert response.status_code == 200
+    assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "rewards_personalized.xlsx" in response.headers["Content-Disposition"]
+
+    sheet = load_workbook(BytesIO(response.data)).active
+    assert sheet.title == "Пофамильные поощрения"
+    assert [cell.value for cell in sheet[1]] == [
+        "ФИО",
+        "Вид поощрения",
+        "Состояние",
+        "Дата изменения",
+        "Указание на вручение",
+        "Дата вручения",
+        "Примечание",
+    ]
+    assert sheet.max_row == 2
+    assert [sheet.cell(2, column).value for column in range(1, 8)] == [
+        "Иван Иванов",
+        "Грамота",
+        "Вручено",
+        "02.10.2026",
+        None,
+        "03.10.2026",
+        "Вручено лично",
+    ]
+
+
+def test_rewards_personalized_export_without_status_exports_all_company_rows(hr_client, seed_company):
+    employment = _create_employment(seed_company.id)
+    db.session.add_all(
+        [
+            Reward(
+                employment_id=employment.id,
+                reward_type="Благодарность",
+                status=RewardStatus.NOT_DELIVERED.value,
+            ),
+            Reward(
+                employment_id=employment.id,
+                reward_type="Грамота",
+                status=RewardStatus.IN_HR.value,
+            ),
+        ]
+    )
+    db.session.commit()
+
+    response = hr_client.get("/api/rewards/export")
+    assert response.status_code == 200
+    sheet = load_workbook(BytesIO(response.data)).active
+    assert sheet.max_row == 3
+    assert {sheet.cell(2, 3).value, sheet.cell(3, 3).value} == {"Не вручено", "В кадрах"}
+    assert sheet.freeze_panes == "A2"
+    assert sheet.auto_filter.ref == sheet.dimensions
+
+
+def test_rewards_personalized_export_for_admin(admin_client, seed_company):
+    employment = _create_employment(seed_company.id)
+    db.session.add(
+        Reward(
+            employment_id=employment.id,
+            reward_type="Премия",
+            status=RewardStatus.EXTRA_1.value,
+        )
+    )
+    db.session.commit()
+
+    assert admin_client.get("/api/rewards/export?status=extra_1").status_code == 200
+
+
+def test_rewards_personalized_export_rejects_invalid_status(hr_client):
+    response = hr_client.get("/api/rewards/export?status=unknown")
+    assert response.status_code == 400
+
+
+def test_rewards_personalized_export_viewer_forbidden(viewer_client):
+    assert viewer_client.get("/api/rewards/export").status_code == 403

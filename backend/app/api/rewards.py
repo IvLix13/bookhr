@@ -19,8 +19,14 @@ from app.api.helpers import (
 from app.api.schemas import CreateRewardSchema
 from app.api.serializers import reward_to_dict
 from app.extensions import db
-from app.models import Employment, PersonNameHistory, Reward, RoleName
-from app.services.rewards import build_reward_statistics_workbook, create_reward, reward_status_statistics, update_reward
+from app.models import Employment, PersonNameHistory, Reward, RewardStatus, RoleName
+from app.services.rewards import (
+    build_reward_statistics_workbook,
+    build_rewards_personalized_workbook,
+    create_reward,
+    reward_status_statistics,
+    update_reward,
+)
 from app.tenant import get_request_company_id
 
 
@@ -80,6 +86,26 @@ def register_routes(bp):
             mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             as_attachment=True,
             download_name="rewards_statistics.xlsx",
+        )
+
+    @bp.get("/rewards/export")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def rewards_personalized_export():
+        status = request.args.get("status", type=str)
+        if status:
+            try:
+                RewardStatus(status)
+            except ValueError:
+                return api_response(message="Invalid reward status", status=400)
+
+        return send_file(
+            build_rewards_personalized_workbook(
+                get_request_company_id(),
+                status=status,
+            ),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name="rewards_personalized.xlsx",
         )
 
     @bp.post("/rewards")

@@ -6,12 +6,13 @@ from datetime import date
 from io import BytesIO
 
 from openpyxl import Workbook
-from openpyxl.styles import Font
+from openpyxl.styles import Alignment, Font
 
 from app.extensions import db
 from app.models import Employment, Reward, RewardStatus
 from app.models.reward import REWARD_STATUS_LABELS
 from app.services.audit import log_audit
+from app.services.employees import get_current_name
 from app.utils.dates import today_moscow
 
 
@@ -199,6 +200,76 @@ def build_reward_statistics_workbook(company_id: int) -> BytesIO:
     sheet.cell(row=sheet.max_row, column=1).font = Font(bold=True)
     sheet.column_dimensions["A"].width = 24
     sheet.column_dimensions["B"].width = 16
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
+
+def build_rewards_personalized_workbook(
+    company_id: int,
+    status: str | None = None,
+) -> BytesIO:
+    """Build a row-per-reward Excel snapshot for the current company."""
+    query = (
+        Reward.query.join(Employment, Reward.employment_id == Employment.id)
+        .filter(Employment.company_id == company_id)
+        .order_by(Reward.updated_at.desc(), Reward.id.desc())
+    )
+    if status:
+        query = query.filter(Reward.status == status)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Пофамильные поощрения"
+    headers = [
+        "ФИО",
+        "Вид поощрения",
+        "Состояние",
+        "Дата изменения",
+        "Указание на вручение",
+        "Дата вручения",
+        "Примечание",
+    ]
+    sheet.append(headers)
+
+    for reward in query.all():
+        sheet.append(
+            [
+                get_current_name(reward.employment.person) or "",
+                reward.reward_type,
+                REWARD_STATUS_LABELS.get(reward.status, reward.status or ""),
+                reward.status_changed_date.strftime("%d.%m.%Y")
+                if reward.status_changed_date
+                else "",
+                reward.directive_text or "",
+                reward.delivered_date.strftime("%d.%m.%Y") if reward.delivered_date else "",
+                reward.notes or "",
+            ]
+        )
+
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(vertical="top")
+
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
+    widths = {
+        "A": 32,
+        "B": 28,
+        "C": 20,
+        "D": 18,
+        "E": 36,
+        "F": 18,
+        "G": 36,
+    }
+    for column, width in widths.items():
+        sheet.column_dimensions[column].width = width
+
+    for row in sheet.iter_rows(min_row=2):
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
     output = BytesIO()
     workbook.save(output)
     output.seek(0)

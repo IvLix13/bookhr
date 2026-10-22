@@ -250,6 +250,23 @@ export const api = {
     }
     triggerDownload(await response.blob(), 'rewards_statistics.xlsx')
   },
+  downloadRewardsPersonalized: async (status?: string) => {
+    const response = await fetch(`/api/rewards/export${buildQuery({ status })}`, {
+      credentials: 'include',
+    })
+    if (response.status === 401) unauthorizedHandler?.()
+    if (!response.ok) {
+      let message = 'Не удалось скачать пофамильную выгрузку поощрений'
+      try {
+        const payload = await parseJsonResponse<unknown>(response)
+        message = localizeApiMessage(payload.message) ?? message
+      } catch {
+        // Keep the local message for a non-JSON error response.
+      }
+      throw new ApiError(message, response.status)
+    }
+    triggerDownload(await response.blob(), 'rewards_personalized.xlsx')
+  },
   createReward: (body: Record<string, unknown>) =>
     request('/api/rewards', { method: 'POST', body: JSON.stringify(body) }),
   updateReward: (id: number, body: Record<string, unknown>) =>

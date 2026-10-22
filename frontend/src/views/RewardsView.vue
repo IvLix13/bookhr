@@ -12,6 +12,7 @@ import type { Paginated, RewardRow, RewardStatistics, TableQueryState } from '@/
 import { formatShortDate } from '@/utils/dates'
 import { MODULE_LABELS } from '@/utils/labels'
 import { getRewardStatusMeta } from '@/utils/statuses'
+import type { RewardStatus } from '@/utils/statuses'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -23,6 +24,19 @@ const statisticsLoading = ref(false)
 const statisticsError = ref('')
 const exporting = ref(false)
 const exportError = ref('')
+const personalizedExportOpen = ref(false)
+const personalizedStatus = ref<RewardStatus | ''>('')
+const personalizedExporting = ref(false)
+const personalizedExportError = ref('')
+
+const rewardStatuses: RewardStatus[] = [
+  'not_delivered',
+  'in_hr',
+  'delivered',
+  'extra_1',
+  'extra_2',
+  'extra_3',
+]
 
 const table = useServerTable<RewardRow>({
   tableId: 'rewards',
@@ -75,6 +89,10 @@ function onQueryUpdate(patch: Partial<TableQueryState>) {
 
 function onKeydown(event: KeyboardEvent) {
   if (event.key !== 'Escape') return
+  if (personalizedExportOpen.value) {
+    closePersonalizedExport()
+    return
+  }
   if (statisticsOpen.value) {
     closeStatistics()
     return
@@ -124,7 +142,7 @@ async function openStatistics() {
 }
 
 function closeStatistics() {
-  if (exporting.value) return
+  if (exporting.value || personalizedExportOpen.value) return
   statisticsOpen.value = false
 }
 
@@ -138,6 +156,31 @@ async function downloadStatistics() {
     exportError.value = normalizeError(err)
   } finally {
     exporting.value = false
+  }
+}
+
+function openPersonalizedExport() {
+  personalizedStatus.value = ''
+  personalizedExportError.value = ''
+  personalizedExportOpen.value = true
+}
+
+function closePersonalizedExport() {
+  if (personalizedExporting.value) return
+  personalizedExportOpen.value = false
+  personalizedExportError.value = ''
+}
+
+async function downloadPersonalizedExport() {
+  if (personalizedExporting.value) return
+  personalizedExporting.value = true
+  personalizedExportError.value = ''
+  try {
+    await api.downloadRewardsPersonalized(personalizedStatus.value || undefined)
+  } catch (err) {
+    personalizedExportError.value = normalizeError(err)
+  } finally {
+    personalizedExporting.value = false
   }
 }
 </script>
@@ -213,7 +256,7 @@ async function downloadStatistics() {
         <section class="card modal" role="dialog" aria-modal="true" aria-labelledby="reward-stats-title">
           <header class="modal-header">
             <h3 id="reward-stats-title">Статистика поощрений</h3>
-            <button class="btn ghost" type="button" aria-label="Закрыть статистику" :disabled="exporting" @click="closeStatistics">×</button>
+            <button class="btn ghost" type="button" aria-label="Закрыть статистику" :disabled="exporting || personalizedExportOpen" @click="closeStatistics">×</button>
           </header>
           <p class="stats-note">Количество поощрений по состояниям по всей компании.</p>
           <p v-if="statisticsLoading" role="status">Загрузка…</p>
@@ -235,11 +278,42 @@ async function downloadStatistics() {
             </table>
             <p v-if="exportError" role="alert" class="error">{{ exportError }}</p>
             <div class="stats-actions">
+              <button class="btn secondary" type="button" :disabled="exporting" @click="openPersonalizedExport">Выгрузить пофамильно</button>
               <button class="btn" type="button" :disabled="exporting" @click="downloadStatistics">{{ exporting ? 'Скачивание…' : 'Скачать Excel' }}</button>
             </div>
           </template>
         </section>
       </div>
+
+      <div
+        v-if="personalizedExportOpen"
+        class="overlay overlay-top"
+        @click.self="closePersonalizedExport"
+      >
+        <section class="card modal export-modal" role="dialog" aria-modal="true" aria-labelledby="personalized-export-title">
+          <header class="modal-header">
+            <h3 id="personalized-export-title">Пофамильная выгрузка</h3>
+            <button class="btn ghost" type="button" aria-label="Закрыть пофамильную выгрузку" :disabled="personalizedExporting" @click="closePersonalizedExport">×</button>
+          </header>
+          <label class="export-field">
+            <span>Состояние</span>
+            <select v-model="personalizedStatus" :disabled="personalizedExporting">
+              <option value="">Все состояния</option>
+              <option v-for="status in rewardStatuses" :key="status" :value="status">
+                {{ getRewardStatusMeta(status).label }}
+              </option>
+            </select>
+          </label>
+          <p v-if="personalizedExportError" role="alert" class="error">{{ personalizedExportError }}</p>
+          <div class="stats-actions">
+            <button class="btn secondary" type="button" :disabled="personalizedExporting" @click="closePersonalizedExport">Отмена</button>
+            <button class="btn" type="button" :disabled="personalizedExporting" @click="downloadPersonalizedExport">
+              {{ personalizedExporting ? 'Скачивание…' : 'Скачать Excel' }}
+            </button>
+          </div>
+        </section>
+      </div>
+
       <div
         v-if="modalOpen"
         class="overlay"
@@ -318,7 +392,22 @@ async function downloadStatistics() {
 .stats-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 0.5rem;
   margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.export-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.export-field span {
+  font-weight: 600;
+}
+
+.export-field select {
+  width: 100%;
 }
 
 .error {
@@ -335,11 +424,19 @@ async function downloadStatistics() {
   z-index: 1000;
 }
 
+.overlay-top {
+  z-index: 1010;
+}
+
 .modal {
   width: min(560px, 100%);
   max-height: calc(100vh - 2rem);
   overflow: auto;
   padding: 1rem;
+}
+
+.export-modal {
+  width: min(440px, 100%);
 }
 
 .modal-header {
