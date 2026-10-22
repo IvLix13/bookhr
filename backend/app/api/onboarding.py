@@ -18,10 +18,11 @@ from app.services.onboarding import (
     DeleteSchema, delete_plan, delete_column, plan_delete_preview, column_delete_preview, newest_plans,
     CellSchema, ColumnSchema, ColumnUpdateSchema, OrderSchema, PlanSchema, PlanUpdateSchema,
     cell_dict, check_version, column_dict, current_plan_name, find_column, find_plan,
-    lock_company, names_match, onboarding_plan_query, plan_dict, save_cell, save_column, save_plan,
+    lock_company, names_match, onboarding_plan_query, plan_dict, save_cell, save_column, save_plan, validate_document_mapping,
 )
 from app.services.onboarding_export import build_onboarding_workbook
 from app.services.onboarding_docx import build_onboarding_document
+from app.services.onboarding_document_catalog import document_stages
 from app.tenant import get_request_company_id
 
 
@@ -43,6 +44,11 @@ def transaction(fn):
 
 
 def register_routes(bp):
+    @bp.get("/onboarding/document-stages")
+    @login_required
+    def onboarding_document_stages():
+        return api_response([{"key": key, "title": title} for key, title in document_stages().items()])
+
     @bp.get("/onboarding/columns")
     @login_required
     def onboarding_columns():
@@ -59,6 +65,7 @@ def register_routes(bp):
         if not payload["title"]:
             raise ValueError("Название столбца не может быть пустым")
         company_id = get_request_company_id()
+        validate_document_mapping(company_id, payload)
         last = db.session.query(db.func.max(OnboardingColumn.sort_order)).filter_by(company_id=company_id).scalar()
         column = OnboardingColumn(company_id=company_id, sort_order=(last or 0) + 1, **payload)
         db.session.add(column)
