@@ -22,10 +22,10 @@ async function loadDocumentStages() {
   catch (err) { stagesError.value = normalizeError(err) }
 }
 onMounted(loadDocumentStages)
-watch(() => draft.field_type, value => { if (value !== "stage") draft.document_stage_key = "" })
 const props = defineProps<{ columns: OnboardingColumn[] }>()
 const emit = defineEmits<{ changed: []; state: [value: { dirty: boolean; busy: boolean }] }>()
 const draft = reactive({ id: 0, version: 0, title: '', field_type: 'stage' as OnboardingFieldType, responsible_department: '', document_stage_key: '' })
+watch(() => draft.field_type, value => { if (value !== "stage") draft.document_stage_key = "" })
 const busy = ref(false)
 const error = ref('')
 const stale = ref(false)
