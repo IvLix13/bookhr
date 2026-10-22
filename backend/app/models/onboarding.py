@@ -10,6 +10,7 @@ class OnboardingColumn(db.Model, TimestampMixin):
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, index=True)
     title = db.Column(db.String(256), nullable=False)
     field_type = db.Column(db.String(16), nullable=False)
+    responsible_department = db.Column(db.String(256), nullable=True)
     sort_order = db.Column(db.Integer, nullable=False)
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
     version = db.Column(db.Integer, nullable=False, default=1)
