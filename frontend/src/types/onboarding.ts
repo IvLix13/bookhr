@@ -4,6 +4,7 @@ export interface OnboardingColumn {
   title: string
   field_type: OnboardingFieldType
   responsible_department?: string | null
+  document_stage_key?: string | null
   sort_order: number
   is_archived: boolean
   version: number
