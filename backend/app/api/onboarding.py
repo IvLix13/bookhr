@@ -21,6 +21,7 @@ from app.services.onboarding import (
     lock_company, names_match, onboarding_plan_query, plan_dict, save_cell, save_column, save_plan,
 )
 from app.services.onboarding_export import build_onboarding_workbook
+from app.services.onboarding_docx import build_onboarding_document
 from app.tenant import get_request_company_id
 
 
@@ -113,6 +114,14 @@ def register_routes(bp):
             as_attachment=True,
             download_name="onboarding_plan.xlsx",
         )
+
+    @bp.get("/onboarding/plans/<int:plan_id>/docx")
+    @login_required
+    def onboarding_plan_docx(plan_id):
+        plan = find_plan(plan_id, get_request_company_id())
+        return send_file(build_onboarding_document(plan),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True, download_name="onboarding_plan.docx")
 
     @bp.get("/onboarding/plans/<int:plan_id>")
     @login_required
