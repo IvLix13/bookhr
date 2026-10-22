@@ -43,9 +43,12 @@ def document_context(plan):
     stages = document_stages()
     for key in stages:
         context[f"stages.{key}.planned_date"] = "—"
+        context[f"stages.{key}.department"] = ""
     columns = OnboardingColumn.query.filter_by(company_id=plan.employment.company_id, is_archived=False, field_type="stage").all()
     cells = {cell.column_id: cell for cell in plan.cells}
     for column in columns:
+        if column.document_stage_key in stages and column.responsible_department:
+            context[f"stages.{column.document_stage_key}.department"] = f"(отв {column.responsible_department})"
         cell = cells.get(column.id)
         if column.document_stage_key in stages and cell and not cell.is_not_required and cell.planned_date:
             context[f"stages.{column.document_stage_key}.planned_date"] = cell.planned_date.strftime("%d.%m.%Y")
@@ -62,9 +65,76 @@ def _department_by_stage(plan):
     return {col.document_stage_key: col.responsible_department for col in columns if col.document_stage_key and col.responsible_department}
 
 
-def _replace_xml(xml, variables, departments=None):
-    # Use raw XML text replacement after locating w:t spans. This preserves
-    # declarations used only by mc:Ignorable and all unrelated template markup.
+def _department_run(value, prefix, inherited_properties=""):
+    """Create a separate DOCX run: template run styling plus Times New Roman 12 pt italic."""
+    from xml.sax.saxutils import escape
+
+    tag = f"{prefix}:" if prefix else "w:"
+    namespace = "" if prefix else f' xmlns:w="{W}"'
+    # Keep other Word formatting (e.g. color or bold) from the placeholder.
+    properties = inherited_properties
+    for key in ("rFonts", "sz", "szCs", "i", "iCs"):
+        properties = re.sub(rf"<{tag}{key}\b[^>]*/>", "", properties)
+        properties = re.sub(rf"<{tag}{key}\b[^>]*>.*?</{tag}{key}>", "", properties, flags=re.DOTALL)
+    properties += (
+        f'<{tag}rFonts {tag}ascii="Times New Roman" {tag}hAnsi="Times New Roman" '
+        f'{tag}eastAsia="Times New Roman" {tag}cs="Times New Roman"/>'
+        f'<{tag}i/><{tag}iCs/><{tag}sz {tag}val="24"/><{tag}szCs {tag}val="24"/>'
+    )
+    return (
+        f"<{tag}r{namespace}><{tag}rPr>{properties}</{tag}rPr>"
+        f'<{tag}t xml:space="preserve">{escape(value)}</{tag}t></{tag}r>'
+    )
+
+
+def _style_department_marker(fragment, marker, value, prefix):
+    """Split the original Word run, styling ONLY the replacement text."""
+    tag = re.escape(prefix + ":" if prefix else "")
+    text_pattern = re.compile(rf"(<{tag}t\b[^>]*>)(.*?)(</{tag}t>)", re.DOTALL)
+    node = next((m for m in text_pattern.finditer(fragment) if marker in m.group(2)), None)
+    if node is None:
+        raise ValueError("Не удалось найти поле ответственного отдела в DOCX")
+
+    if not value:
+        return fragment[:node.start(2)] + node.group(2).replace(marker, "", 1) + fragment[node.end(2):]
+
+    run_pattern = re.compile(rf"<{tag}r\b[^>]*>.*?</{tag}r>", re.DOTALL)
+    run = next((m for m in run_pattern.finditer(fragment)
+                if m.start() <= node.start() and node.end() <= m.end()), None)
+    if run is None:
+        raise ValueError("Не удалось определить форматирование ответственного отдела")
+
+    original_run = run.group(0)
+    open_run = re.match(rf"<{tag}r\b[^>]*>", original_run).group(0)
+    before_node = fragment[run.start():node.start(2)]
+    inside = node.group(2)
+    position = inside.index(marker)
+    before_value = inside[:position]
+    after_value = inside[position + len(marker):]
+
+    # Extract the original run properties; preserve color/bold/underline as
+    # defined in Word while overriding font, font size, and italic.
+    rpr = re.search(rf"<{tag}rPr\b[^>]*>(.*?)</{tag}rPr>",
+                    fragment[run.start():node.start()], flags=re.DOTALL)
+    original_properties = rpr.group(1) if rpr else ""
+    text_open = node.group(1)
+    if "xml:space=" not in text_open:
+        text_open = text_open[:-1] + ' xml:space="preserve">'
+
+    before_run = before_node + before_value + node.group(3) + f"</{prefix + ':' if prefix else ''}r>"
+    after_run = (
+        open_run
+        + (f"<{prefix + ':' if prefix else ''}rPr>{original_properties}</{prefix + ':' if prefix else ''}rPr>"
+           if rpr else "")
+        + text_open + after_value + fragment[node.end(2):run.end()]
+    )
+    return (fragment[:run.start()] + before_run
+            + _department_run(value, prefix, original_properties)
+            + after_run + fragment[run.end():])
+
+
+def _replace_xml(xml, variables, departments=None, explicit_department_stages=frozenset()):
+    # Keep the raw Word XML and its namespace declarations (including mc:Ignorable).
     text = xml.decode("utf-8")
     prefixes = [prefix for _, (prefix, uri) in ET.iterparse(BytesIO(xml), events=("start-ns",)) if uri == W]
     prefix = prefixes[0] if prefixes else "w"
@@ -73,10 +143,12 @@ def _replace_xml(xml, variables, departments=None):
     nodes = re.compile(rf"(<{tag}t\b[^>]*>)(.*?)(</{tag}t>)", re.DOTALL)
     from xml.sax.saxutils import escape
 
+    sources = document_variables()
+    department_keys = {key for key, source in sources.items() if source.startswith("stages.") and source.endswith(".department")}
+
     def replace_paragraph(match):
         fragment = match.group()
         runs = list(nodes.finditer(fragment))
-        # XML parser handles numeric entities too, without changing template XML.
         values = [ET.fromstring(f'<t>{n.group(2)}</t>').text or "" for n in runs]
         lengths = [len(value) for value in values]
         joined = "".join(values)
@@ -88,39 +160,56 @@ def _replace_xml(xml, variables, departments=None):
         placeholders = list(PLACEHOLDER.finditer(joined))
         if not placeholders:
             return fragment
-        stage_key = None
+
+        # Old DOCX templates without a department variable keep automatic
+        # suffixes after the date. A document containing the new variable
+        # gets only the explicitly positioned department.
+        fallback_stage = None
         for stage in (departments or {}):
-            for variable, source in document_variables().items():
-                if source == f"stages.{stage}.planned_date" and any(p.group(1) == variable for p in placeholders):
-                    stage_key = stage
-                    break
-            if stage_key:
+            if stage in explicit_department_stages:
+                continue
+            if any(sources.get(p.group(1)) == f"stages.{stage}.planned_date" for p in placeholders):
+                fallback_stage = stage
                 break
-        for placeholder in reversed(placeholders):
+
+        markers = []
+        for i, placeholder in reversed(list(enumerate(placeholders))):
             key = placeholder.group(1)
             if key not in variables:
                 raise ValueError(f"Неизвестная переменная в DOCX: {key}")
-            first = next(i for i, start in enumerate(positions) if start <= placeholder.start() < start + lengths[i])
-            last = next(i for i, start in enumerate(positions) if start < placeholder.end() <= start + lengths[i])
+            first = next(j for j, start in enumerate(positions)
+                         if start <= placeholder.start() < start + lengths[j])
+            last = next(j for j, start in enumerate(positions)
+                        if start < placeholder.end() <= start + lengths[j])
             left, right = placeholder.start() - positions[first], placeholder.end() - positions[last]
+            replacement = variables[key]
+            if key in department_keys:
+                marker = f"__BOOKHR_DOCX_DEPARTMENT_{i}__"
+                markers.append((marker, replacement))
+                replacement = marker
             if first == last:
-                values[first] = values[first][:left] + variables[key] + values[first][right:]
+                values[first] = values[first][:left] + replacement + values[first][right:]
             else:
-                values[first] = values[first][:left] + variables[key]
-                for i in range(first + 1, last):
-                    values[i] = ""
+                values[first] = values[first][:left] + replacement
+                for j in range(first + 1, last):
+                    values[j] = ""
                 values[last] = values[last][right:]
+
         for node, value in reversed(list(zip(runs, values))):
             opening = node.group(1)
             if "xml:space=" not in opening:
                 opening = opening[:-1] + ' xml:space="preserve">'
-            # Strip control characters prohibited by XML 1.0.
             value = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", value)
             fragment = fragment[:node.start()] + opening + escape(value) + node.group(3) + fragment[node.end():]
-        if stage_key:
-            from xml.sax.saxutils import escape as _escape
-            suffix = " (отв " + departments[stage_key] + ")"
-            fragment = fragment.rsplit(f"</{prefix}:p>", 1)[0] + f"<{prefix}:r><{prefix}:rPr><{prefix}:i/></{prefix}:rPr><{prefix}:t xml:space=\"preserve\">{_escape(suffix)}</{prefix}:t></{prefix}:r></{prefix}:p>"
+
+        for marker, value in markers:
+            fragment = _style_department_marker(fragment, marker, value, prefix)
+
+        if fallback_stage:
+            department = departments[fallback_stage]
+            suffix = " (отв " + department + ")"
+            closing = f"</{prefix + ':' if prefix else ''}p>"
+            fragment = fragment.rsplit(closing, 1)[0] + _department_run(suffix, prefix) + closing
         return fragment
 
     return paragraph.sub(replace_paragraph, text).encode("utf-8")
@@ -132,7 +221,11 @@ def _default_template(departments=None):
     variables = document_variables()
     for stage, title in document_stages().items():
         variable = next((key for key, source in variables.items() if source == f"stages.{stage}.planned_date"), None)
-        paragraphs.append(f"{title}: {{{{ {variable} }}}}" if variable else f"{title}: —")
+        department_variable = next((key for key, source in variables.items() if source == f"stages.{stage}.department"), None)
+        if variable and department_variable:
+            paragraphs.append(f"{title}: {{{{ {variable} }}}} {{{{ {department_variable} }}}}")
+        else:
+            paragraphs.append(f"{title}: {{{{ {variable} }}}}" if variable else f"{title}: —")
     body = ''.join(f'<w:p><w:r><w:t>{escape(p)}</w:t></w:r></w:p>' for p in paragraphs)
     document = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="{W}"><w:body>{body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr></w:body></w:document>'
     stream = BytesIO()
@@ -151,12 +244,30 @@ def build_onboarding_document(plan):
         raise ValueError("Не найден настроенный DOCX-шаблон плана ввода в должность")
     departments = _department_by_stage(plan)
     source = Path(configured) if configured else _default_template(departments)
+    from html import unescape
+
     output = BytesIO()
     with ZipFile(source) as original, ZipFile(output, "w", ZIP_DEFLATED) as result:
+        # Look through all Word XML parts: placeholders may be split into
+        # multiple text nodes or placed in separate paragraphs/table cells.
+        department_sources = {
+            key: source for key, source in document_variables().items()
+            if source.startswith("stages.") and source.endswith(".department")
+        }
+        explicit_variables = set()
+        for entry in original.infolist():
+            if entry.filename.startswith("word/") and entry.filename.endswith(".xml"):
+                raw = original.read(entry.filename).decode("utf-8")
+                explicit_variables.update(PLACEHOLDER.findall(unescape(re.sub(r"<[^>]+>", "", raw))))
+        explicit_stages = {
+            department_sources[key].split(".")[1]
+            for key in explicit_variables if key in department_sources
+        }
+
         for entry in original.infolist():
             content = original.read(entry.filename)
             if entry.filename.startswith("word/") and entry.filename.endswith(".xml"):
-                content = _replace_xml(content, variables, departments)
+                content = _replace_xml(content, variables, departments, explicit_stages)
             result.writestr(entry, content)
     output.seek(0)
     return output
