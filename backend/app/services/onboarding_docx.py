@@ -121,12 +121,21 @@ def _style_department_marker(fragment, marker, value, prefix):
     if "xml:space=" not in text_open:
         text_open = text_open[:-1] + ' xml:space="preserve">'
 
-    before_run = before_node + before_value + node.group(3) + f"</{prefix + ':' if prefix else ''}r>"
+    run_tag = f"{prefix + ':' if prefix else ''}r"
+    prior_content = fragment[run.start() + len(open_run):node.start()]
+    if rpr:
+        prior_content = prior_content.replace(rpr.group(0), "", 1)
+    before_run = (
+        before_node + before_value + node.group(3) + f"</{run_tag}>"
+        if before_value or prior_content.strip() else ""
+    )
+    after_content = fragment[node.end():run.end() - len(f"</{run_tag}>")]
     after_run = (
         open_run
         + (f"<{prefix + ':' if prefix else ''}rPr>{original_properties}</{prefix + ':' if prefix else ''}rPr>"
            if rpr else "")
         + text_open + after_value + fragment[node.end(2):run.end()]
+        if after_value or after_content.strip() else ""
     )
     return (fragment[:run.start()] + before_run
             + _department_run(value, prefix, original_properties)
