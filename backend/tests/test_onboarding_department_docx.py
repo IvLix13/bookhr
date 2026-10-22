@@ -40,7 +40,7 @@ def test_docx_department_is_italic_and_planned_date_kept(hr_client, seed_company
     runs = target.findall(W + "r")
     def text(run):
         return "".join(t.text or "" for t in run.findall(".//" + W + "t"))
-    assert text(runs[0]) == "NDA"
+    assert text(runs[0]).startswith("NDA: 21.11.2026")
     assert text(runs[-1]) == " (отв 3 отдел)"
     assert runs[0].find(W + "rPr") is None
     assert runs[-1].find(W + "rPr/" + W + "i") is not None
