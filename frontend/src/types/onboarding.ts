@@ -3,6 +3,7 @@ export interface OnboardingColumn {
   id: number
   title: string
   field_type: OnboardingFieldType
+  responsible_department?: string | null
   sort_order: number
   is_archived: boolean
   version: number
