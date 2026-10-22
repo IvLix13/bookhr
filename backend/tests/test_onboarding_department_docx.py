@@ -41,7 +41,7 @@ def test_docx_department_is_italic_and_planned_date_kept(hr_client, seed_company
     def text(run):
         return "".join(t.text or "" for t in run.findall(".//" + W + "t"))
     assert text(runs[0]).startswith("NDA: 21.11.2026")
-    assert text(runs[-1]) == " (отв 3 отдел)"
+    assert text(runs[-1]) == "(отв 3 отдел)"
     assert runs[0].find(W + "rPr") is None
     assert runs[-1].find(W + "rPr/" + W + "i") is not None
     assert runs[-1].find(W + "rPr/" + W + "sz").get(W + "val") == "24"
@@ -78,7 +78,7 @@ def test_custom_word_template_keeps_variables_and_italic_department(hr_client, s
                       if "NDA" in "".join(t.text or "" for t in p.findall(".//" + W + "t")))
         runs = target.findall(W + "r")
         assert "21.11.2026" in "".join(t.text or "" for t in target.findall(".//" + W + "t"))
-        assert "".join(t.text or "" for t in runs[-1].findall(W + "t")) == " (отв 3 отдел)"
+        assert "".join(t.text or "" for t in runs[-1].findall(W + "t")) == "(отв 3 отдел)"
         assert runs[-1].find(W + "rPr/" + W + "i") is not None
     finally:
         hr_client.application.config["ONBOARDING_DOCX_TEMPLATE"] = ""
