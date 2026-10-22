@@ -87,7 +87,7 @@ def cell_dict(cell):
 def onboarding_plan_query(company_id):
     """Return the company-scoped plan query with all display data preloaded."""
     return (
-        OnboardingPlan.query.join(Employment)
+        OnboardingPlan.query.join(Employment, OnboardingPlan.employment_id == Employment.id)
         .filter(Employment.company_id == company_id)
         .options(
             selectinload(OnboardingPlan.cells),
@@ -141,7 +141,7 @@ def find_column(column_id, company_id):
 
 def find_plan(plan_id, company_id):
     from app.models import Employment
-    plan = OnboardingPlan.query.join(Employment).filter(
+    plan = OnboardingPlan.query.join(Employment, OnboardingPlan.employment_id == Employment.id).filter(
         OnboardingPlan.id == plan_id, Employment.company_id == company_id
     ).first()
     if plan is None:
