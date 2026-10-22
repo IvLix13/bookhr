@@ -135,6 +135,12 @@ export const api = {
     }
     triggerDownload(await response.blob(), 'onboarding_plan.xlsx')
   },
+  downloadOnboardingDocx: async (id: number) => {
+    const response = await fetch(`/api/onboarding/plans/${id}/docx`, { credentials: 'include' })
+    if (response.status === 401) unauthorizedHandler?.()
+    if (!response.ok) throw new ApiError('Не удалось выгрузить план DOCX', response.status)
+    triggerDownload(await response.blob(), 'onboarding_plan.docx')
+  },
   onboardingPlan: (id: number) => request<OnboardingPlan>(`/api/onboarding/plans/${id}`),
   onboardingDeletePreview: (kind: 'plans' | 'columns', id: number) =>
     request<OnboardingDeletePreview>(`/api/onboarding/${kind}/${id}/delete-preview`),
