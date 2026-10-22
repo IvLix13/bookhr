@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import OnboardingDeleteDialog from './OnboardingDeleteDialog.vue'
 import { api } from '@/api/client'
 import { ApiError, normalizeError } from '@/api/errors'
@@ -15,20 +15,27 @@ const icons = {
   restore: 'M3 4h18v5H3z M5 9v11h14V9 M12 17v-6 M9 14l3-3 3 3',
   close: 'M5 5l14 14 M19 5L5 19',
 }
+const documentStages = ref<Array<{ key: string; title: string }>>([])
+const stagesError = ref('')
+async function loadDocumentStages() {
+  try { documentStages.value = await api.onboardingDocumentStages(); stagesError.value = '' }
+  catch (err) { stagesError.value = normalizeError(err) }
+}
+onMounted(loadDocumentStages)
 const props = defineProps<{ columns: OnboardingColumn[] }>()
 const emit = defineEmits<{ changed: []; state: [value: { dirty: boolean; busy: boolean }] }>()
-const draft = reactive({ id: 0, version: 0, title: '', field_type: 'stage' as OnboardingFieldType, responsible_department: '' })
+const draft = reactive({ id: 0, version: 0, title: '', field_type: 'stage' as OnboardingFieldType, responsible_department: '', document_stage_key: '' })
 const busy = ref(false)
 const error = ref('')
 const stale = ref(false)
 const deleteTarget = ref<OnboardingColumn | null>(null)
 const deleteBusy = computed(() => busy.value || !!deleteTarget.value)
 const archiveTarget = ref<OnboardingColumn | null>(null)
-const initialDraft = ref(JSON.stringify({ title: '', field_type: 'stage', responsible_department: '' }))
-const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department }) !== initialDraft.value)
+const initialDraft = ref(JSON.stringify({ title: '', field_type: 'stage', responsible_department: '', document_stage_key: '' }))
+const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department, document_stage_key: draft.document_stage_key }) !== initialDraft.value)
 watch([dirty, deleteBusy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
 function edit(column?: OnboardingColumn) {
-  Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage', responsible_department: column?.responsible_department ?? '' })
+  Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage', responsible_department: column?.responsible_department ?? '', document_stage_key: column?.document_stage_key ?? '' })
   initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department })
   error.value = ''
   stale.value = false
@@ -52,7 +59,7 @@ async function run(action: () => Promise<unknown>, reset = false) {
 }
 function save() {
   if (stale.value) return
-  const payload = { title: draft.title.trim(), field_type: draft.field_type, responsible_department: draft.responsible_department.trim() || null }
+  const payload = { title: draft.title.trim(), field_type: draft.field_type, responsible_department: draft.responsible_department.trim() || null, document_stage_key: draft.field_type === 'stage' ? draft.document_stage_key || null : null }
   return run(() => draft.id
     ? api.updateOnboardingColumn(draft.id, { ...payload, version: draft.version })
     : api.createOnboardingColumn(payload), true)
@@ -76,10 +83,12 @@ function archive(column: OnboardingColumn) {
       <label>Название<input v-model="draft.title" required maxlength="256" :disabled="busy" /></label>
       <label>Ответственный отдел<input v-model="draft.responsible_department" maxlength="256" :disabled="busy" placeholder="Например, 3 отдел" /></label>
       <label>Тип<select v-model="draft.field_type" :disabled="busy"><option value="text">Текст</option><option value="date">Дата</option><option value="stage">Этап с датами</option><option value="checkbox">Этап без даты</option></select></label>
+      <label v-if="draft.field_type === 'stage'">Соответствует этапу в документе<select v-model="draft.document_stage_key" :disabled="busy || !!stagesError"><option value="">Не сопоставлен</option><option v-for="stage in documentStages" :key="stage.key" :value="stage.key">{{ stage.title }}</option></select></label>
       <button class="btn icon-btn" :disabled="busy || stale" :aria-label="draft.id ? 'Сохранить поле' : 'Добавить поле'" :title="draft.id ? 'Сохранить поле' : 'Добавить поле'"><svg viewBox="0 0 24 24"><path :d="draft.id ? icons.save : icons.add" /></svg></button>
       <button v-if="draft.id || stale" class="btn secondary icon-btn" type="button" :disabled="busy" aria-label="Сбросить форму" title="Сбросить форму" @click="edit()"><svg viewBox="0 0 24 24"><path :d="icons.reset" /></svg></button>
     </form>
     <p>Тип заполненного поля изменить нельзя.</p>
+    <p v-if="stagesError" role="alert" class="error">{{ stagesError }} <button class="btn secondary" type="button" @click="loadDocumentStages">Повторить загрузку этапов документа</button></p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="stale">Список обновляется. Ввод сохранён; выберите поле заново для редактирования.</p>
     <ol>
