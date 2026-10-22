@@ -112,9 +112,9 @@ function triggerDownload(blob: Blob, filename: string) {
 
 export const api = {
   onboardingColumns: () => request<OnboardingColumn[]>('/api/onboarding/columns'),
-  createOnboardingColumn: (body: { title: string; field_type: OnboardingFieldType }) =>
+  createOnboardingColumn: (body: { title: string; field_type: OnboardingFieldType; responsible_department?: string | null }) =>
     request<OnboardingColumn>('/api/onboarding/columns', { method: 'POST', body: JSON.stringify(body) }),
-  updateOnboardingColumn: (id: number, body: { version: number; title?: string; field_type?: OnboardingFieldType; is_archived?: boolean }) =>
+  updateOnboardingColumn: (id: number, body: { version: number; title?: string; field_type?: OnboardingFieldType; responsible_department?: string | null; is_archived?: boolean }) =>
     request<OnboardingColumn>(`/api/onboarding/columns/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   orderOnboardingColumns: (columns: Array<{ id: number; version: number }>) =>
     request<OnboardingColumn[]>('/api/onboarding/columns/order', { method: 'PATCH', body: JSON.stringify({ columns }) }),
