@@ -1,25 +1,43 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import OnboardingDeleteDialog from './OnboardingDeleteDialog.vue'
 import { api } from '@/api/client'
 import { ApiError, normalizeError } from '@/api/errors'
 import type { OnboardingColumn, OnboardingFieldType } from '@/types/onboarding'
 
+const icons = {
+  add: 'M12 5v14 M5 12h14', save: 'M4 4h13l3 3v13H4z M8 4v6h8V4 M8 20v-7h8v7',
+  reset: 'M3 12a9 9 0 1 0 3-6 M3 3v6h6',
+  up: 'M12 19V5 M5 12l7-7 7 7', down: 'M12 5v14 M5 12l7 7 7-7',
+  edit: 'M12 20h9 M16 4l4 4-11 11H5v-4z',
+  delete: 'M3 6h18 M8 6V4h8v2 M6 6l1 14h10l1-14 M10 10v7 M14 10v7',
+  archive: 'M3 4h18v5H3z M5 9v11h14V9 M10 13h4',
+  restore: 'M3 4h18v5H3z M5 9v11h14V9 M12 17v-6 M9 14l3-3 3 3',
+  close: 'M5 5l14 14 M19 5L5 19',
+}
+const documentStages = ref<Array<{ key: string; title: string }>>([])
+const stagesError = ref('')
+async function loadDocumentStages() {
+  try { documentStages.value = await api.onboardingDocumentStages(); stagesError.value = '' }
+  catch (err) { stagesError.value = normalizeError(err) }
+}
+onMounted(loadDocumentStages)
 const props = defineProps<{ columns: OnboardingColumn[] }>()
 const emit = defineEmits<{ changed: []; state: [value: { dirty: boolean; busy: boolean }] }>()
-const draft = reactive({ id: 0, version: 0, title: '', field_type: 'stage' as OnboardingFieldType })
+const draft = reactive({ id: 0, version: 0, title: '', field_type: 'stage' as OnboardingFieldType, responsible_department: '', document_stage_key: '' })
+watch(() => draft.field_type, value => { if (value !== "stage") draft.document_stage_key = "" })
 const busy = ref(false)
 const error = ref('')
 const stale = ref(false)
 const deleteTarget = ref<OnboardingColumn | null>(null)
 const deleteBusy = computed(() => busy.value || !!deleteTarget.value)
 const archiveTarget = ref<OnboardingColumn | null>(null)
-const initialDraft = ref(JSON.stringify({ title: '', field_type: 'stage' }))
-const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: draft.field_type }) !== initialDraft.value)
+const initialDraft = ref(JSON.stringify({ title: '', field_type: 'stage', responsible_department: '', document_stage_key: '' }))
+const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department, document_stage_key: draft.document_stage_key }) !== initialDraft.value)
 watch([dirty, deleteBusy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
 function edit(column?: OnboardingColumn) {
-  Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage' })
-  initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type })
+  Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage', responsible_department: column?.responsible_department ?? '', document_stage_key: column?.document_stage_key ?? '' })
+  initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department, document_stage_key: draft.document_stage_key })
   error.value = ''
   stale.value = false
 }
@@ -42,7 +60,7 @@ async function run(action: () => Promise<unknown>, reset = false) {
 }
 function save() {
   if (stale.value) return
-  const payload = { title: draft.title.trim(), field_type: draft.field_type }
+  const payload = { title: draft.title.trim(), field_type: draft.field_type, responsible_department: draft.responsible_department.trim() || null, document_stage_key: draft.field_type === 'stage' ? draft.document_stage_key || null : null }
   return run(() => draft.id
     ? api.updateOnboardingColumn(draft.id, { ...payload, version: draft.version })
     : api.createOnboardingColumn(payload), true)
@@ -64,35 +82,41 @@ function archive(column: OnboardingColumn) {
     <p>Сотрудники отображаются карточками. Грейд и ФИО — системные данные. Этапы и поля общие для всей компании. Архивирование сохраняет значения.</p>
     <form class="column-form" @submit.prevent="save">
       <label>Название<input v-model="draft.title" required maxlength="256" :disabled="busy" /></label>
+      <label>Ответственный отдел<input v-model="draft.responsible_department" maxlength="256" :disabled="busy" placeholder="Например, 3 отдел" /></label>
       <label>Тип<select v-model="draft.field_type" :disabled="busy"><option value="text">Текст</option><option value="date">Дата</option><option value="stage">Этап с датами</option><option value="checkbox">Этап без даты</option></select></label>
-      <button class="btn" :disabled="busy || stale">{{ draft.id ? 'Сохранить поле' : 'Добавить поле' }}</button>
-      <button v-if="draft.id || stale" class="btn secondary" type="button" :disabled="busy" @click="edit()">Сбросить форму</button>
+      <label v-if="draft.field_type === 'stage'">Соответствует этапу в документе<select v-model="draft.document_stage_key" :disabled="busy || !!stagesError"><option value="">Не сопоставлен</option><option v-for="stage in documentStages" :key="stage.key" :value="stage.key">{{ stage.title }}</option></select></label>
+      <button class="btn icon-btn" :disabled="busy || stale" :aria-label="draft.id ? 'Сохранить поле' : 'Добавить поле'" :title="draft.id ? 'Сохранить поле' : 'Добавить поле'"><svg viewBox="0 0 24 24"><path :d="draft.id ? icons.save : icons.add" /></svg></button>
+      <button v-if="draft.id || stale" class="btn secondary icon-btn" type="button" :disabled="busy" aria-label="Сбросить форму" title="Сбросить форму" @click="edit()"><svg viewBox="0 0 24 24"><path :d="icons.reset" /></svg></button>
     </form>
     <p>Тип заполненного поля изменить нельзя.</p>
+    <p v-if="stagesError" role="alert" class="error">{{ stagesError }} <button class="btn secondary" type="button" @click="loadDocumentStages">Повторить загрузку этапов документа</button></p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="stale">Список обновляется. Ввод сохранён; выберите поле заново для редактирования.</p>
     <ol>
       <li v-for="(column, index) in columns" :key="column.id">
-        <span>{{ column.title }} · {{ { text: 'Текст', date: 'Дата', stage: 'Этап с датами', checkbox: 'Этап без даты' }[column.field_type] }} {{ column.is_archived ? '(архив)' : '' }}</span>
+        <span>{{ column.title }} · {{ { text: 'Текст', date: 'Дата', stage: 'Этап с датами', checkbox: 'Этап без даты' }[column.field_type] }} {{ column.responsible_department ? ' · ' + column.responsible_department : '' }} {{ column.is_archived ? '(архив)' : '' }}</span>
         <div class="actions">
-          <button class="btn secondary" :disabled="busy || index === 0" :aria-label="`Переместить ${column.title} вверх`" @click="move(index, -1)">↑</button>
-          <button class="btn secondary" :disabled="busy || index === columns.length - 1" :aria-label="`Переместить ${column.title} вниз`" @click="move(index, 1)">↓</button>
-          <button class="btn secondary" :disabled="busy" @click="edit(column)">Изменить</button>
-          <button class="btn danger" :disabled="busy" @click="deleteTarget = column">Удалить</button>
-          <button class="btn secondary" :disabled="busy" @click="column.is_archived ? archive(column) : archiveTarget = column">{{ column.is_archived ? 'Восстановить' : 'В архив' }}</button>
+          <button class="btn secondary" :disabled="busy || index === 0" :aria-label="`Переместить ${column.title} вверх`" @click="move(index, -1)" title="Вверх"><svg viewBox="0 0 24 24"><path :d="icons.up" /></svg></button>
+          <button class="btn secondary" :disabled="busy || index === columns.length - 1" :aria-label="`Переместить ${column.title} вниз`" @click="move(index, 1)" title="Вниз"><svg viewBox="0 0 24 24"><path :d="icons.down" /></svg></button>
+          <button class="btn secondary" :disabled="busy" @click="edit(column)" :aria-label="`Изменить ${column.title}`" title="Изменить"><svg viewBox="0 0 24 24"><path :d="icons.edit" /></svg></button>
+          <button class="btn danger" :disabled="busy" @click="deleteTarget = column" :aria-label="`Удалить ${column.title}`" title="Удалить"><svg viewBox="0 0 24 24"><path :d="icons.delete" /></svg></button>
+          <button class="btn secondary" :disabled="busy" @click="column.is_archived ? archive(column) : archiveTarget = column" :aria-label="`${column.is_archived ? 'Восстановить' : 'Архивировать'} ${column.title}`" :title="column.is_archived ? 'Восстановить' : 'В архив'"><svg viewBox="0 0 24 24"><path :d="column.is_archived ? icons.restore : icons.archive" /></svg></button>
         </div>
       </li>
     </ol>
     <div v-if="archiveTarget" role="alert" class="archive-confirm">
       <p>Скрыть «{{ archiveTarget.title }}» у всех сотрудников? Значения останутся сохранены.</p>
-      <button class="btn" :disabled="busy" @click="archive(archiveTarget)">Архивировать</button>
-      <button class="btn secondary" :disabled="busy" @click="archiveTarget = null">Отмена</button>
+      <button class="btn" :disabled="busy" @click="archive(archiveTarget)" aria-label="Подтвердить архивирование" title="Архивировать"><svg viewBox="0 0 24 24"><path :d="icons.archive" /></svg></button>
+      <button class="btn secondary" :disabled="busy" @click="archiveTarget = null" aria-label="Отменить архивирование" title="Отмена"><svg viewBox="0 0 24 24"><path :d="icons.close" /></svg></button>
     </div>
     <OnboardingDeleteDialog v-if="deleteTarget" kind="columns" :id="deleteTarget.id" :title="`Удалить поле «${deleteTarget.title}»`" @close="deleteTarget = null" @conflict="emit('changed')" @deleted="if (draft.id === deleteTarget.id) edit(); deleteTarget = null; emit('changed')" />
   </section>
 </template>
 
 <style scoped>
+.icon-btn { display:inline-flex;align-items:center;justify-content:center;min-width:34px;min-height:34px;padding:.4rem; }
+.icon-btn svg, .actions svg, .archive-confirm svg { width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round; }
+.actions button, .archive-confirm button { display:inline-flex;align-items:center;justify-content:center; }
 .columns-panel { padding: 1rem; margin: 1rem 0; }
 .column-form, li, .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
 label { display: grid; gap: .25rem; }

@@ -10,11 +10,13 @@ class OnboardingColumn(db.Model, TimestampMixin):
     company_id = db.Column(db.Integer, db.ForeignKey("companies.id"), nullable=False, index=True)
     title = db.Column(db.String(256), nullable=False)
     field_type = db.Column(db.String(16), nullable=False)
+    responsible_department = db.Column(db.String(256), nullable=True)
+    document_stage_key = db.Column(db.String(64), nullable=True)
     sort_order = db.Column(db.Integer, nullable=False)
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
     version = db.Column(db.Integer, nullable=False, default=1)
     __mapper_args__ = {"version_id_col": version}
-    __table_args__ = (db.CheckConstraint("field_type IN ('text', 'date', 'stage', 'checkbox')", name="ck_onboarding_column_type"),)
+    __table_args__ = (db.UniqueConstraint("company_id", "document_stage_key", name="uq_onboarding_document_stage"), db.CheckConstraint("field_type IN ('text', 'date', 'stage', 'checkbox')", name="ck_onboarding_column_type"),)
 
 
 class OnboardingPlan(db.Model, TimestampMixin):

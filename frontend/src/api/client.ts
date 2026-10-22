@@ -111,10 +111,11 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export const api = {
+  onboardingDocumentStages: () => request<Array<{ key: string; title: string }>>('/api/onboarding/document-stages'),
   onboardingColumns: () => request<OnboardingColumn[]>('/api/onboarding/columns'),
-  createOnboardingColumn: (body: { title: string; field_type: OnboardingFieldType }) =>
+  createOnboardingColumn: (body: { title: string; field_type: OnboardingFieldType; responsible_department?: string | null; document_stage_key?: string | null }) =>
     request<OnboardingColumn>('/api/onboarding/columns', { method: 'POST', body: JSON.stringify(body) }),
-  updateOnboardingColumn: (id: number, body: { version: number; title?: string; field_type?: OnboardingFieldType; is_archived?: boolean }) =>
+  updateOnboardingColumn: (id: number, body: { version: number; title?: string; field_type?: OnboardingFieldType; responsible_department?: string | null; document_stage_key?: string | null; is_archived?: boolean }) =>
     request<OnboardingColumn>(`/api/onboarding/columns/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   orderOnboardingColumns: (columns: Array<{ id: number; version: number }>) =>
     request<OnboardingColumn[]>('/api/onboarding/columns/order', { method: 'PATCH', body: JSON.stringify({ columns }) }),
@@ -134,6 +135,12 @@ export const api = {
       throw new ApiError(message, response.status)
     }
     triggerDownload(await response.blob(), 'onboarding_plan.xlsx')
+  },
+  downloadOnboardingDocx: async (id: number) => {
+    const response = await fetch(`/api/onboarding/plans/${id}/docx`, { credentials: 'include' })
+    if (response.status === 401) unauthorizedHandler?.()
+    if (!response.ok) throw new ApiError('Не удалось выгрузить план DOCX', response.status)
+    triggerDownload(await response.blob(), 'onboarding_plan.docx')
   },
   onboardingPlan: (id: number) => request<OnboardingPlan>(`/api/onboarding/plans/${id}`),
   onboardingDeletePreview: (kind: 'plans' | 'columns', id: number) =>

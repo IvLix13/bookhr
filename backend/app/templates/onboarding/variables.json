@@ -1,0 +1,17 @@
+{
+  "employee_name": "employee.short_name",
+  "employee_full_name": "employee.full_name",
+  "employee_position": "employee.position",
+  "employee_grade": "employee.grade",
+  "curator_name": "curator.short_name",
+  "curator_full_name": "curator.full_name",
+  "curator_grade": "curator.grade",
+  "pass_planned_date": "stages.pass.planned_date",
+  "pass_department": "stages.pass.department",
+  "nda_planned_date": "stages.nda.planned_date",
+  "nda_department": "stages.nda.department",
+  "competence_exam_planned_date": "stages.competence_exam.planned_date",
+  "competence_exam_department": "stages.competence_exam.department",
+  "training_plan_planned_date": "stages.training_plan.planned_date",
+  "training_plan_department": "stages.training_plan.department"
+}

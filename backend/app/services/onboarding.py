@@ -13,17 +13,22 @@ from app.extensions import db
 from app.models import Company, EmployeeGradeHistory, Employment, Person
 from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
+from app.services.onboarding_document_catalog import document_stages
 
 
 class ColumnSchema(Schema):
     title = fields.String(required=True, validate=validate.Length(min=1, max=256))
     field_type = fields.String(required=True, validate=validate.OneOf(["text", "date", "stage", "checkbox"]))
+    responsible_department = fields.String(allow_none=True, validate=validate.Length(max=256))
+    document_stage_key = fields.String(allow_none=True, validate=validate.Length(max=64))
 
 
 class ColumnUpdateSchema(Schema):
     version = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
     title = fields.String(validate=validate.Length(min=1, max=256))
     field_type = fields.String(validate=validate.OneOf(["text", "date", "stage", "checkbox"]))
+    responsible_department = fields.String(allow_none=True, validate=validate.Length(max=256))
+    document_stage_key = fields.String(allow_none=True, validate=validate.Length(max=64))
     is_archived = fields.Boolean(truthy={True}, falsy={False})
 
 
@@ -65,7 +70,7 @@ def lock_company(company_id):
 
 def column_dict(column):
     return {key: getattr(column, key) for key in (
-        "id", "title", "field_type", "sort_order", "is_archived", "version"
+        "id", "title", "field_type", "responsible_department", "document_stage_key", "sort_order", "is_archived", "version"
     )}
 
 
@@ -82,7 +87,7 @@ def cell_dict(cell):
 def onboarding_plan_query(company_id):
     """Return the company-scoped plan query with all display data preloaded."""
     return (
-        OnboardingPlan.query.join(Employment)
+        OnboardingPlan.query.join(Employment, OnboardingPlan.employment_id == Employment.id)
         .filter(Employment.company_id == company_id)
         .options(
             selectinload(OnboardingPlan.cells),
@@ -136,7 +141,7 @@ def find_column(column_id, company_id):
 
 def find_plan(plan_id, company_id):
     from app.models import Employment
-    plan = OnboardingPlan.query.join(Employment).filter(
+    plan = OnboardingPlan.query.join(Employment, OnboardingPlan.employment_id == Employment.id).filter(
         OnboardingPlan.id == plan_id, Employment.company_id == company_id
     ).first()
     if plan is None:
@@ -148,6 +153,21 @@ def check_version(expected, actual):
     if expected != actual:
         raise Conflict("Данные изменены другим пользователем. Обновите таблицу перед повторным сохранением.")
 
+
+def validate_document_mapping(company_id, payload, exclude_id=None):
+    key = payload.get("document_stage_key")
+    if not key:
+        payload["document_stage_key"] = None
+        return
+    if key not in document_stages():
+        raise ValueError("Неизвестный этап документа")
+    if payload.get("field_type") not in (None, "stage"):
+        raise ValueError("Сопоставление доступно только для этапов с датами")
+    query = OnboardingColumn.query.filter_by(company_id=company_id, document_stage_key=key)
+    if exclude_id is not None:
+        query = query.filter(OnboardingColumn.id != exclude_id)
+    if query.first():
+        raise ValueError("Этот этап документа уже сопоставлен")
 
 def save_column(column, payload):
     check_version(payload.pop("version"), column.version)
@@ -165,6 +185,10 @@ def save_column(column, payload):
         ).first()
         if filled:
             raise ValueError("Нельзя изменить тип заполненного столбца")
+    if "responsible_department" in payload:
+        payload["responsible_department"] = (payload["responsible_department"] or "").strip() or None
+    if "document_stage_key" in payload:
+        validate_document_mapping(column.company_id, payload, column.id)
     for key, value in payload.items():
         setattr(column, key, value)
     db.session.flush()

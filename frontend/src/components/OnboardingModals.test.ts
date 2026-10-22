@@ -7,8 +7,9 @@ import OnboardingDeleteDialog from './OnboardingDeleteDialog.vue'
 import OnboardingColumns from './OnboardingColumns.vue'
 import type { OnboardingPlan, OnboardingColumn } from '@/types/onboarding'
 
-const mocks = vi.hoisted(() => ({ plan: vi.fn(), savePlan: vi.fn(), employees: vi.fn(), create: vi.fn(), preview: vi.fn(), remove: vi.fn(), employeeRemove: vi.fn(), edit: true }))
+const mocks = vi.hoisted(() => ({ plan: vi.fn(), savePlan: vi.fn(), employees: vi.fn(), create: vi.fn(), preview: vi.fn(), remove: vi.fn(), employeeRemove: vi.fn(), stages: vi.fn(), edit: true }))
 vi.mock('@/api/client', () => ({ api: {
+  onboardingDocumentStages: mocks.stages,
   onboardingPlan: mocks.plan, updateOnboardingPlan: mocks.savePlan,
   employees: mocks.employees, createOnboardingPlan: mocks.create,
   onboardingDeletePreview: mocks.preview, deleteOnboarding: mocks.remove, deleteEmployeeWithPlan: mocks.employeeRemove,
@@ -24,6 +25,7 @@ const button = (label: string) => dom().findAll('button').find(b => b.text() ===
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.edit = true
+  mocks.stages.mockResolvedValue([{ key: 'nda', title: 'NDA' }])
   mocks.plan.mockResolvedValue({ ...plan })
   mocks.savePlan.mockResolvedValue({ ...plan, version: 2 })
   mocks.preview.mockResolvedValue(preview)
@@ -34,6 +36,15 @@ beforeEach(() => {
 })
 
 describe('Onboarding modal workflows with real Teleport', () => {
+  it('initializes the column draft before observing its field type', async () => {
+    const root = mount(OnboardingColumns, { props: { columns: [column] } })
+    await flushPromises()
+    expect(mocks.stages).toHaveBeenCalledTimes(1)
+    expect(root.text()).toContain('Ответственный отдел')
+    expect(root.text()).toContain('Соответствует этапу в документе')
+    root.unmount()
+  })
+
   it('loads the current plan and preserves dirty curator input on attempted close', async () => {
     const root = mount(OnboardingPlanModal, { props: { planId: 1, columns: [column] } })
     await flushPromises()
@@ -139,8 +150,8 @@ describe('Onboarding modal workflows with real Teleport', () => {
 
   it('removes a field only after confirmation and resets its edit form', async () => {
     const root = mount(OnboardingColumns, { props: { columns: [column] }, attachTo: document.body })
-    await button('Изменить').trigger('click')
-    await button('Удалить').trigger('click')
+    await dom().get('[aria-label="Изменить NDA"]').trigger('click')
+    await dom().get('[aria-label="Удалить NDA"]').trigger('click')
     await flushPromises()
     expect(mocks.remove).not.toHaveBeenCalled()
     await button('Подтвердить удаление').trigger('click')

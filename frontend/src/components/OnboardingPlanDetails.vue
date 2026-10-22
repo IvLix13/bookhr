@@ -57,9 +57,9 @@ function isStage(column: OnboardingColumn) { return column.field_type === 'stage
       <p v-if="!columns.length" class="muted">Этапы пока не настроены.</p>
       <div v-else class="details-scroll">
         <table>
-          <thead><tr><th scope="col">Этап / поле</th><th scope="col">Состояние / значение</th><th scope="col">Плановый срок</th><th scope="col">Выполнено</th></tr></thead>
+          <thead><tr><th scope="col">Этап / поле</th><th scope="col">Ответственный отдел</th><th scope="col">Состояние / значение</th><th scope="col">Плановый срок</th><th scope="col">Выполнено</th></tr></thead>
           <tbody><tr v-for="column in columns" :key="column.id">
-            <th scope="row">{{ column.title }}</th>
+            <th scope="row">{{ column.title }}</th><td>{{ column.responsible_department || "—" }}</td>
             <td :class="isStage(column) ? stageState(column, plan.cells[column.id], today).replace('_', '-') : ''">
               <button v-if="editable" type="button" class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="emit('edit', column)">{{ isStage(column) ? stageLabels[stageState(column, plan.cells[column.id], today)] : cellLabel(plan, column) }}</button>
               <span v-else>{{ isStage(column) ? stageLabels[stageState(column, plan.cells[column.id], today)] : cellLabel(plan, column) }}</span>
