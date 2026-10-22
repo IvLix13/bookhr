@@ -9,6 +9,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 from app.models.onboarding import OnboardingColumn
 from app.services.onboarding import current_plan_name, plan_dict
+from app.services.employees import get_current_position
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
@@ -33,9 +34,11 @@ def build_onboarding_document(plan):
     columns = (OnboardingColumn.query.filter_by(
         company_id=plan.employment.company_id, is_archived=False
     ).order_by(OnboardingColumn.sort_order, OnboardingColumn.id).all())
+    position = get_current_position(plan.employment)
     paragraphs = [
         _paragraph(_run("План ввода в должность")),
         _paragraph(_run("Сотрудник: " + _short_name(current_plan_name(plan)))),
+        _paragraph(_run("Должность: " + (position.title if position else "—"))),
         _paragraph(_run("Грейд: " + (data.get("grade") or "—"))),
         _paragraph(_run("Куратор: " + _short_name(data.get("curator_name")))),
         _paragraph(_run("Этапы и поля")),
