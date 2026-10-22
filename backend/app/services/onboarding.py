@@ -18,12 +18,14 @@ from app.services.audit import log_audit
 class ColumnSchema(Schema):
     title = fields.String(required=True, validate=validate.Length(min=1, max=256))
     field_type = fields.String(required=True, validate=validate.OneOf(["text", "date", "stage", "checkbox"]))
+    responsible_department = fields.String(allow_none=True, validate=validate.Length(max=256))
 
 
 class ColumnUpdateSchema(Schema):
     version = fields.Integer(required=True, strict=True, validate=validate.Range(min=1))
     title = fields.String(validate=validate.Length(min=1, max=256))
     field_type = fields.String(validate=validate.OneOf(["text", "date", "stage", "checkbox"]))
+    responsible_department = fields.String(allow_none=True, validate=validate.Length(max=256))
     is_archived = fields.Boolean(truthy={True}, falsy={False})
 
 
@@ -65,7 +67,7 @@ def lock_company(company_id):
 
 def column_dict(column):
     return {key: getattr(column, key) for key in (
-        "id", "title", "field_type", "sort_order", "is_archived", "version"
+        "id", "title", "field_type", "responsible_department", "sort_order", "is_archived", "version"
     )}
 
 
@@ -165,6 +167,8 @@ def save_column(column, payload):
         ).first()
         if filled:
             raise ValueError("Нельзя изменить тип заполненного столбца")
+    if "responsible_department" in payload:
+        payload["responsible_department"] = (payload["responsible_department"] or "").strip() or None
     for key, value in payload.items():
         setattr(column, key, value)
     db.session.flush()
