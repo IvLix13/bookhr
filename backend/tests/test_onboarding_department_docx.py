@@ -128,7 +128,7 @@ def test_word_template_department_placeholder_controls_position_and_typography()
     assert "!" not in "".join(t.text or "" for t in department_run.findall(W + "t"))
 
 
-def test_word_template_without_department_variable_keeps_legacy_suffix():
+def test_word_template_without_department_variable_does_not_append_any_suffix():
     from app.services.onboarding_docx import _replace_xml
 
     xml = ('''<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'''
@@ -136,11 +136,7 @@ def test_word_template_without_department_variable_keeps_legacy_suffix():
            '''</w:body></w:document>''').encode()
     result = _replace_xml(xml, {"nda_planned_date": "21.11.2026"}, {"nda": "3 отдел"})
     paragraph = ET.fromstring(result).find(".//" + W + "p")
-    runs = paragraph.findall(W + "r")
-    assert "".join(t.text or "" for t in paragraph.findall(".//" + W + "t")) == "NDA: 21.11.2026 (отв 3 отдел)"
-    props = runs[-1].find(W + "rPr")
-    assert props.find(W + "rFonts").get(W + "ascii") == "Times New Roman"
-    assert props.find(W + "sz").get(W + "val") == "24"
+    assert "".join(t.text or "" for t in paragraph.findall(".//" + W + "t")) == "NDA: 21.11.2026"
 
 
 def test_word_template_empty_department_placeholder_has_no_artificial_suffix():
