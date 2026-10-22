@@ -781,3 +781,17 @@ def test_cards_migration_preserves_data_and_guards_downgrade():
             conn.exec_driver_sql("UPDATE onboarding_cells SET is_completed=0,completed_date=NULL,is_in_progress=1")
             with pytest.raises(RuntimeError, match="Откат запрещён"):
                 cards.downgrade()
+
+
+def test_onboarding_plan_join_uses_employee_not_curator(hr_client, seed_company):
+    """Both onboarding endpoints must use employment_id, not curator_employment_id."""
+    from app.services.onboarding import onboarding_plan_query
+
+    plan, _ = setup_plan(hr_client, seed_company.id)
+    with hr_client.application.app_context():
+        sql = str(onboarding_plan_query(seed_company.id).statement)
+        assert "onboarding_plans.employment_id = employments.id" in sql
+    plans = data(hr_client.get("/api/onboarding/plans"))
+    assert any(row["id"] == plan["id"] for row in plans["items"])
+    detail = data(hr_client.get(f'/api/onboarding/plans/{plan["id"]}'))
+    assert detail["id"] == plan["id"]
