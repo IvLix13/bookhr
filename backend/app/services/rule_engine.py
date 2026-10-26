@@ -53,6 +53,7 @@ def contract_rule_key(contract: Contract) -> str:
 
 
 def contract_expiry_rule_key(contract: Contract) -> str:
+    """Legacy key for historical expiry events; no longer generated or retained as open."""
     return f"{CONTRACT_EXPIRY_RULE_PREFIX}:{contract.id}:{contract.end_date.isoformat()}"
 
 
@@ -301,7 +302,6 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
 
     from app.services.contracts import rule_contracts, renewal_for
     for contract in rule_contracts(employment):
-        keys.add(contract_expiry_rule_key(contract))
         renewal = renewal_for(contract.id)
         if renewal:
             for event_id in (renewal.report_event_id, renewal.signing_event_id):
@@ -396,17 +396,7 @@ def process_contract_rules(employment: Employment) -> int:
             if signing.status == "overdue" and signing.event_date >= today_moscow():
                 transition_event_status(signing, EventStatus.PLANNED, "Date moved forward")
         renewal.source_end_date = contract.end_date
-        expiry_key = contract_expiry_rule_key(contract)
-        existing = Event.query.filter_by(rule_key=expiry_key).first()
-        if existing and existing.status == "cancelled":
-            # Only revive a superseded expiry, never a user cancellation.
-            last = existing.status_history[-1] if existing.status_history else None
-            if last and last.comment == "Superseded by recalculation":
-                transition_event_status(existing, EventStatus.PLANNED, "Date restored", force=True)
-        _upsert_rule_event(employment.company_id, employment.id, expiry_key,
-            f"Договор до {format_long_date_ru(contract.end_date)}: {name}", EventType.CONTRACT,
-            contract.end_date, "Окончание срока действия договора", "contract", contract.id)
-        count += 3
+        count += 2
     return count
 
 
