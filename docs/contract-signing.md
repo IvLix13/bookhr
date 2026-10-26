@@ -1,0 +1,58 @@
+# Подготовка рапорта и подписание договора
+
+Срок нового договора выбирается в рапорте (1/2/3/5 лет). Выполнение рапорта сохраняет срок и не меняет текущий договор. Отдельное мероприятие «Подписание договора» назначается на дату окончания текущего договора и создаёт новый договор. До подготовки рапорта подписание недоступно.
+
+Новый период начинается на следующий день после старого окончания. Его окончание считается как начало + выбранное число лет − один день. Исторические периоды автоматически не пересчитываются. При ручном исправлении нового подписанного договора форма учитывает включённое окончание; старые записи сохраняют прежнюю формулу, чтобы открытие и сохранение формы не сдвигало их даты.
+
+При раннем подписании старый договор остаётся текущим до своего окончания. Новый подписанный период становится текущим с даты начала; чтение работает корректно даже до очередного запуска таймера. Физические флаги активности синхронизирует `run-rules`. Повторные подтверждения не создают ещё один договор; переоткрытие после подписания запрещено.
+
+## Обновление
+
+1. Обновить backend и frontend из одной версии. Новых зависимостей нет.
+2. Выполнить штатную миграцию: `bash scripts/migrate.sh prod` (или `dev` для разработки). Новая ревизия: `0022_contract_signing`, родитель: `0021_onboarding_department`.
+3. С тем же окружением и DATABASE_URL из каталога backend выполнить `FLASK_APP=wsgi:app .venv/bin/flask run-rules`. Команда создаст недостающие подписания и связи процессов; повторный запуск безопасен.
+4. Пересобрать фронтенд (`npm run build`) и перезапустить backend штатным способом.
+5. Для чтения диагностики существующих записей: `FLASK_APP=wsgi:app .venv/bin/flask diagnose-contracts`.
+
+Старые выполненные рапорты не доказывают подготовку нового срока: прежняя версия уже могла продлить договор. Их срок автоматически не восстанавливается из текущего договора. Если у актуального старого рапорта нет сохранённого срока, HR явно переоткрывает его и повторно выбирает срок перед подписанием. Исторические даты не исправляются автоматически.
+
+## Проверки реализации
+
+- Полный backend: 443 успешных, 4 ошибки, воспроизводящиеся на исходном main (тесты стажа и старой миграции грейдов). После этого отдельно добавлены и запущены проверки миграции подписания и пограничных дат.
+- Связанные frontend-тесты: 46 успешных; typecheck и production build проходят.
+- В полном frontend-наборе есть 2 прежние ошибки OnboardingView, подтверждённые на исходном main.
+- Миграция подписания проверена на SQLite поверх существующих таблиц, включая downgrade/upgrade и сохранение даты старого договора.
+- Конкурентное подписание защищено блокировкой сотрудника и договора в едином порядке и уникальными ограничениями. Исполнение двух соединений на PostgreSQL в этой среде не проверено; его следует выполнить перед рабочим внедрением. SQLite не подтверждает поведение row locks PostgreSQL.
+
+## Полный список добавленных и изменённых файлов
+
+```text
+M	backend/app/api/events.py
+M	backend/app/api/modules.py
+M	backend/app/api/schemas.py
+M	backend/app/api/serializers.py
+M	backend/app/cli.py
+M	backend/app/models/__init__.py
+M	backend/app/models/contract.py
+M	backend/app/models/event.py
+A	backend/app/services/contracts.py
+M	backend/app/services/employees.py
+M	backend/app/services/event_completion.py
+M	backend/app/services/rule_engine.py
+A	backend/migrations/versions/0022_contract_signing.py
+M	backend/tests/test_contract_expiry_events.py
+A	backend/tests/test_contract_signing.py
+A	backend/tests/test_contract_signing_migration.py
+M	backend/tests/test_employees_crud.py
+M	backend/tests/test_event_completion.py
+M	backend/tests/test_events.py
+M	backend/tests/test_import_excel.py
+M	backend/tests/test_rule_engine.py
+A	docs/contract-signing.md
+M	frontend/src/components/ContractEditForm.vue
+M	frontend/src/components/EventDetailModal.test.ts
+M	frontend/src/components/EventDetailModal.vue
+M	frontend/src/types/index.ts
+M	frontend/src/utils/labels.ts
+M	frontend/src/views/ContractsView.vue
+```

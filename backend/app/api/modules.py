@@ -160,12 +160,15 @@ def register_routes(bp):
             aliases=CONTRACT_SORT_ALIASES,
         )
 
+        from app.services.employees import get_active_contract
+        current_ids = [c.id for e in Employment.query.filter_by(company_id=company_id, status="active").all()
+                       if (c := get_active_contract(e)) is not None]
         query = (
             Contract.query.join(Employment)
             .filter(
                 Employment.company_id == company_id,
                 Employment.status == EmploymentStatus.ACTIVE.value,
-                Contract.is_active.is_(True),
+                Contract.id.in_(current_ids),
             )
         )
         query = apply_employment_name_search(query, q)
@@ -201,11 +204,17 @@ def register_routes(bp):
     @bp.patch("/contracts/<int:contract_id>")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def update_contract(contract_id: int):
-        contract = db.session.get(Contract, contract_id)
+        from app.services.contracts import lock_contract, renewal_for
+        contract = lock_contract(contract_id)
         if not contract or contract.employment.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
 
         payload = load_schema(UpdateContractSchema)
+        renewal = renewal_for(contract.id)
+        if renewal and renewal.result_contract_id and any(
+            key in payload and payload[key] != getattr(contract, key) for key in ("end_date", "term_years")
+        ):
+            return api_response(message="Нельзя изменить период предыдущего подписанного договора", status=409)
         if "end_date" in payload or "term_years" in payload:
             end_date = payload.get("end_date", contract.end_date)
             term_years = payload.get("term_years", contract.term_years)
@@ -216,7 +225,11 @@ def register_routes(bp):
                 )
             contract.end_date = end_date
             contract.term_years = term_years
-            contract.start_date = calculate_contract_start(end_date, term_years)
+            from app.models import ContractRenewal
+            from datetime import timedelta
+            # Existing legacy periods retain their convention. Signed successors are inclusive.
+            signed = ContractRenewal.query.filter_by(result_contract_id=contract.id).first()
+            contract.start_date = calculate_contract_start(end_date + timedelta(days=1) if signed else end_date, term_years)
 
         if "notes" in payload:
             contract.notes = payload.get("notes")

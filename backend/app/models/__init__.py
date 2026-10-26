@@ -3,7 +3,7 @@
 from app.models.audit import AuditLog
 from app.models.onboarding import OnboardingCell, OnboardingColumn, OnboardingPlan
 from app.models.company import Company
-from app.models.contract import Contract
+from app.models.contract import Contract, ContractRenewal
 from app.models.employee import (
     EducationStatus,
     Employment,
@@ -29,6 +29,7 @@ __all__ = [
     "AuditLog",
     "Company",
     "Contract",
+    "ContractRenewal",
     "DeliveryStatus",
     "EmployeeGradeHistory",
     "EducationStatus",

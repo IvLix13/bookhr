@@ -60,6 +60,21 @@ def register_commands(app: Flask) -> None:
         result = seed_demo_data(force=force)
         click.echo(f"Demo seed completed: {result}")
 
+    @app.cli.command("diagnose-contracts")
+    def diagnose_contracts():
+        """Read-only diagnosis; does not infer missing signatures or fix historical dates."""
+        from app.models import Contract, ContractRenewal
+        from datetime import timedelta
+        from app.utils.dates import calculate_contract_start
+        from app.services.contracts import renewal_for
+        for contract in Contract.query.order_by(Contract.id):
+            boundary = contract.end_date + timedelta(days=1) if ContractRenewal.query.filter_by(result_contract_id=contract.id).first() else contract.end_date
+            if contract.term_years and calculate_contract_start(boundary, contract.term_years) != contract.start_date:
+                click.echo(f"Check contract {contract.id}: start={contract.start_date}, end={contract.end_date}, term={contract.term_years}")
+            renewal = renewal_for(contract.id)
+            if renewal and renewal.term_years is None:
+                click.echo(f"Contract {contract.id}: report term requires explicit preparation")
+
     @app.cli.command("run-rules")
     @click.option("--company-id", type=int, default=None)
     def run_rules(company_id):

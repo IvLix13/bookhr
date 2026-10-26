@@ -85,13 +85,20 @@ watch(
   { flush: 'sync' },
 )
 
+function nextDay(iso: string): string {
+  const date = new Date(`${iso}T12:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + 1)
+  return date.toISOString().slice(0, 10)
+}
+
 const derivedStart = computed(() => {
   const endDate = form.value.end_date
   const years = Number(form.value.term_years)
   if (!endDate || !Number.isFinite(years) || years <= 0) {
     return formatShortDate(props.row?.start_date)
   }
-  return formatShortDate(subtractYearsFromIsoDate(endDate, years))
+  const boundary = props.row?.inclusive_period ? nextDay(endDate) : endDate
+  return formatShortDate(subtractYearsFromIsoDate(boundary, years))
 })
 
 async function submit() {

@@ -142,7 +142,7 @@ def test_confirm_import_runs_rule_engine(app, tmp_path):
         assert "report" in event_types
         assert "grade" in event_types
         assert "passport" in event_types
-        assert len(events) == 5
+        assert len(events) == 6
 
 
 def test_confirm_import_accepts_datetime_cells(app, tmp_path):

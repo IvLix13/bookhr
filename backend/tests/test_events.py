@@ -402,7 +402,7 @@ def test_update_completed_contract_report_date(hr_client, seed_company):
     contract_id = contract_item["id"]
     report_id = contract_item["renewal_report_event"]["id"]
 
-    completed = hr_client.post(f"/api/events/{report_id}/complete", json={})
+    completed = hr_client.post(f"/api/events/{report_id}/complete", json={"extension_term_years": 1})
     assert completed.status_code == 200
 
     updated = hr_client.patch(

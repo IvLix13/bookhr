@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from app.extensions import db
+
 from app.models import (
     Contract,
     EmployeeGradeHistory,
@@ -148,6 +150,10 @@ def contract_to_dict(contract: Contract) -> dict:
     today = today_moscow()
     employment = contract.employment
     renewal_event = find_contract_renewal_event(contract.id)
+    from app.services.contracts import renewal_for, contract_context
+    from app.models import ContractRenewal
+    renewal = renewal_for(contract.id)
+    signing = db.session.get(Event, renewal.signing_event_id) if renewal and renewal.signing_event_id else None
     return {
         "id": contract.id,
         "employment_id": contract.employment_id,
@@ -157,6 +163,8 @@ def contract_to_dict(contract: Contract) -> dict:
         "term_years": contract.term_years,
         "days_left": (contract.end_date - today).days,
         "is_active": contract.is_active,
+        "signing_event": contract_context(signing) if signing else None,
+        "inclusive_period": ContractRenewal.query.filter_by(result_contract_id=contract.id).first() is not None,
         "renewal_report_event": {
             "id": renewal_event.id,
             "event_date": renewal_event.event_date.isoformat(),
@@ -270,6 +278,7 @@ def reward_to_dict(reward: Reward) -> dict:
 
 
 def event_to_dict(event: Event) -> dict:
+    from app.services.contracts import contract_context
     grade_completion = None
     grade_event_kind = None
     passport_completion = None
@@ -335,6 +344,7 @@ def event_to_dict(event: Event) -> dict:
         "completion_comment": event.completion_comment,
         "grade_event_kind": grade_event_kind,
         "grade_completion": grade_completion,
+        "contract_renewal": contract_context(event),
         "passport_completion": passport_completion,
         "attestation_mutation_blocked_reason": attestation_mutation_blocked_reason(event),
         "last_status_change": _last_status_change_to_dict(event),

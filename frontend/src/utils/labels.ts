@@ -20,6 +20,7 @@ export const MODULE_LABELS = {
 
 export const EVENT_TYPE_LABELS: Record<string, string> = {
   contract: 'Договор',
+  contract_signing: 'Подписание договора',
   grade: 'Грейд',
   award: 'Поощрение',
   report: 'Рапорт',

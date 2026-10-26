@@ -75,7 +75,19 @@ export interface Grade {
   in_use_count?: number
 }
 
+export interface ContractRenewalContext {
+  stage: 'report' | 'signing'
+  term_years: number | null
+  signing_event_id: number | null
+  new_start_date: string | null
+  new_end_date: string | null
+  result_contract_id: number | null
+  blocked_reason: string | null
+  reopen_blocked_reason: string | null
+}
+
 export interface EventItem {
+  contract_renewal?: ContractRenewalContext | null
   id: number
   title: string
   event_type: string
@@ -115,6 +127,8 @@ export interface EventItem {
 }
 
 export interface ContractRow {
+  signing_event?: ContractRenewalContext | null
+  inclusive_period?: boolean
   id: number
   employment_id: number
   full_name: string | null
