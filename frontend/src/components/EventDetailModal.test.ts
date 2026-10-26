@@ -415,4 +415,32 @@ describe('EventDetailModal', () => {
     expect(wrapper.emitted('changed')).toBeTruthy()
     expect(wrapper.emitted('close')).toBeTruthy()
   })
+  it('restores the term selected in the report', async () => {
+    getEvent.mockResolvedValue({ ...plannedEvent, reference_type: 'contract', contract_renewal: {
+      stage: 'report', term_years: 3, signing_event_id: 8, new_start_date: '2027-12-01',
+      new_end_date: '2030-11-30', result_contract_id: null, blocked_reason: null, reopen_blocked_reason: null,
+    } })
+    const wrapper = await mountModal()
+    expect((document.querySelector('#extension-term-select') as HTMLSelectElement).value).toBe('3')
+    const button = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Выполнить')!
+    button.click()
+    await flushPromises()
+    expect(completeEvent).toHaveBeenCalledWith(7, undefined, { extension_term_years: 3 })
+    wrapper.unmount()
+  })
+
+  it('shows signing dates without a term selector and blocks unprepared signing', async () => {
+    getEvent.mockResolvedValue({ ...plannedEvent, event_type: 'contract_signing', reference_type: 'contract', contract_renewal: {
+      stage: 'signing', term_years: 3, signing_event_id: 7, new_start_date: '2027-12-01',
+      new_end_date: '2030-11-30', result_contract_id: null, blocked_reason: 'Сначала выполните рапорт', reopen_blocked_reason: null,
+    } })
+    const wrapper = await mountModal()
+    expect(document.querySelector('#extension-term-select')).toBeNull()
+    expect(document.body.textContent).toContain('Сначала выполните рапорт')
+    expect(document.body.textContent).toContain('2030')
+    const button = Array.from(document.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Выполнить')!
+    expect(button.disabled).toBe(true)
+    wrapper.unmount()
+  })
+
 })

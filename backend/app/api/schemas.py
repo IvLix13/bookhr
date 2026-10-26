@@ -78,7 +78,7 @@ class CreateEventSchema(BaseSchema):
 
     @validates_schema
     def reject_automatic_types(self, data, **kwargs):
-        if data.get("event_type") in {EventType.ATTESTATION, EventType.ATTESTATION_PREPARATION}:
+        if data.get("event_type") in {EventType.ATTESTATION, EventType.ATTESTATION_PREPARATION, EventType.CONTRACT_SIGNING}:
             raise ValidationError({"event_type": ["Аттестация создаётся автоматически через модуль «Аттестация»"]})
 
 
@@ -91,7 +91,7 @@ class UpdateEventSchema(BaseSchema):
 
     @validates_schema
     def reject_automatic_types(self, data, **kwargs):
-        if data.get("event_type") in {EventType.ATTESTATION, EventType.ATTESTATION_PREPARATION}:
+        if data.get("event_type") in {EventType.ATTESTATION, EventType.ATTESTATION_PREPARATION, EventType.CONTRACT_SIGNING}:
             raise ValidationError({"event_type": ["Нельзя назначить автоматический тип вручную"]})
 
 

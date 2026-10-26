@@ -56,6 +56,7 @@ def test_create_employee_creates_rule_events(hr_client, seed_company):
         types = {event.event_type for event in events}
         assert types == {
             EventType.CONTRACT.value,
+            EventType.CONTRACT_SIGNING.value,
             EventType.REPORT.value,
             EventType.GRADE.value,
             EventType.PASSPORT.value,
@@ -175,7 +176,7 @@ def test_update_contract_end_recalculates_events(hr_client, seed_company):
     with hr_client.application.app_context():
         old_report = db.session.get(Event, old_id)
         assert old_report is not None
-        assert old_report.status == EventStatus.CANCELLED.value
+        assert old_report.status == EventStatus.PLANNED.value
 
         new_report = Event.query.filter_by(
             employment_id=employment_id,
@@ -469,7 +470,7 @@ def test_update_contract_directly_recalculates_renewal_report(hr_client, seed_co
     with hr_client.application.app_context():
         old_report = db.session.get(Event, old_id)
         assert old_report is not None
-        assert old_report.status == EventStatus.CANCELLED.value
+        assert old_report.status == EventStatus.PLANNED.value
 
         new_report = Event.query.filter_by(
             employment_id=employment_id,

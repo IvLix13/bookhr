@@ -24,23 +24,24 @@ const emit = defineEmits<{
 const auth = useAuthStore()
 const modalRef = ref<HTMLElement | null>(null)
 const event = ref<EventItem | null>(null)
+
 const loading = ref(false)
 const error = ref('')
 const actionBusy = ref(false)
 const comment = ref('')
 const extensionTermYears = ref('1')
+watch(() => event.value?.contract_renewal?.term_years, (term) => {
+  if (term) extensionTermYears.value = String(term)
+})
 const targetGradeId = ref('')
 const newPassportValidUntil = ref('')
 const editing = ref(false)
 
-const isContractReport = computed(() => {
-  if (!event.value) return false
-  return (
-    event.value.event_type === 'report' &&
-    (event.value.reference_type === 'contract' ||
-      event.value.title.toLowerCase().includes('договор'))
-  )
-})
+const isContractReport = computed(() =>
+  event.value?.event_type === 'report' && event.value?.reference_type === 'contract',
+)
+const isContractSigning = computed(() => event.value?.event_type === 'contract_signing')
+const contractBlocked = computed(() => event.value?.contract_renewal?.blocked_reason)
 
 const isGradePromotion = computed(
   () =>
@@ -482,6 +483,13 @@ async function saveAttestationDate() {
                 </button>
               </div>
               <template v-if="isOpenStatus">
+                <p v-if="contractBlocked" class="state error inline">{{ contractBlocked }}</p>
+                <p v-if="isContractSigning" class="hint inline">
+                  Срок из рапорта: {{ event.contract_renewal?.term_years ?? '—' }} г.
+                  Новый договор: {{ formatShortDate(event.contract_renewal?.new_start_date) }} —
+                  {{ formatShortDate(event.contract_renewal?.new_end_date) }}
+                </p>
+                <p v-if="isContractReport" class="hint inline">Рапорт сохраняет срок. Новый договор создаётся при подписании.</p>
                 <div v-if="isContractReport" class="extension-row">
                   <label for="extension-term-select">Срок продления договора:</label>
                   <select
@@ -546,6 +554,7 @@ async function saveAttestationDate() {
                     :disabled="
                       actionBusy ||
                       hasUnsavedAttestationDate ||
+                      Boolean(contractBlocked) ||
                       Boolean(gradeCompletion?.blocked_reason) ||
                       (requiresGradeChoice && !targetGradeId) ||
                       (requiresPassportDate && !newPassportValidUntil)
@@ -564,7 +573,7 @@ async function saveAttestationDate() {
                   </button>
                 </div>
               </template>
-              <template v-else-if="isClosedStatus">
+              <template v-else-if="isClosedStatus && !event.contract_renewal?.reopen_blocked_reason">
                 <button
                   class="btn secondary"
                   type="button"

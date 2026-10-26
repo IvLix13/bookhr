@@ -67,7 +67,8 @@ def test_expiry_is_available_in_month_day_and_detail_api(hr_client, seed_company
     ):
         response = hr_client.get(f"/api/events?{query}")
         assert response.status_code == 200
-        assert [item["id"] for item in response.get_json()["data"]["items"]] == [expiry_id]
+        assert expiry_id in [item["id"] for item in response.get_json()["data"]["items"]]
+        assert any(item["event_type"] == "contract_signing" for item in response.get_json()["data"]["items"])
     detail = hr_client.get(f"/api/events/{expiry_id}").get_json()["data"]
     assert detail["employee_name"] == "Иван Иванов"
     assert detail["event_date"] == "2027-12-01"
@@ -94,7 +95,7 @@ def test_editing_contract_replaces_old_expiry_on_calendar(hr_client, seed_compan
         assert new.status == "planned"
 
 
-def test_completing_report_extends_expiry_event(hr_client, seed_company):
+def test_completing_report_keeps_existing_expiry_event(hr_client, seed_company):
     with hr_client.application.app_context():
         employment, contract = create_contract(seed_company.id)
         recalculate_employment_events(employment)
@@ -109,8 +110,8 @@ def test_completing_report_extends_expiry_event(hr_client, seed_company):
     assert response.status_code == 200
     with hr_client.application.app_context():
         contract = db.session.get(Contract, contract_id)
-        assert contract.end_date == date(2028, 12, 1)
-        assert db.session.get(Event, old_id).status == "cancelled"
+        assert contract.end_date == date(2027, 12, 1)
+        assert db.session.get(Event, old_id).status == "planned"
         expiry = Event.query.filter_by(rule_key=contract_expiry_rule_key(contract)).one()
         assert expiry.event_date == contract.end_date
 

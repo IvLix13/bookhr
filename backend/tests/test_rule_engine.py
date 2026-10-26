@@ -140,8 +140,8 @@ def test_completed_renewal_report_is_not_reopened(app):
         assert completed.status == EventStatus.COMPLETED.value
         updated = find_contract_renewal_event(contract.id)
         assert updated is not None
-        assert updated.id != completed_id
-        assert updated.status == EventStatus.PLANNED.value
+        assert updated.id == completed_id
+        assert updated.status == EventStatus.COMPLETED.value
 
 
 def test_rule_key_invariant_matches_generated_events(app):

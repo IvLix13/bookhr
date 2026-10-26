@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
+
 from flask import request
 from sqlalchemy.orm import selectinload
 
@@ -224,6 +226,16 @@ def register_routes(bp):
             return api_response(message="Not found", status=404)
         payload = load_schema(EventActionSchema)
         try:
+            from app.services.contracts import lock_contract_event, renewal_for, ContractConflict
+            lock_contract_event(event)
+            if event.status == EventStatus.COMPLETED.value:
+                if event.event_type == "report" and event.reference_type == "contract":
+                    renewal = renewal_for(event.reference_id)
+                    if payload.get("new_end_date") is not None or payload.get("extension_term_years") != renewal.term_years:
+                        raise ContractConflict("Для изменения срока переоткройте рапорт")
+                elif event.event_type == "contract_signing" and (payload.get("extension_term_years") is not None or payload.get("new_end_date") is not None):
+                    raise ValueError("Срок нового договора задаётся в рапорте")
+                return api_response(event_to_dict(event))
             validate_attestation_mutation(event)
             transition_event_status(
                 event,
@@ -237,13 +249,22 @@ def register_routes(bp):
                 target_grade_id=payload.get("target_grade_id"),
                 new_passport_valid_until=payload.get("new_passport_valid_until"),
             )
+        except IntegrityError:
+            db.session.rollback()
+            return api_response(message="Договор уже обработан другим запросом. Обновите мероприятие", status=409)
         except InvalidEventTransition as exc:
+            db.session.rollback()
             return api_response(message=str(exc), status=409)
         except ValueError as exc:
             db.session.rollback()
-            return api_response(message=str(exc), status=400)
-        refresh_overdue_events(event.company_id)
-        db.session.commit()
+            from app.services.contracts import ContractConflict
+            return api_response(message=str(exc), status=409 if isinstance(exc, ContractConflict) else 400)
+        try:
+            refresh_overdue_events(event.company_id)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return api_response(message="Договор уже обработан другим запросом. Обновите мероприятие", status=409)
         return api_response(event_to_dict(event))
 
     @bp.post("/events/<int:event_id>/cancel")
@@ -254,6 +275,11 @@ def register_routes(bp):
             return api_response(message="Not found", status=404)
         payload = load_schema(CancelEventSchema)
         try:
+            from app.services.contracts import lock_contract, validate_reopen
+            if event.reference_type == "contract":
+                lock_contract(event.reference_id)
+                db.session.refresh(event)
+                validate_reopen(event)
             validate_attestation_mutation(event)
             transition_event_status(
                 event,
@@ -261,10 +287,12 @@ def register_routes(bp):
                 payload["comment"],
             )
         except InvalidEventTransition as exc:
+            db.session.rollback()
             return api_response(message=str(exc), status=409)
         except ValueError as exc:
             db.session.rollback()
-            return api_response(message=str(exc), status=400)
+            from app.services.contracts import ContractConflict
+            return api_response(message=str(exc), status=409 if isinstance(exc, ContractConflict) else 400)
         refresh_events_after_mutation(
             company_id=event.company_id,
             employment=event.employment,
@@ -280,6 +308,13 @@ def register_routes(bp):
             return api_response(message="Not found", status=404)
         try:
             validate_attestation_mutation(event)
+            from app.services.contracts import lock_contract_event, validate_reopen
+            # Reopening a signing before preparation is permitted; lock without readiness check.
+            if event.reference_type == "contract":
+                from app.services.contracts import lock_contract
+                lock_contract(event.reference_id)
+                db.session.refresh(event)
+            validate_reopen(event)
             transition_event_status(
                 event,
                 EventStatus.PLANNED,
@@ -287,10 +322,12 @@ def register_routes(bp):
                 force=True,
             )
         except InvalidEventTransition as exc:
+            db.session.rollback()
             return api_response(message=str(exc), status=409)
         except ValueError as exc:
             db.session.rollback()
-            return api_response(message=str(exc), status=400)
+            from app.services.contracts import ContractConflict
+            return api_response(message=str(exc), status=409 if isinstance(exc, ContractConflict) else 400)
         refresh_events_after_mutation(
             company_id=event.company_id,
             employment=event.employment,

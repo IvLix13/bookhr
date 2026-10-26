@@ -140,52 +140,6 @@ def _promote_after_grade_review(
     return history
 
 
-def _extend_contract_after_report_completion(
-    event: Event,
-    term_years: float | None = None,
-    new_end_date: date | None = None,
-) -> Contract | None:
-    """Extend the contract when the renewal report event is completed with an extension term."""
-    if term_years is None and new_end_date is None:
-        return None
-
-    employment = event.employment
-    if not employment:
-        return None
-
-    contract = None
-    if event.reference_type == "contract" and event.reference_id:
-        contract = db.session.get(Contract, event.reference_id)
-    if not contract:
-        contract = get_active_contract(employment)
-    if not contract:
-        return None
-
-    old_end_date = contract.end_date
-    if new_end_date is not None:
-        target_end_date = new_end_date
-    elif term_years is not None:
-        target_end_date = calculate_contract_end(contract.end_date, term_years)
-        contract.term_years = term_years
-    else:
-        return None
-
-    contract.end_date = target_end_date
-    contract.is_active = True
-
-    log_audit(
-        "contract_extend",
-        "contract",
-        contract.id,
-        {"end_date": old_end_date.isoformat()},
-        {
-            "end_date": target_end_date.isoformat(),
-            "term_years": contract.term_years,
-            "event_id": event.id,
-        },
-    )
-    return contract
-
 
 def _renew_passport_after_preparation(
     event: Event,
@@ -307,11 +261,11 @@ def apply_completion_effects(
         event.event_type == EventType.REPORT.value
         and event.reference_type == "contract"
     ):
-        extended_contract = _extend_contract_after_report_completion(
-            event,
-            term_years=term_years,
-            new_end_date=new_end_date,
-        )
+        from app.services.contracts import prepare
+        prepare(event, term_years, new_end_date)
+    elif event.event_type == EventType.CONTRACT_SIGNING.value:
+        from app.services.contracts import sign
+        extended_contract = sign(event, term_years, new_end_date)
     elif is_passport_preparation_event(event):
         active = (
             get_active_passport(event.employment.person)

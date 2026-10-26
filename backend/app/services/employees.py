@@ -68,11 +68,8 @@ def get_active_passport(person: Person) -> Passport | None:
 
 
 def get_active_contract(employment: Employment) -> Contract | None:
-    return (
-        Contract.query.filter_by(employment_id=employment.id, is_active=True)
-        .order_by(Contract.end_date.desc())
-        .first()
-    )
+    from app.services.contracts import current_contract
+    return current_contract(employment)
 
 
 def create_person_with_employment(
@@ -204,6 +201,15 @@ def sync_active_contract(
     contract_start = calculate_contract_start(end_date, term_years)
 
     if contract:
+        from app.services.contracts import lock_contract, renewal_for
+        from app.models import ContractRenewal
+        from datetime import timedelta
+        contract = lock_contract(contract.id)
+        renewal = renewal_for(contract.id)
+        if renewal and renewal.result_contract_id and (end_date != contract.end_date or term_years != contract.term_years):
+            raise ValueError("Нельзя изменить период предыдущего подписанного договора")
+        if ContractRenewal.query.filter_by(result_contract_id=contract.id).first():
+            contract_start = calculate_contract_start(end_date + timedelta(days=1), term_years)
         contract.start_date = contract_start
         contract.end_date = end_date
         contract.term_years = term_years
@@ -288,6 +294,9 @@ def delete_employment(employment: Employment, onboarding_delete=None) -> None:
     person_id = person.id
     company_id = employment.company_id
 
+    from app.models import ContractRenewal
+    contract_ids = db.session.query(Contract.id).filter_by(employment_id=employment.id)
+    ContractRenewal.query.filter(ContractRenewal.source_contract_id.in_(contract_ids)).delete(synchronize_session=False)
     event_ids = [
         event.id
         for event in Event.query.filter_by(employment_id=employment_id).all()

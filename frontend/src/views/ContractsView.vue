@@ -182,6 +182,9 @@ async function handleSaved() {
           <span v-else>—</span>
         </template>
         <template #cell-report_link="{ row }">
+          <button v-if="row.signing_event?.signing_event_id" class="btn secondary" type="button"
+            @click.stop="openReportEvent(row.signing_event.signing_event_id)">Подписание</button>
+          <span v-if="row.signing_event?.result_contract_id">Новый договор подписан</span>
           <button
             v-if="row.renewal_report_event"
             type="button"

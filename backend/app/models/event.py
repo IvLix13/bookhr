@@ -10,6 +10,7 @@ from app.models.base import TimestampMixin, utcnow
 
 class EventType(str, Enum):
     CONTRACT = "contract"
+    CONTRACT_SIGNING = "contract_signing"
     GRADE = "grade"
     AWARD = "award"
     REPORT = "report"

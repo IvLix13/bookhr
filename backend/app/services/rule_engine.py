@@ -234,6 +234,12 @@ def find_contract_renewal_event(
     A completed report still has to be visible on the contracts screen so the
     date it was prepared on does not disappear once the work is done.
     """
+    from app.services.contracts import renewal_for
+    renewal = renewal_for(contract_id)
+    if renewal and renewal.report_event_id:
+        linked = db.session.get(Event, renewal.report_event_id)
+        if linked and (include_cancelled or linked.status != "cancelled"):
+            return linked
     query = Event.query.filter_by(
         reference_type="contract",
         reference_id=contract_id,
@@ -293,10 +299,15 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
     if employment.attestation_date:
         keys.update(attestation_rule_keys(employment).values())
 
-    contract = get_active_contract(employment)
-    if contract:
-        keys.add(contract_rule_key(contract))
+    from app.services.contracts import rule_contracts, renewal_for
+    for contract in rule_contracts(employment):
         keys.add(contract_expiry_rule_key(contract))
+        renewal = renewal_for(contract.id)
+        if renewal:
+            for event_id in (renewal.report_event_id, renewal.signing_event_id):
+                event = db.session.get(Event, event_id) if event_id else None
+                if event:
+                    keys.add(event.rule_key)
 
     current = get_current_grade(employment)
     if current:
@@ -339,36 +350,64 @@ def cancel_stale_rule_events(employment: Employment, keep_keys: set[str]) -> int
     return cancelled
 
 
-def process_contract_rules(employment: Employment) -> int:
-    contract = get_active_contract(employment)
-    if not contract:
-        return 0
+def contract_signing_rule_key(contract: Contract) -> str:
+    return f"contract-signing:{contract.id}:{contract.end_date.isoformat()}"
 
-    event_date = subtract_months(contract.end_date, 4)
+
+def process_contract_rules(employment: Employment) -> int:
+    from app.models import ContractRenewal
+    from app.services.contracts import rule_contracts, renewal_for, activate_signed_contracts
+    activate_signed_contracts(employment)
+    count = 0
     name = get_current_name(employment.person) or "Сотрудник"
-    _upsert_rule_event(
-        company_id=employment.company_id,
-        employment_id=employment.id,
-        rule_key=contract_rule_key(contract),
-        title=f"Подготовить рапорт на продление Договора: {name}",
-        event_type=EventType.REPORT,
-        event_date=event_date,
-        description=f"Договор истекает {format_long_date_ru(contract.end_date)}",
-        reference_type="contract",
-        reference_id=contract.id,
-    )
-    _upsert_rule_event(
-        company_id=employment.company_id,
-        employment_id=employment.id,
-        rule_key=contract_expiry_rule_key(contract),
-        title=f"Договор до {format_long_date_ru(contract.end_date)}: {name}",
-        event_type=EventType.CONTRACT,
-        event_date=contract.end_date,
-        description="Окончание срока действия договора",
-        reference_type="contract",
-        reference_id=contract.id,
-    )
-    return 2
+    for contract in rule_contracts(employment):
+        # Serialize initial process creation with completions and manual edits.
+        from app.services.contracts import lock_contract
+        contract = lock_contract(contract.id)
+        renewal = renewal_for(contract.id)
+        if renewal is None:
+            renewal = ContractRenewal(source_contract_id=contract.id, source_end_date=contract.end_date)
+            db.session.add(renewal)
+            db.session.flush()
+        report = db.session.get(Event, renewal.report_event_id) if renewal.report_event_id else None
+        if report is None:
+            report = _upsert_rule_event(employment.company_id, employment.id,
+                contract_rule_key(contract), f"Подготовить рапорт на продление Договора: {name}",
+                EventType.REPORT, subtract_months(contract.end_date, 4),
+                f"Договор истекает {format_long_date_ru(contract.end_date)}", "contract", contract.id)
+            renewal.report_event_id = report.id
+        if report.status in OPEN_EVENT_STATUSES:
+            report.title = f"Подготовить рапорт на продление Договора: {name}"
+            report.description = f"Договор истекает {format_long_date_ru(contract.end_date)}"
+            if not report.manual_date:
+                report.event_date = subtract_months(contract.end_date, 4)
+            if report.status == "overdue" and report.event_date >= today_moscow():
+                transition_event_status(report, EventStatus.PLANNED, "Date moved forward")
+        signing = db.session.get(Event, renewal.signing_event_id) if renewal.signing_event_id else None
+        if signing is None:
+            signing = _upsert_rule_event(employment.company_id, employment.id,
+                contract_signing_rule_key(contract), f"Подписание договора: {name}",
+                EventType.CONTRACT_SIGNING, contract.end_date,
+                "Срок нового договора задаётся в подготовке рапорта", "contract", contract.id)
+            renewal.signing_event_id = signing.id
+        if signing.status in OPEN_EVENT_STATUSES:
+            signing.title = f"Подписание договора: {name}"
+            signing.event_date = contract.end_date
+            if signing.status == "overdue" and signing.event_date >= today_moscow():
+                transition_event_status(signing, EventStatus.PLANNED, "Date moved forward")
+        renewal.source_end_date = contract.end_date
+        expiry_key = contract_expiry_rule_key(contract)
+        existing = Event.query.filter_by(rule_key=expiry_key).first()
+        if existing and existing.status == "cancelled":
+            # Only revive a superseded expiry, never a user cancellation.
+            last = existing.status_history[-1] if existing.status_history else None
+            if last and last.comment == "Superseded by recalculation":
+                transition_event_status(existing, EventStatus.PLANNED, "Date restored", force=True)
+        _upsert_rule_event(employment.company_id, employment.id, expiry_key,
+            f"Договор до {format_long_date_ru(contract.end_date)}: {name}", EventType.CONTRACT,
+            contract.end_date, "Окончание срока действия договора", "contract", contract.id)
+        count += 3
+    return count
 
 
 def _release_cancelled_rule_key(rule_key: str, *, keep_event_id: int | None = None) -> None:

@@ -311,7 +311,7 @@ def test_completing_report_event_keeps_contract_report_date(hr_client, seed_comp
         report_date = event.event_date.isoformat()
         contract_id = contract.id
 
-    response = hr_client.post(f"/api/events/{event_id}/complete", json={})
+    response = hr_client.post(f"/api/events/{event_id}/complete", json={"extension_term_years": 3})
     assert response.status_code == 200
 
     listed = hr_client.get(f"/api/contracts?company_id={seed_company.id}")
@@ -326,7 +326,7 @@ def test_completing_report_event_keeps_contract_report_date(hr_client, seed_comp
     assert report["completed_date"] is not None
 
 
-def test_completing_report_event_with_extension_term_extends_contract_and_generates_next_report(
+def test_completing_report_saves_next_term_without_changing_contract(
     hr_client, seed_company, app
 ):
     with app.app_context():
@@ -366,21 +366,18 @@ def test_completing_report_event_with_extension_term_extends_contract_and_genera
 
     with app.app_context():
         updated_contract = db.session.get(Contract, contract_id)
-        assert updated_contract.end_date == date(2029, 9, 1)
-        assert updated_contract.term_years == 3
+        assert updated_contract.end_date == date(2026, 9, 1)
+        assert updated_contract.term_years == 2
 
         old_event = db.session.get(Event, event_id)
         assert old_event.status == EventStatus.COMPLETED.value
         assert old_event.completion_comment == "Руководство подписало продление на 3 года"
 
-        new_event = Event.query.filter_by(
-            employment_id=updated_contract.employment_id,
-            event_type=EventType.REPORT.value,
-            status=EventStatus.PLANNED.value,
-        ).first()
-        assert new_event is not None
-        assert new_event.event_date == date(2029, 5, 1)
-
+        from app.models import ContractRenewal
+        renewal = ContractRenewal.query.filter_by(source_contract_id=contract_id).one()
+        assert renewal.term_years == 3
+        assert renewal.result_contract_id is None
+        assert db.session.get(Event, renewal.signing_event_id).event_date == date(2026, 9, 1)
 
 
 def test_completed_grade_event_clears_grade_attention_item(hr_client, seed_company, app):
