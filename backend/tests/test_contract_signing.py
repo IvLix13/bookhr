@@ -38,7 +38,7 @@ def test_report_signing_idempotency_and_history(hr_client, cycle):
         assert Contract.query.filter_by(employment_id=eid).count()==2
         assert get_active_contract(db.session.get(Employment,eid)).id==cid
         assert db.session.get(Contract,cid).is_active
-        assert Event.query.filter_by(event_type='contract', reference_id=cid).one().status!='cancelled'
+        assert Event.query.filter_by(event_type='contract', reference_id=cid).count() == 0
     for event in (report,signing):
         assert hr_client.post(f'/api/events/{event}/reopen',json={}).status_code==409
     assert complete(hr_client,signing,extension_term_years=5).status_code==400
