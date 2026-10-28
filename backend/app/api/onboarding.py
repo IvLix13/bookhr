@@ -135,6 +135,32 @@ def register_routes(bp):
     def onboarding_plan(plan_id):
         return api_response(plan_dict(find_plan(plan_id, get_request_company_id())))
 
+    @bp.post("/onboarding/plans/draft-docx")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @transaction
+    def onboarding_draft_docx():
+        from app.services.onboarding_wizard import validate_wizard
+        draft, _ = validate_wizard(get_json(), get_request_company_id())
+        return send_file(build_onboarding_document(draft),
+            mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            as_attachment=True, download_name="onboarding_plan.docx")
+
+    @bp.post("/onboarding/plans/from-wizard")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @transaction
+    def onboarding_from_wizard():
+        from app.services.onboarding_wizard import validate_wizard
+        draft, cells = validate_wizard(get_json(), get_request_company_id())
+        plan = OnboardingPlan(employment_id=draft.employment.id, curator_name=draft.curator_name)
+        db.session.add(plan)
+        db.session.flush()
+        for column, values in cells:
+            save_cell(plan, column, dict(values))
+        log_audit("create", "onboarding_plan", plan.id, None,
+                  {"employment_id": plan.employment_id, "curator_name": plan.curator_name})
+        db.session.expire(plan, ['cells'])
+        return api_response(plan_dict(plan), status=201)
+
     @bp.post("/onboarding/plans")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     @transaction
