@@ -7,9 +7,9 @@ import OnboardingDeleteDialog from './OnboardingDeleteDialog.vue'
 import OnboardingColumns from './OnboardingColumns.vue'
 import type { OnboardingPlan, OnboardingColumn } from '@/types/onboarding'
 
-const mocks = vi.hoisted(() => ({ plan: vi.fn(), savePlan: vi.fn(), employees: vi.fn(), create: vi.fn(), preview: vi.fn(), remove: vi.fn(), employeeRemove: vi.fn(), stages: vi.fn(), edit: true }))
+const mocks = vi.hoisted(() => ({ plan: vi.fn(), savePlan: vi.fn(), employees: vi.fn(), create: vi.fn(), preview: vi.fn(), remove: vi.fn(), employeeRemove: vi.fn(), stages: vi.fn(), docx: vi.fn(), edit: true }))
 vi.mock('@/api/client', () => ({ api: {
-  onboardingDocumentStages: mocks.stages,
+  onboardingDocumentStages: mocks.stages, downloadOnboardingDocx: mocks.docx,
   onboardingPlan: mocks.plan, updateOnboardingPlan: mocks.savePlan,
   employees: mocks.employees, createOnboardingPlan: mocks.create,
   onboardingDeletePreview: mocks.preview, deleteOnboarding: mocks.remove, deleteEmployeeWithPlan: mocks.employeeRemove,
@@ -36,6 +36,34 @@ beforeEach(() => {
 })
 
 describe('Onboarding modal workflows with real Teleport', () => {
+  it('closes only the menu on Escape, then closes the window on the next Escape', async () => {
+    const root = mount(OnboardingPlanModal, { props: { planId: 1, columns: [column] } })
+    await flushPromises()
+    const toggle = dom().get('[aria-label="Действия с планом"]')
+    await toggle.trigger('click')
+    await dom().get('[aria-label="Поиск по таблице плана"]').trigger('keydown', { key: 'Escape' })
+    expect(dom().find('.action-menu').exists()).toBe(false)
+    expect(root.emitted('close')).toBeUndefined()
+    await toggle.trigger('keydown', { key: 'Escape' })
+    expect(root.emitted('close')).toHaveLength(1)
+  })
+
+  it('exports through the menu and prevents another export until completion', async () => {
+    let finish!: () => void
+    mocks.docx.mockReturnValue(new Promise<void>(resolve => { finish = resolve }))
+    mount(OnboardingPlanModal, { props: { planId: 1, columns: [column] } })
+    await flushPromises()
+    const toggle = dom().get('[aria-label="Действия с планом"]')
+    await toggle.trigger('click')
+    await button('Выгрузить план').trigger('click')
+    await toggle.trigger('click')
+    expect(button('Выгрузка…').attributes('disabled')).toBeDefined()
+    expect(mocks.docx).toHaveBeenCalledExactlyOnceWith(1)
+    finish()
+    await flushPromises()
+    expect(button('Выгрузить план').attributes('disabled')).toBeUndefined()
+  })
+
   it('initializes the column draft before observing its field type', async () => {
     const root = mount(OnboardingColumns, { props: { columns: [column] } })
     await flushPromises()
@@ -49,7 +77,8 @@ describe('Onboarding modal workflows with real Teleport', () => {
     const root = mount(OnboardingPlanModal, { props: { planId: 1, columns: [column] } })
     await flushPromises()
     expect(mocks.plan).toHaveBeenCalledWith(1)
-    await button('Изменить куратора').trigger('click')
+    await dom().get('[aria-label="Действия с планом"]').trigger('click')
+    await button('Изменить наставника').trigger('click')
     await dom().get('.curator-form input').setValue('Мой куратор')
     await dom().get('[aria-label="Закрыть окно"]').trigger('click')
     expect(root.emitted('close')).toBeUndefined()
@@ -69,6 +98,7 @@ describe('Onboarding modal workflows with real Teleport', () => {
     opener.focus()
     const root = mount(OnboardingPlanModal, { props: { planId: 1, columns: [column] } })
     await flushPromises()
+    await dom().get('[aria-label="Действия с планом"]').trigger('click')
     await button('Удалить план').trigger('click')
     await flushPromises()
     expect(document.body.style.overflow).toBe('hidden')
@@ -93,8 +123,9 @@ describe('Onboarding modal workflows with real Teleport', () => {
     mount(OnboardingPlanModal, { props: { planId: 1, columns: [column] } })
     await flushPromises()
     expect(dom().find('.cell-button').exists()).toBe(true)
+    await dom().get('[aria-label="Действия с планом"]').trigger('click')
     expect(dom().text()).not.toContain('Удалить план')
-    expect(dom().text()).not.toContain('Изменить куратора')
+    expect(dom().text()).not.toContain('Изменить наставника')
   })
 
   it('restores the opener when a parent and its confirmation unmount together', async () => {
@@ -104,7 +135,8 @@ describe('Onboarding modal workflows with real Teleport', () => {
     opener.focus()
     const root = mount(OnboardingPlanModal, { props: { planId: 1, columns: [column] } })
     await flushPromises()
-    await button('Изменить куратора').trigger('click')
+    await dom().get('[aria-label="Действия с планом"]').trigger('click')
+    await button('Изменить наставника').trigger('click')
     await dom().get('.curator-form input').setValue('Изменённый ввод')
     ;(dom().get('.curator-form input').element as HTMLElement).focus()
     await dom().get('[aria-label="Закрыть окно"]').trigger('click')
