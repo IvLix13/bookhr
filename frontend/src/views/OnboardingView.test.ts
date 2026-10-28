@@ -25,6 +25,7 @@ vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({
   user: { id: 1, username: 'user', full_name: mock.fullName, role: mock.role },
 }) }))
 vi.mock('@/api/client', () => ({ api: {
+  onboardingDocumentStages: async () => [], onboardingTemplateInfo: async () => ({ version: 0 }),
   onboardingColumns: mock.columns, onboardingPlans: mock.plans, employees: mock.employees,
   createOnboardingPlan: mock.createPlan, updateOnboardingCell: mock.saveCell,
   createOnboardingColumn: mock.createColumn, updateOnboardingColumn: mock.updateColumn,
@@ -213,13 +214,15 @@ describe('Cell editor', () => {
 
 describe('Column management', () => {
   it('creates typed columns and confirms archival', async () => {
-    const wrapper = mount(OnboardingColumns, { props: { columns: [{ ...column }] } })
-    await wrapper.get('input').setValue('Отдел')
+    const wrapper = mount(OnboardingColumns, { global: { stubs: { teleport: true } }, props: { columns: [{ ...column }] } })
+    await wrapper.findAll('button').find(b => b.text() === 'Добавить этап')!.trigger('click')
+    await wrapper.get('.column-form input').setValue('Отдел')
     await wrapper.get('select').setValue('text')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Отдел', field_type: 'text', responsible_department: null, document_stage_key: null })
-    await wrapper.get('button[aria-label="Архивировать NDA"]').trigger('click')
+    await wrapper.get('button[aria-label="Действия с этапом"]').trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Архивировать')!.trigger('click')
     expect(mock.updateColumn).not.toHaveBeenCalled()
     await wrapper.get('button[aria-label="Подтвердить архивирование"]').trigger('click')
     await flushPromises()
@@ -227,8 +230,9 @@ describe('Column management', () => {
     wrapper.unmount()
   })
   it('reorders using all column versions', async () => {
-    const wrapper = mount(OnboardingColumns, { props: { columns: [{ ...column }, { ...column, id: 2, title: 'Отдел', sort_order: 1 }] } })
-    await wrapper.get('button[aria-label="Переместить NDA вниз"]').trigger('click')
+    const wrapper = mount(OnboardingColumns, { global: { stubs: { teleport: true } }, props: { columns: [{ ...column }, { ...column, id: 2, title: 'Отдел', sort_order: 1 }] } })
+    await wrapper.findAll('button[aria-label="Действия с этапом"]')[0]!.trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Вниз в общем списке')!.trigger('click')
     await flushPromises()
     expect(mock.orderColumns).toHaveBeenCalledWith([{ id: 2, version: 1 }, { id: 1, version: 1 }])
     wrapper.unmount()
@@ -289,8 +293,9 @@ describe('New onboarding states and clearing', () => {
     wrapper.unmount()
   })
   it('supports creating a checkbox column', async () => {
-    const wrapper = mount(OnboardingColumns, { props: { columns: [] } })
-    await wrapper.get('input').setValue('Ознакомление')
+    const wrapper = mount(OnboardingColumns, { global: { stubs: { teleport: true } }, props: { columns: [] } })
+    await wrapper.findAll('button').find(b => b.text() === 'Добавить этап')!.trigger('click')
+    await wrapper.get('.column-form input').setValue('Ознакомление')
     await wrapper.get('select').setValue('checkbox')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
@@ -314,25 +319,27 @@ describe('Columns modal', () => {
     wrapper.unmount()
     expect(document.body.style.overflow).not.toBe('hidden')
   })
-  it('protects dirty form on close, Escape and overlay clicks', async () => {
+  it('protects the child draft and keeps the parent open', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false)
     const wrapper = modal()
-    await wrapper.get('input').setValue('Не сохранено')
-    await wrapper.get('.columns-overlay').trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Добавить этап')!.trigger('click')
+    await wrapper.get('.column-form input').setValue('Не сохранено')
+    await wrapper.get('.editor-overlay').trigger('keydown', { key: 'Escape' })
+    expect(confirm).toHaveBeenCalled()
+    expect(wrapper.get('.column-form input').element).toHaveProperty('value', 'Не сохранено')
     expect(wrapper.emitted('close')).toBeUndefined()
-    await wrapper.get('.columns-overlay').trigger('keydown', { key: 'Escape' })
-    expect(wrapper.text()).toContain('несохранённые изменения')
-    await wrapper.findAll('button').find(b => b.text() === 'Продолжить редактирование')!.trigger('click')
-    expect((wrapper.get('input').element as HTMLInputElement).value).toBe('Не сохранено')
-    await wrapper.get('button[aria-label="Закрыть настройку этапов"]').trigger('click')
-    await wrapper.findAll('button').find(b => b.text() === 'Закрыть без сохранения')!.trigger('click')
-    expect(wrapper.emitted('close')).toHaveLength(1)
+    confirm.mockReturnValue(true)
+    await wrapper.get('.editor-overlay').trigger('keydown', { key: 'Escape' })
+    expect(wrapper.findAll('form')).toHaveLength(0)
     wrapper.unmount()
+    confirm.mockRestore()
   })
   it('does not close during save and preserves input on errors', async () => {
     let reject!: (reason: unknown) => void
     mock.createColumn.mockImplementationOnce(() => new Promise((_resolve, fail) => { reject = fail }))
     const wrapper = modal()
-    await wrapper.get('input').setValue('Новый')
+    await wrapper.findAll('button').find(b => b.text() === 'Добавить этап')!.trigger('click')
+    await wrapper.get('.column-form input').setValue('Новый')
     await wrapper.get('form').trigger('submit')
     await wrapper.get('.columns-overlay').trigger('keydown', { key: 'Escape' })
     expect(wrapper.emitted('close')).toBeUndefined()
@@ -340,7 +347,7 @@ describe('Columns modal', () => {
     reject(new ApiError('Ошибка сервера', 500))
     await flushPromises()
     expect(wrapper.text()).toContain('Ошибка сервера')
-    expect((wrapper.get('input').element as HTMLInputElement).value).toBe('Новый')
+    expect((wrapper.get('.column-form input').element as HTMLInputElement).value).toBe('Новый')
     wrapper.unmount()
   })
   it('emits updates without closing and restores focus on unmount', async () => {
@@ -348,7 +355,8 @@ describe('Columns modal', () => {
     document.body.appendChild(opener)
     opener.focus()
     const wrapper = modal()
-    await wrapper.get('input').setValue('Новый')
+    await wrapper.findAll('button').find(b => b.text() === 'Добавить этап')!.trigger('click')
+    await wrapper.get('.column-form input').setValue('Новый')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(wrapper.emitted('changed')).toHaveLength(1)
@@ -403,5 +411,21 @@ describe('Card interactions', () => {
     await flushPromises()
     expect(mock.saveCell).toHaveBeenCalledWith(1, 1, { version: 2, column_version: 1, planned_date: '2026-10-01', is_completed: false, is_in_progress: true, is_not_required: false, completed_date: null })
     wrapper.unmount()
+  })
+})
+
+describe('Desktop column table', () => {
+  it('filters without dropping hidden columns from reorder requests', async () => {
+    const wrapper = mount(OnboardingColumns, { props: { columns: [column, { ...column, id: 2, title: 'Скрытый', sort_order: 1 }, { ...column, id: 3, title: 'Другой', sort_order: 2 }] }, global: { stubs: { teleport: true } } })
+    await wrapper.get('input[type="search"]').setValue(' nda ')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    await wrapper.get('[aria-label="Действия с этапом"]').trigger('click')
+    await wrapper.findAll('button').find(b => b.text() === 'Вниз в общем списке')!.trigger('click')
+    await flushPromises()
+    expect(mock.orderColumns).toHaveBeenCalledWith([{ id: 2, version: 1 }, { id: 1, version: 1 }, { id: 3, version: 1 }])
+    await wrapper.get('input[type="search"]').setValue('нет такого')
+    expect(wrapper.text()).toContain('Ничего не найдено')
+    await wrapper.get('input[type="search"]').setValue('')
+    expect(wrapper.findAll('tbody tr')).toHaveLength(3)
   })
 })

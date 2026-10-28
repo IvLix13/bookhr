@@ -36,7 +36,7 @@ async function cancelClose() {
     <div class="columns-overlay" @keydown.esc.stop.prevent="confirming ? cancelClose() : requestClose()">
       <section ref="modal" class="card columns-modal" role="dialog" aria-modal="true" aria-labelledby="columns-title" tabindex="-1">
         <header><h2 id="columns-title">Настройка этапов и полей</h2><button ref="closeButton" class="btn secondary" aria-label="Закрыть настройку этапов" :disabled="busy" @click="requestClose">×</button></header>
-        <div key="editor-content" v-show="!confirming">
+        <div class="editor-content" key="editor-content" v-show="!confirming">
           <p v-if="refreshError" role="alert" class="error">{{ refreshError }} <button class="btn secondary" :disabled="busy" @click="emit('changed')">Повторить загрузку</button></p>
           <OnboardingColumns :columns="columns" @state="editorState = $event" @changed="emit('changed')" />
           <footer><button class="btn secondary" :disabled="busy" @click="requestClose">Закрыть</button></footer>
@@ -53,7 +53,9 @@ async function cancelClose() {
 
 <style scoped>
 .columns-overlay { position: fixed; inset: 0; z-index: 1100; background: #0f172a80; display: grid; place-items: center; padding: 1rem; }
-.columns-modal { width: min(960px, 100%); max-height: calc(100dvh - 2rem); overflow: auto; padding: 1rem; }
+.columns-modal { width: min(1440px, 95vw); max-height: calc(100dvh - 2rem); overflow: hidden; padding: 1rem; display:flex; flex-direction:column; }
+.editor-content { display:flex;flex-direction:column;min-height:0;overflow:hidden; }
+.editor-content :deep(.columns-panel) { min-height:0;margin:.5rem 0;box-shadow:none;border:0; }
 header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 h2 { margin: 0; }
 footer { display: flex; justify-content: flex-end; }

@@ -111,7 +111,19 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export const api = {
-  onboardingDocumentStages: () => request<Array<{ key: string; title: string }>>('/api/onboarding/document-stages'),
+  onboardingTemplateInfo: () => request<{ version: number }>('/api/onboarding/docx-template/info'),
+  downloadOnboardingTemplate: async () => {
+    const response = await fetch('/api/onboarding/docx-template', { credentials: 'include' })
+    if (!response.ok) throw new ApiError('Не удалось скачать шаблон', response.status)
+    triggerDownload(await response.blob(), 'onboarding_template.docx')
+  },
+  uploadOnboardingTemplate: (file: File, version: number) => {
+    const body = new FormData()
+    body.append('file', file)
+    body.append('version', String(version))
+    return request<{ version: number }>('/api/onboarding/docx-template', { method: 'POST', body })
+  },
+  onboardingDocumentStages: () => request<Array<{ key: string; title: string; date_placeholder: string | null; department_placeholder: string | null }>>('/api/onboarding/document-stages'),
   onboardingColumns: () => request<OnboardingColumn[]>('/api/onboarding/columns'),
   createOnboardingColumn: (body: { title: string; field_type: OnboardingFieldType; responsible_department?: string | null; document_stage_key?: string | null }) =>
     request<OnboardingColumn>('/api/onboarding/columns', { method: 'POST', body: JSON.stringify(body) }),

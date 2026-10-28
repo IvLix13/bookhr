@@ -232,11 +232,8 @@ def _default_template(departments=None):
 
 def build_onboarding_document(plan):
     variables = document_context(plan)
-    configured = current_app.config.get("ONBOARDING_DOCX_TEMPLATE")
-    if configured and not Path(configured).is_file():
-        raise ValueError("Не найден настроенный DOCX-шаблон плана ввода в должность")
     departments = _department_by_stage(plan)
-    source = Path(configured) if configured else _default_template(departments)
+    source = template_source(plan.employment.company_id)
     from html import unescape
 
     output = BytesIO()
@@ -264,3 +261,43 @@ def build_onboarding_document(plan):
             result.writestr(entry, content)
     output.seek(0)
     return output
+
+
+def template_source(company_id):
+    from app.models import Company
+    company = Company.query.filter_by(id=company_id).first_or_404()
+    if company.onboarding_docx_template is not None:
+        return BytesIO(company.onboarding_docx_template)
+    configured = current_app.config.get("ONBOARDING_DOCX_TEMPLATE")
+    if configured:
+        if not Path(configured).is_file():
+            raise ValueError("Не найден настроенный DOCX-шаблон плана ввода в должность")
+        return Path(configured)
+    return _default_template()
+
+
+def validate_template(data):
+    from zipfile import BadZipFile
+    if len(data) > 5 * 1024 * 1024:
+        raise ValueError("Шаблон превышает 5 МБ")
+    try:
+        with ZipFile(BytesIO(data)) as archive:
+            entries = archive.infolist()
+            names = {e.filename for e in entries}
+            if len(entries) > 2000 or sum(e.file_size for e in entries) > 30 * 1024 * 1024:
+                raise ValueError("Слишком большой распакованный DOCX")
+            if len(names) != len(entries) or not {"[Content_Types].xml", "_rels/.rels", "word/document.xml"} <= names:
+                raise ValueError("Некорректная структура DOCX")
+            variables = {key: "" for key in document_variables()}
+            for entry in entries:
+                if entry.flag_bits & 1 or ".." in entry.filename.split("/") or entry.filename.startswith("/"):
+                    raise ValueError("Некорректный архив DOCX")
+                if entry.filename.endswith(".xml") or entry.filename.endswith(".rels"):
+                    raw = archive.read(entry)
+                    if b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
+                        raise ValueError("Недопустимый XML")
+                    ET.fromstring(raw)
+                    if entry.filename.startswith("word/") and entry.filename.endswith(".xml"):
+                        _replace_xml(raw, variables)
+    except (BadZipFile, ET.ParseError, UnicodeError, RuntimeError) as exc:
+        raise ValueError("Повреждённый DOCX-шаблон") from exc

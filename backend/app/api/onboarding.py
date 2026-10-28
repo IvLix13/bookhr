@@ -3,7 +3,7 @@
 from functools import wraps
 from math import ceil
 
-from flask import send_file
+from flask import send_file, request
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
@@ -11,7 +11,7 @@ from werkzeug.exceptions import Conflict, Forbidden, NotFound
 
 from app.api.helpers import api_response, apply_employment_name_search, get_json, parse_pagination_args, parse_search_q, require_roles
 from app.extensions import db
-from app.models import Employment, RoleName
+from app.models import Company, Employment, RoleName
 from app.models.onboarding import OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
 from app.services.onboarding import (
@@ -47,7 +47,48 @@ def register_routes(bp):
     @bp.get("/onboarding/document-stages")
     @login_required
     def onboarding_document_stages():
-        return api_response([{"key": key, "title": title} for key, title in document_stages().items()])
+        from app.services.onboarding_document_catalog import document_variables
+        variables = document_variables()
+        return api_response([{"key": key, "title": title,
+            "date_placeholder": next(("{{ " + name + " }}" for name, source in variables.items() if source == f"stages.{key}.planned_date"), None),
+            "department_placeholder": next(("{{ " + name + " }}" for name, source in variables.items() if source == f"stages.{key}.department"), None)}
+            for key, title in document_stages().items()])
+
+    @bp.get("/onboarding/docx-template/info")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def onboarding_template_info():
+        company = Company.query.filter_by(id=get_request_company_id()).first_or_404()
+        return api_response({"version": company.onboarding_template_version})
+
+    @bp.get("/onboarding/docx-template")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def onboarding_template_download():
+        from app.services.onboarding_docx import template_source
+        return send_file(template_source(get_request_company_id()), as_attachment=True,
+            download_name="onboarding_template.docx", mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+    @bp.post("/onboarding/docx-template")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @transaction
+    def onboarding_template_upload():
+        from app.services.onboarding_docx import validate_template
+        company_id = get_request_company_id()
+        company = Company.query.filter_by(id=company_id).first_or_404()
+        uploaded = request.files.get("file")
+        if uploaded is None or not (uploaded.filename or "").lower().endswith(".docx"):
+            raise ValueError("Выберите файл DOCX")
+        try:
+            version = int(request.form.get("version", ""))
+        except ValueError:
+            raise ValueError("Не указана версия шаблона")
+        data = uploaded.stream.read(5 * 1024 * 1024 + 1)
+        validate_template(data)
+        updated = Company.query.filter_by(id=company_id, onboarding_template_version=version).update(
+            {"onboarding_docx_template": data, "onboarding_template_version": version + 1}, synchronize_session=False)
+        if not updated:
+            raise Conflict("Шаблон уже изменён. Повторите загрузку после обновления.")
+        log_audit("update", "onboarding_template", company_id, {"version": version}, {"version": version + 1})
+        return api_response({"version": version + 1})
 
     @bp.get("/onboarding/columns")
     @login_required
