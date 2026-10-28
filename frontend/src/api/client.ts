@@ -149,6 +149,18 @@ export const api = {
     request(`/api/onboarding/${kind}/${id}`, { method: 'DELETE', body: JSON.stringify({ version: preview.version, snapshot: preview.snapshot }) }),
   deleteEmployeeWithPlan: (id: number, preview: OnboardingDeletePreview) =>
     request(`/api/employees/${id}`, { method: 'DELETE', body: JSON.stringify({ delete_onboarding_plan: true, version: preview.version, snapshot: preview.snapshot }) }),
+  createOnboardingWizard: (body: import('@/types/onboarding').OnboardingDraft) =>
+    request<OnboardingPlan>('/api/onboarding/plans/from-wizard', { method: 'POST', body: JSON.stringify(body) }),
+  downloadOnboardingDraft: async (body: import('@/types/onboarding').OnboardingDraft) => {
+    const options = { method: 'POST', body: JSON.stringify(body) }
+    const response = await fetch('/api/onboarding/plans/draft-docx', { ...options, credentials: 'include', headers: buildHeaders(options, true) })
+    if (response.status === 401) unauthorizedHandler?.()
+    if (!response.ok) {
+      const error = await parseJsonResponse<unknown>(response)
+      throw new ApiError(localizeApiMessage(error.message) || 'Не удалось выгрузить DOCX', response.status)
+    }
+    triggerDownload(await response.blob(), 'onboarding_plan.docx')
+  },
   createOnboardingPlan: (employment_id: number) =>
     request<OnboardingPlan>('/api/onboarding/plans', { method: 'POST', body: JSON.stringify({ employment_id }) }),
   updateOnboardingPlan: (planId: number, body: { version: number; curator_name: string | null }) =>

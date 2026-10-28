@@ -11,6 +11,7 @@ import type { OnboardingColumn } from '@/types/onboarding'
 enableAutoUnmount(afterEach)
 
 const mock = vi.hoisted(() => ({
+  push: vi.fn(),
   editable: true,
   role: 'hr' as 'admin' | 'hr' | 'viewer',
   fullName: 'HR User',
@@ -18,6 +19,7 @@ const mock = vi.hoisted(() => ({
   saveCell: vi.fn(), createColumn: vi.fn(), updateColumn: vi.fn(), orderColumns: vi.fn(),
   downloadOnboarding: vi.fn(), updatePlan: vi.fn(), plan: vi.fn(), preview: vi.fn(), remove: vi.fn(), removeEmployee: vi.fn(),
 }))
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: mock.push }), useRoute: () => ({ query: {} }) }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({
   canEdit: () => mock.editable,
   user: { id: 1, username: 'user', full_name: mock.fullName, role: mock.role },
@@ -159,19 +161,17 @@ describe('Onboarding cards', () => {
     expect(button.attributes('disabled')).toBeUndefined()
     wrapper.unmount()
   })
-  it('searches on submit and creates a plan for a selected employee', async () => {
+  it('searches plans and opens the creation wizard', async () => {
     const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
     await wrapper.get('input[aria-label="Поиск планов по ФИО"]').setValue('Иванов')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
     expect(mock.plans).toHaveBeenLastCalledWith({ q: 'Иванов', page: 1, per_page: 25 })
-    await wrapper.findAll('button').find(b => b.text() === 'Добавить сотрудника')!.trigger('click')
-    await flushPromises()
     await wrapper.findAll('button').find(b => b.text() === 'Создать план')!.trigger('click')
-    await flushPromises()
-    expect(mock.createPlan).toHaveBeenCalledWith(2)
-    wrapper.unmount()
+    expect(mock.push).toHaveBeenCalledWith({ name: 'onboarding-create' })
+    expect(mock.createPlan).not.toHaveBeenCalled()
+
   })
 })
 
@@ -218,10 +218,10 @@ describe('Column management', () => {
     await wrapper.get('select').setValue('text')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Отдел', field_type: 'text' })
-    await wrapper.findAll('button').find(b => b.text() === 'В архив')!.trigger('click')
+    expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Отдел', field_type: 'text', responsible_department: null, document_stage_key: null })
+    await wrapper.get('button[aria-label="Архивировать NDA"]').trigger('click')
     expect(mock.updateColumn).not.toHaveBeenCalled()
-    await wrapper.findAll('button').find(b => b.text() === 'Архивировать')!.trigger('click')
+    await wrapper.get('button[aria-label="Подтвердить архивирование"]').trigger('click')
     await flushPromises()
     expect(mock.updateColumn).toHaveBeenCalledWith(1, { version: 1, is_archived: true })
     wrapper.unmount()
@@ -294,7 +294,7 @@ describe('New onboarding states and clearing', () => {
     await wrapper.get('select').setValue('checkbox')
     await wrapper.get('form').trigger('submit')
     await flushPromises()
-    expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Ознакомление', field_type: 'checkbox' })
+    expect(mock.createColumn).toHaveBeenCalledWith({ title: 'Ознакомление', field_type: 'checkbox', responsible_department: null, document_stage_key: null })
     wrapper.unmount()
   })
 })

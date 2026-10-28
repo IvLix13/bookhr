@@ -13,6 +13,7 @@ const router = createRouter({
       component: () => import('@/layouts/AppShell.vue'),
       meta: { requiresAuth: true },
       children: [
+        { path: 'onboarding/create', name: 'onboarding-create', component: () => import('@/views/OnboardingCreateView.vue'), meta: { requiresEdit: true } },
         { path: 'onboarding', name: 'onboarding', component: () => import('@/views/OnboardingView.vue') },
         {
           path: '',

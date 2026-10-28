@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useRouter, useRoute } from 'vue-router'
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
@@ -6,10 +7,11 @@ import { useAuthStore } from '@/stores/auth'
 import OnboardingPlanCard from '@/components/OnboardingPlanCard.vue'
 import { moscowToday } from '@/utils/onboarding'
 import OnboardingPlanModal from '@/components/OnboardingPlanModal.vue'
-import OnboardingAddEmployeeModal from '@/components/OnboardingAddEmployeeModal.vue'
 import OnboardingColumnsModal from '@/components/OnboardingColumnsModal.vue'
 import type { OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 
+const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const today = ref(moscowToday())
 const selectedPlanId = ref<number | null>(null)
@@ -23,7 +25,6 @@ const query = ref('')
 const loading = ref(false)
 const error = ref('')
 const showColumns = ref(false)
-const showAdd = ref(false)
 const exporting = ref(false)
 const exportError = ref('')
 let requestId = 0
@@ -44,13 +45,6 @@ async function load() {
 }
 function search() { page.value = 1; void load() }
 function changePage(delta: number) { page.value += delta; void load() }
-async function created(plan: OnboardingPlan) {
-  showAdd.value = false
-  query.value = ''
-  page.value = 1
-  selectedPlanId.value = plan.id
-  await load()
-}
 function deleted() { selectedPlanId.value = null; void load() }
 async function downloadExcel() {
   exporting.value = true
@@ -64,7 +58,7 @@ async function downloadExcel() {
   }
 }
 let dayTimer: ReturnType<typeof setInterval>
-onMounted(() => { void load(); dayTimer = setInterval(() => { today.value = moscowToday() }, 60000) })
+onMounted(() => { if (route?.query?.plan) selectedPlanId.value = Number(route.query.plan); void load(); dayTimer = setInterval(() => { today.value = moscowToday() }, 60000) })
 onUnmounted(() => clearInterval(dayTimer))
 </script>
 
@@ -73,7 +67,7 @@ onUnmounted(() => clearInterval(dayTimer))
     <header><h2>План обучения</h2><p>Ввод сотрудников в должность</p></header>
     <div class="toolbar">
       <form @submit.prevent="search"><input v-model="query" aria-label="Поиск планов по ФИО" placeholder="ФИО (от 2 символов)" /><button class="btn" :disabled="loading">Найти</button></form>
-      <button v-if="auth.canEdit()" class="btn secondary" @click="showAdd = true">Добавить сотрудника</button>
+      <button v-if="auth.canEdit()" class="btn secondary" @click="router.push({ name: 'onboarding-create' })">Создать план</button>
       <button v-if="auth.canEdit()" class="btn secondary" @click="showColumns = !showColumns">Настроить этапы</button>
       <button class="btn secondary" :disabled="exporting" @click="downloadExcel">{{ exporting ? 'Скачивание…' : 'Скачать Excel' }}</button>
       <button class="btn secondary" :disabled="loading" @click="load">Обновить</button>
@@ -90,7 +84,6 @@ onUnmounted(() => clearInterval(dayTimer))
       <footer class="toolbar"><span>Всего: {{ total }}</span><button class="btn secondary" :disabled="page <= 1" @click="changePage(-1)">Назад</button><span>{{ page }} / {{ pages || 1 }}</span><button class="btn secondary" :disabled="page >= pages" @click="changePage(1)">Далее</button></footer>
     </template>
     <OnboardingPlanModal v-if="selectedPlanId !== null" :key="selectedPlanId" :plan-id="selectedPlanId" :columns="visibleColumns" :today="today" @close="selectedPlanId = null" @changed="load" @deleted="deleted" />
-    <OnboardingAddEmployeeModal v-if="showAdd && auth.canEdit()" @close="showAdd = false" @created="created" />
   </section>
 </template>
 

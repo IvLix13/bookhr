@@ -39,3 +39,9 @@ export interface OnboardingDeletePreview {
   full_name?: string | null
   hire_date?: string
 }
+
+export interface OnboardingDraft {
+  employment_id: number
+  mentor_id: number
+  cells: Array<{ column_id: number; column_version: number; values: Partial<OnboardingCell> }>
+}
