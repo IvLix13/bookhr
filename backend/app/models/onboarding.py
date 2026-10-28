@@ -16,7 +16,7 @@ class OnboardingColumn(db.Model, TimestampMixin):
     is_archived = db.Column(db.Boolean, nullable=False, default=False)
     version = db.Column(db.Integer, nullable=False, default=1)
     __mapper_args__ = {"version_id_col": version}
-    __table_args__ = (db.UniqueConstraint("company_id", "document_stage_key", name="uq_onboarding_document_stage"), db.CheckConstraint("field_type IN ('text', 'date', 'stage', 'checkbox')", name="ck_onboarding_column_type"),)
+    __table_args__ = (db.CheckConstraint("field_type IN ('text', 'date', 'stage', 'checkbox')", name="ck_onboarding_column_type"),)
 
 
 class OnboardingPlan(db.Model, TimestampMixin):

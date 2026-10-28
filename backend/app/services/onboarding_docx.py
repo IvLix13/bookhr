@@ -44,14 +44,25 @@ def document_context(plan):
     for key in stages:
         context[f"stages.{key}.planned_date"] = "—"
         context[f"stages.{key}.department"] = ""
-    columns = OnboardingColumn.query.filter_by(company_id=plan.employment.company_id, is_archived=False, field_type="stage").all()
+    columns = OnboardingColumn.query.filter_by(company_id=plan.employment.company_id, is_archived=False, field_type="stage").order_by(OnboardingColumn.sort_order, OnboardingColumn.id).all()
     cells = {cell.column_id: cell for cell in plan.cells}
+    dates = {key: [] for key in stages}
+    departments = {key: [] for key in stages}
     for column in columns:
-        if column.document_stage_key in stages and column.responsible_department:
-            context[f"stages.{column.document_stage_key}.department"] = f"(отв {column.responsible_department})"
+        key = column.document_stage_key
+        if key not in stages:
+            continue
+        department = column.responsible_department
+        if department and department not in departments[key]:
+            departments[key].append(department)
         cell = cells.get(column.id)
-        if column.document_stage_key in stages and cell and not cell.is_not_required and cell.planned_date:
-            context[f"stages.{column.document_stage_key}.planned_date"] = cell.planned_date.strftime("%d.%m.%Y")
+        if cell and not cell.is_not_required and cell.planned_date:
+            value = cell.planned_date.strftime("%d.%m.%Y")
+            if value not in dates[key]:
+                dates[key].append(value)
+    for key in stages:
+        context[f"stages.{key}.planned_date"] = "; ".join(dates[key]) or "—"
+        context[f"stages.{key}.department"] = "; ".join(f"(отв {department})" for department in departments[key])
     variables = {}
     for key, source in document_variables().items():
         if source not in context:
@@ -62,7 +73,13 @@ def document_context(plan):
 
 def _department_by_stage(plan):
     columns = OnboardingColumn.query.filter_by(company_id=plan.employment.company_id, is_archived=False, field_type="stage").all()
-    return {col.document_stage_key: col.responsible_department for col in columns if col.document_stage_key and col.responsible_department}
+    grouped = {}
+    for col in sorted(columns, key=lambda c: (c.sort_order, c.id)):
+        if col.document_stage_key and col.responsible_department:
+            values = grouped.setdefault(col.document_stage_key, [])
+            if col.responsible_department not in values:
+                values.append(col.responsible_department)
+    return {key: "; ".join(values) for key, values in grouped.items()}
 
 
 def _department_run(value, prefix, inherited_properties=""):
