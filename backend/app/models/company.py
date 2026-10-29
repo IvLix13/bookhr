@@ -16,4 +16,7 @@ class Company(db.Model, TimestampMixin):
     name = db.Column(db.String(256), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
+    onboarding_docx_template = db.Column(db.LargeBinary, nullable=True)
+    onboarding_template_version = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
     employments = db.relationship("Employment", back_populates="company")

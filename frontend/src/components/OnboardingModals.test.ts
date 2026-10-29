@@ -182,8 +182,11 @@ describe('Onboarding modal workflows with real Teleport', () => {
 
   it('removes a field only after confirmation and resets its edit form', async () => {
     const root = mount(OnboardingColumns, { props: { columns: [column] }, attachTo: document.body })
-    await dom().get('[aria-label="Изменить NDA"]').trigger('click')
-    await dom().get('[aria-label="Удалить NDA"]').trigger('click')
+    await dom().get('[aria-label="Действия с этапом"]').trigger('click')
+    await dom().findAll('button').find(b => b.text() === 'Изменить')!.trigger('click')
+    await dom().findAll('button').find(b => b.text() === 'Отмена')!.trigger('click')
+    await dom().get('[aria-label="Действия с этапом"]').trigger('click')
+    await dom().findAll('button').find(b => b.text() === 'Удалить')!.trigger('click')
     await flushPromises()
     expect(mocks.remove).not.toHaveBeenCalled()
     await button('Подтвердить удаление').trigger('click')

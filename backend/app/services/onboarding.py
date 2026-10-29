@@ -163,11 +163,6 @@ def validate_document_mapping(company_id, payload, exclude_id=None):
         raise ValueError("Неизвестный этап документа")
     if payload.get("field_type") not in (None, "stage"):
         raise ValueError("Сопоставление доступно только для этапов с датами")
-    query = OnboardingColumn.query.filter_by(company_id=company_id, document_stage_key=key)
-    if exclude_id is not None:
-        query = query.filter(OnboardingColumn.id != exclude_id)
-    if query.first():
-        raise ValueError("Этот этап документа уже сопоставлен")
 
 def save_column(column, payload):
     check_version(payload.pop("version"), column.version)
