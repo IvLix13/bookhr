@@ -203,3 +203,7 @@ cd /opt/bookuchet
 OFFLINE_MODE=1 ./scripts/migrate.sh prod
 sudo systemctl restart bookuchet
 ```
+
+## Внешний кадровый сервис
+
+Синхронизация должностей и формальных отделов, настройка ограничений нагрузки и запуск воркера описаны в [инструкции](staff-directory.md). Интеграция по умолчанию выключена.

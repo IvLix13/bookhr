@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import uuid
 from datetime import date
+from sqlalchemy.exc import IntegrityError
+from werkzeug.exceptions import Conflict
 
 from app.extensions import db
 from app.models import (
@@ -32,6 +34,8 @@ from app.services.tenure import (
     ensure_tenure_awards,
 )
 from app.utils.dates import calculate_contract_start, today_moscow
+
+_UNSET = object()
 
 
 def get_current_name(person: Person) -> str | None:
@@ -119,6 +123,7 @@ def create_person_with_employment(
 
 
 def update_person_name(person: Person, new_name: str, effective_date: date) -> None:
+    person.staff_directory_checked_at = None
     current = (
         PersonNameHistory.query.filter_by(person_id=person.id, valid_to=None).first()
     )
@@ -146,19 +151,65 @@ def update_position(
     title: str,
     position_grade_id: int | None,
     effective_date: date,
+    *,
+    short_title: str | None | object = _UNSET,
 ) -> None:
     current = get_current_position(employment)
+    if short_title is _UNSET:
+        short_title = current.short_title if current else None
+    if current and (
+        current.title == title
+        and current.short_title == short_title
+        and current.position_grade_id == position_grade_id
+    ):
+        return
+    old = {"title": current.title, "short_title": current.short_title} if current else None
     if current:
         current.valid_to = effective_date
     db.session.add(
         PositionHistory(
             employment_id=employment.id,
             title=title,
+            short_title=short_title,
             position_grade_id=position_grade_id,
             valid_from=effective_date,
         )
     )
-    log_audit("update", "position", employment.id, None, {"title": title})
+    log_audit("update", "position", employment.id, old, {"title": title, "short_title": short_title})
+
+
+def update_staff_directory_fields(employment: Employment, payload: dict) -> None:
+    """Manual card updates; omitted fields never clear directory values."""
+    person = employment.person
+    before, after = {}, {}
+    for owner, names in (
+        (person, ("cardnumber", "fio_short")),
+        (employment, ("formal_department_short_name", "formal_department_name")),
+    ):
+        for name in names:
+            if name not in payload:
+                continue
+            value = (payload[name] or "").strip() or None
+            old = getattr(owner, name)
+            if old == value:
+                continue
+            if name == "cardnumber":
+                with db.session.no_autoflush:
+                    taken = Person.query.filter(Person.cardnumber == value, Person.id != person.id).first() if value else None
+                if taken:
+                    raise Conflict("Номер карточки уже связан с другим сотрудником")
+                try:
+                    with db.session.begin_nested():
+                        person.cardnumber = value
+                        db.session.flush()
+                except IntegrityError as exc:
+                    raise Conflict("Номер карточки уже связан с другим сотрудником") from exc
+                person.staff_directory_checked_at = None
+            else:
+                setattr(owner, name, value)
+            before[name], after[name] = old, value
+    if after:
+        log_audit("update", "staff_directory_fields", employment.id, before, after)
 
 
 def dismiss_employment(
@@ -364,6 +415,13 @@ def rehire_person(
     title: str,
     position_grade_id: int | None = None,
 ) -> Employment:
+    previous = (
+        PositionHistory.query.join(Employment)
+        .filter(Employment.person_id == person.id, Employment.company_id == company_id)
+        .order_by(PositionHistory.valid_from.desc(), PositionHistory.id.desc())
+        .first()
+    )
+    person.staff_directory_checked_at = None
     employment = Employment(
         person_id=person.id,
         company_id=company_id,
@@ -376,6 +434,7 @@ def rehire_person(
         PositionHistory(
             employment_id=employment.id,
             title=title,
+            short_title=previous.short_title if previous else None,
             position_grade_id=position_grade_id,
             valid_from=hire_date,
         )

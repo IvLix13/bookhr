@@ -44,6 +44,12 @@ export interface UserListItem {
 export interface Employee {
   id: number
   person_uuid: string
+  cardnumber?: string | null
+  fio_short?: string | null
+  position_name?: string | null
+  position_short_name?: string | null
+  formal_department_short_name?: string | null
+  formal_department_name?: string | null
   full_name: string | null
   title: string | null
   position_grade: Grade | null

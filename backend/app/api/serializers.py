@@ -111,6 +111,12 @@ def employment_to_dict(employment: Employment) -> dict:
         "person_uuid": str(person.uuid),
         "full_name": get_current_name(person),
         "title": position.title if position else None,
+        "position_name": position.title if position else None,
+        "position_short_name": position.short_title if position else None,
+        "cardnumber": person.cardnumber,
+        "fio_short": person.fio_short,
+        "formal_department_short_name": employment.formal_department_short_name,
+        "formal_department_name": employment.formal_department_name,
         "position_grade": grade_to_dict(position.position_grade)
         if position and position.position_grade
         else None,

@@ -49,6 +49,11 @@ const columns: ColumnDef<Employee>[] = [
   { key: 'full_name', label: 'ФИО' },
   { key: 'title', label: 'Должность' },
   {
+    key: 'formal_department_short_name',
+    label: 'Отдел',
+    getValue: (row) => row.formal_department_short_name || row.formal_department_name || '—',
+  },
+  {
     key: 'education_status',
     label: 'ВУЗ',
     getValue: (row) => {
@@ -207,6 +212,11 @@ async function removeEmployee() {
             table.rows.value.indexOf(row) +
             1
           }}
+        </template>
+        <template #cell-formal_department_short_name="{ row }">
+          <span :title="row.formal_department_name || undefined">
+            {{ row.formal_department_short_name || row.formal_department_name || '—' }}
+          </span>
         </template>
         <template #cell-passport="{ row }">
           <StatusBadge

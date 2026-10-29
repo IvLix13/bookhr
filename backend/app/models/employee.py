@@ -22,9 +22,13 @@ class EducationStatus(str, Enum):
 
 class Person(db.Model, TimestampMixin):
     __tablename__ = "persons"
+    __table_args__ = (db.UniqueConstraint("cardnumber", name="uq_persons_cardnumber"),)
 
     id = db.Column(db.Integer, primary_key=True)
     uuid = db.Column(db.Uuid, default=uuid.uuid4, unique=True, nullable=False)
+    cardnumber = db.Column(db.String(128), nullable=True)
+    fio_short = db.Column(db.String(256), nullable=True)
+    staff_directory_checked_at = db.Column(db.DateTime(timezone=True), nullable=True)
     education_status = db.Column(
         db.String(16),
         default=EducationStatus.UNKNOWN.value,
@@ -48,6 +52,8 @@ class Employment(db.Model, TimestampMixin):
     dismissal_date = db.Column(db.Date, nullable=True)
     dismissal_reason = db.Column(db.Text, nullable=True)
     attestation_date = db.Column(db.Date, nullable=True)
+    formal_department_short_name = db.Column(db.String(256), nullable=True)
+    formal_department_name = db.Column(db.Text, nullable=True)
 
     person = db.relationship("Person", back_populates="employments")
     company = db.relationship("Company", back_populates="employments")
@@ -80,9 +86,19 @@ class PositionHistory(db.Model, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     employment_id = db.Column(db.Integer, db.ForeignKey("employments.id"), nullable=False)
     title = db.Column(db.String(256), nullable=False)
+    short_title = db.Column(db.String(256), nullable=True)
     position_grade_id = db.Column(db.Integer, db.ForeignKey("grade_catalog.id"), nullable=True)
     valid_from = db.Column(db.Date, nullable=False)
     valid_to = db.Column(db.Date, nullable=True)
 
     employment = db.relationship("Employment", back_populates="position_history")
     position_grade = db.relationship("GradeCatalog", foreign_keys=[position_grade_id])
+
+
+class StaffDirectoryState(db.Model):
+    """Shared upstream cooldown, also respected by manual runs."""
+
+    __tablename__ = "staff_directory_state"
+
+    id = db.Column(db.Integer, primary_key=True)
+    blocked_until = db.Column(db.DateTime(timezone=True), nullable=True)
