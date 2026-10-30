@@ -78,7 +78,7 @@ describe('Sidebar navigation order', () => {
   it('hides restricted sections for viewer', async () => {
     const wrapper = await mountSidebar('viewer')
     const labels = wrapper.findAll('.nav-label').map((item) => item.text())
-    expect(labels).not.toContain(MODULE_LABELS.calendar)
+    expect(labels).toContain(MODULE_LABELS.calendar)
     expect(labels).not.toContain(MODULE_LABELS.rewards)
     expect(labels).not.toContain(MODULE_LABELS.awards)
     expect(labels).not.toContain(MODULE_LABELS.grades)

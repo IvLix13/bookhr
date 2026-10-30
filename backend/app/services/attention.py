@@ -64,8 +64,9 @@ def _attention_item(
 
 
 def _collect_event_items(company_id: int, limit: int) -> list[dict]:
+    from app.services.event_visibility import visible_events
     events = (
-        Event.query.filter_by(company_id=company_id)
+        visible_events(Event.query.filter_by(company_id=company_id))
         .filter(effectively_overdue_filter())
         .order_by(Event.event_date.asc())
         .limit(limit)

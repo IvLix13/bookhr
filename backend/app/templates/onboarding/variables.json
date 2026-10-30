@@ -13,5 +13,8 @@
   "competence_exam_planned_date": "stages.competence_exam.planned_date",
   "competence_exam_department": "stages.competence_exam.department",
   "training_plan_planned_date": "stages.training_plan.planned_date",
-  "training_plan_department": "stages.training_plan.department"
+  "training_plan_department": "stages.training_plan.department",
+  "department_head_position": "department_head.position",
+  "department_head_name": "department_head.short_name",
+  "department_head_grade": "department_head.grade"
 }

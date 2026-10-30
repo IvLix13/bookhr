@@ -13,6 +13,8 @@ from app.services.audit import log_audit
 from app.services.password_policy import validate_password
 
 
+_UNSET = object()
+
 _USERNAME_RE = re.compile(r"^[a-zA-Z0-9._-]{3,64}$")
 
 
@@ -53,6 +55,7 @@ def is_break_glass_user(user: User) -> bool:
 
 def _user_audit_snapshot(user: User) -> dict:
     return {
+        "employment_id": user.employment_id,
         "username": user.username,
         "full_name": user.full_name,
         "role": user.role_name,
@@ -86,8 +89,10 @@ def create_local_user(
     full_name: str,
     role_name: str,
     actor: User,
+    employment_id=None,
+    company_id=None,
 ) -> User:
-    del actor  # reserved for future permission checks
+    del actor  # company scope supplied by route
     normalized_username = validate_username(username)
     validate_password(password, normalized_username)
     full_name_value = full_name.strip()
@@ -102,6 +107,8 @@ def create_local_user(
         auth_source=AuthSource.LOCAL.value,
         is_active=True,
     )
+    user.company_id = company_id or 1
+    bind_employment(user, employment_id)
     user.set_password(password)
     db.session.add(user)
     try:
@@ -126,8 +133,11 @@ def update_user(
     full_name: str | None = None,
     role_name: str | None = None,
     is_active: bool | None = None,
+    employment_id=_UNSET,
 ) -> User:
     old_value = _user_audit_snapshot(user)
+    if employment_id is not _UNSET:
+        bind_employment(user, employment_id)
     role_change = False
 
     if full_name is not None:
@@ -194,3 +204,14 @@ def reset_user_password(user: User, *, password: str, actor: User) -> User:
         new_value={"password": "***"},
     )
     return user
+
+
+def bind_employment(user, employment_id):
+    from app.models import Employment
+    if employment_id is not None:
+        if type(employment_id) is not int:
+            raise ValueError("Некорректный сотрудник")
+        employment = db.session.get(Employment, employment_id)
+        if not employment or employment.company_id != user.company_id or employment.status != "active":
+            raise ValueError("Выберите действующего сотрудника своей компании")
+    user.employment_id = employment_id

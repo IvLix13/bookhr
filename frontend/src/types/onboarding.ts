@@ -22,6 +22,11 @@ export interface OnboardingCell {
 export interface OnboardingPlan {
   id: number
   employment_id: number
+  employee_short_name?: string
+  employee_position?: string | null
+  department_name?: string | null
+  department_head_status?: string
+  department_head?: { employment_id: number; short_name: string; position: string; grade: string | null } | null
   full_name: string | null
   grade: string | null
   employment_status: string

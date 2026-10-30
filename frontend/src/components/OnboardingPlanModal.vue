@@ -132,7 +132,7 @@ onMounted(load)
       <p v-if="error" role="alert" class="error">{{ error }} <button class="btn secondary" @click="load">Повторить загрузку</button></p>
       <template v-if="plan">
         <section class="employee-summary" :aria-label="`Сведения: ${plan.full_name || 'Сотрудник'}`">
-          <h3>{{ plan.full_name || 'Сотрудник' }}</h3><p class="muted">{{ summary?.department || 'Отдел не указан' }} · Прибыл {{ formatShortDate(summary?.arrival) }}</p>
+          <h3>{{ plan.employee_short_name || plan.full_name || 'Сотрудник' }}</h3><p>{{ plan.employee_position || 'Должность не указана' }}</p><p class="muted">{{ plan.department_name || 'Отдел не указан' }} · Прибыл {{ formatShortDate(summary?.arrival) }}</p>
           <span v-if="plan.employment_status === 'dismissed'" class="badge danger">Уволен</span>
           <div class="facts-grid"><div class="fact"><span>Грейд</span><strong class="grade">{{ plan.grade || 'Грейд не назначен' }}</strong></div><div class="fact"><span>Наставник</span><strong>{{ plan.curator_name || 'Не назначен' }}</strong></div><div class="fact" v-if="summary"><div class="progress-caption"><span>Выполнение плана</span><strong>{{ summary.percent }}%</strong></div><div class="progress-track" role="progressbar" aria-label="Выполнение плана" :aria-valuenow="summary.percent" aria-valuemin="0" aria-valuemax="100" :aria-valuetext="summary.total ? `Выполнено ${summary.counts.completed} из ${summary.total}` : 'Нет обязательных этапов'"><span v-for="(count, key) in { done: summary.counts.completed, working: summary.counts.in_progress, late: summary.counts.overdue }" :key="key" :class="key" :style="{ width: `${summary.total ? count / summary.total * 100 : 0}%` }" /></div><small>{{ summary.total ? `Выполнено ${summary.counts.completed} из ${summary.total} этапов` : 'Нет обязательных этапов' }}</small></div></div>
         </section>
@@ -144,6 +144,7 @@ onMounted(load)
         <p v-if="curatorConflict">Ваш ввод сохранён. Закройте форму и откройте её снова для редактирования актуальной версии.</p>
       </form>
         <OnboardingPlanDetails :key="plan.id" :plan="plan" :columns="columns" :today="today" :editable="editable && !loading && !error && !state.dirty && !state.busy" @edit="startEdit" />
+        <section class="head-summary"><strong>Начальник отдела</strong><template v-if="plan.department_head"><p>{{ plan.department_head.position }}</p><p>{{ plan.department_head.short_name }} · Грейд: {{ plan.department_head.grade || '—' }}</p></template><p v-else>{{ plan.department_head_status === 'department_missing' ? 'Отдел не указан' : plan.department_head_status === 'ambiguous' ? 'Найдено несколько начальников отдела' : 'Начальник отдела не найден' }}</p></section>
       </template>
       <p v-if="exportError" role="alert" class="error">{{ exportError }}</p>
 
@@ -154,6 +155,7 @@ onMounted(load)
 </template>
 
 <style scoped>
+.head-summary { flex-shrink: 0; padding: .7rem 1rem; background: var(--bg); border-radius: var(--radius-lg); } .head-summary p { margin: .3rem 0; }
 .plan-content { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; gap: 1rem; }
 .employee-summary { flex-shrink: 0; } h3 { margin: 0; font-size: 1.5rem; overflow-wrap: anywhere; } .muted { color: var(--muted); margin: .5rem 0 1rem; }
 .facts-grid { display: grid; grid-template-columns: minmax(0,.6fr) minmax(0,1.2fr) minmax(0,1.2fr); gap: 1rem; }
@@ -163,5 +165,6 @@ onMounted(load)
 .menu-anchor { position: relative; } .action-menu { position: absolute; right: 0; top: calc(100% + .5rem); width: min(300px, calc(100vw - 4rem)); background: var(--surface); padding: .5rem; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow); display: grid; gap: .3rem; z-index: 10; } .action-menu button { text-align: left; border: 0; } .action-menu hr { width: 100%; border: 0; border-top: 1px solid var(--border); } .action-menu .danger { color: var(--danger); }
 .curator-form { flex-shrink: 0; display: grid; gap: .6rem; max-width: 600px; } .curator-form input { padding: .65rem; border: 1px solid var(--border); border-radius: 8px; width: 100%; } .curator-form p { margin: 0; } .form-actions { display: flex; flex-wrap: wrap; gap: .6rem; } .error { color: var(--danger); flex-shrink: 0; }
 @media (max-width: 640px) { .facts-grid { grid-template-columns: 1fr; } }
-@media (max-width: 640px), (max-height: 650px) { .plan-content { flex: none; } }
+@media (max-width: 640px), (max-height: 650px) { .head-summary { flex-shrink: 0; padding: .7rem 1rem; background: var(--bg); border-radius: var(--radius-lg); } .head-summary p { margin: .3rem 0; }
+.plan-content { flex: none; } }
 </style>

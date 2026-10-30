@@ -51,7 +51,7 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     labelKey: 'calendar',
     icon: IconCalendar,
     background: calendarBg,
-    isVisible: (auth) => auth.canEdit(),
+    isVisible: () => true,
   },
   {
     name: 'events',
