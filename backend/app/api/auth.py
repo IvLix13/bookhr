@@ -13,6 +13,7 @@ from app.extensions import db, limiter
 from app.models import AuthSource, Role, RoleName, User
 from app.security.csrf import get_or_create_csrf_token, rotate_csrf_token
 from app.services.ldap_auth import authenticate_ldap_user
+from app.services.viewer_binding import auto_bind_viewer
 
 
 def _resolve_role(role_name: str) -> Role:
@@ -96,6 +97,7 @@ def register_routes(bp):
             return api_response(message="Invalid credentials", status=401)
 
         user.reset_failed_login()
+        auto_bind_viewer(user)
         db.session.commit()
         login_user(user)
         session.permanent = True
@@ -117,6 +119,9 @@ def register_routes(bp):
     @login_required
     def me():
         from flask_login import current_user
+
+        if auto_bind_viewer(current_user):
+            db.session.commit()
 
         return api_response(
             {
