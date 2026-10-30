@@ -21,6 +21,11 @@ const auth = useAuthStore()
 const form = ref<{
   full_name: string
   title: string
+  cardnumber: string
+  fio_short: string
+  position_short_name: string
+  formal_department_short_name: string
+  formal_department_name: string
   hire_date: string
   education_status: EducationStatus | ''
   position_grade_id: string
@@ -35,6 +40,11 @@ const form = ref<{
 }>({
   full_name: '',
   title: '',
+  cardnumber: '',
+  fio_short: '',
+  position_short_name: '',
+  formal_department_short_name: '',
+  formal_department_name: '',
   hire_date: '',
   education_status: '',
   position_grade_id: '',
@@ -57,6 +67,11 @@ function resetForm() {
   form.value = {
     full_name: '',
     title: '',
+    cardnumber: '',
+    fio_short: '',
+    position_short_name: '',
+    formal_department_short_name: '',
+    formal_department_name: '',
     hire_date: '',
     education_status: '',
     position_grade_id: '',
@@ -81,6 +96,11 @@ watch(
     form.value = {
       full_name: value.full_name ?? '',
       title: value.title ?? '',
+      cardnumber: value.cardnumber ?? '',
+      fio_short: value.fio_short ?? '',
+      position_short_name: value.position_short_name ?? '',
+      formal_department_short_name: value.formal_department_short_name ?? '',
+      formal_department_name: value.formal_department_name ?? '',
       hire_date: value.hire_date ?? '',
       education_status:
         value.education_status === 'unknown' ? '' : value.education_status,
@@ -161,6 +181,11 @@ async function submit() {
     const body: Record<string, unknown> = {
       full_name: form.value.full_name.trim(),
       title: form.value.title.trim() || 'Не указана',
+      cardnumber: form.value.cardnumber.trim() || null,
+      fio_short: form.value.fio_short.trim() || null,
+      position_short_name: form.value.position_short_name.trim() || null,
+      formal_department_short_name: form.value.formal_department_short_name.trim() || null,
+      formal_department_name: form.value.formal_department_name.trim() || null,
       hire_date: form.value.hire_date,
       education_status: form.value.education_status,
       position_grade_id: form.value.position_grade_id
@@ -205,8 +230,29 @@ async function submit() {
       </label>
       <label>
         Должность
-        <input v-model="form.title" :disabled="readonly" />
+        <input v-model="form.title" name="title" maxlength="256" :disabled="readonly" />
       </label>
+      <label>
+        Номер карточки
+        <input v-model="form.cardnumber" name="cardnumber" maxlength="128" :disabled="readonly" />
+      </label>
+      <label>
+        Сокращённое ФИО
+        <input v-model="form.fio_short" name="fio_short" maxlength="256" :disabled="readonly" />
+      </label>
+      <label>
+        Должность сокращённо
+        <input v-model="form.position_short_name" name="position_short_name" maxlength="256" :disabled="readonly" />
+      </label>
+      <label>
+        Отдел сокращённо
+        <input v-model="form.formal_department_short_name" name="formal_department_short_name" maxlength="256" :disabled="readonly" />
+      </label>
+      <label>
+        Отдел полностью
+        <input v-model="form.formal_department_name" name="formal_department_name" :disabled="readonly" />
+      </label>
+      <p class="directory-note">При включённой синхронизации внешний сервис обновляет номер карточки, сокращённое ФИО, должность и формальный отдел. Грейды ведутся в BookHR.</p>
       <label>
         Начало работы
         <input
@@ -337,6 +383,8 @@ async function submit() {
 </template>
 
 <style scoped>
+.directory-note { grid-column: 1 / -1; color: var(--muted); font-size: 0.85rem; margin: 0; }
+
 .form {
   display: grid;
   gap: 0.85rem;

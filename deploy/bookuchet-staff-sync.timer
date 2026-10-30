@@ -1,0 +1,11 @@
+[Unit]
+Description=BookHR hourly staff directory synchronization
+
+[Timer]
+OnCalendar=*-*-* *:15:00 Europe/Moscow
+RandomizedDelaySec=5min
+Persistent=true
+Unit=bookuchet-staff-sync.service
+
+[Install]
+WantedBy=timers.target

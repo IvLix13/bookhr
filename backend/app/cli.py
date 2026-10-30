@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import click
+import json
 from flask import Flask, current_app
 
 from app.extensions import db
@@ -14,6 +15,25 @@ from app.services.rule_engine import run_rule_engine
 
 
 def register_commands(app: Flask) -> None:
+    @app.cli.command("sync-staff-directory")
+    @click.option("--company-id", type=click.IntRange(min=1), default=None)
+    @click.option("--person-id", type=click.IntRange(min=1), default=None, help="Локальный Person.id")
+    @click.option("--dry-run", is_flag=True, help="Показать изменения без записи в БД")
+    def sync_staff(company_id, person_id, dry_run):
+        """Синхронизировать должности и формальные отделы без изменения грейдов."""
+        from app.services.staff_directory_client import StaffDirectoryError
+        from app.services.staff_directory_sync import sync_staff_directory
+        try:
+            stats = sync_staff_directory(
+                company_id=company_id, person_id=person_id, dry_run=dry_run,
+                report=lambda detail: click.echo(json.dumps(detail, ensure_ascii=False)),
+            )
+        except StaffDirectoryError as exc:
+            raise click.ClickException(exc.code) from None
+        click.echo(json.dumps(stats, ensure_ascii=False))
+        if stats["errors"]:
+            raise click.ClickException("Синхронизация завершилась с техническими ошибками")
+
     @app.cli.command("init-db")
     def init_db():
         """Create tables and seed initial data."""

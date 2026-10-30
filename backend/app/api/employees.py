@@ -7,6 +7,7 @@ from typing import Any
 
 from flask import request
 from flask_login import login_required
+from sqlalchemy import func
 
 from app.api.helpers import (
     api_response,
@@ -63,6 +64,7 @@ from app.services.employees import (
     sync_passport,
     update_person_name,
     update_position,
+    update_staff_directory_fields,
 )
 from app.services.events import refresh_overdue_events
 from app.services.grades import compute_grade_eligibility, resolve_unknown_education_snapshot
@@ -94,6 +96,10 @@ EMPLOYEE_SORT_FIELDS = {
     "hire_date": Employment.hire_date,
     "status": Employment.status,
     "title": PositionHistory.title,
+    "formal_department_short_name": func.coalesce(
+        func.nullif(Employment.formal_department_short_name, ""),
+        func.nullif(Employment.formal_department_name, ""),
+    ),
     "education_status": Person.education_status,
     "contract_end": Contract.end_date,
     "grade_date": EmployeeGradeHistory.assigned_date,
@@ -161,7 +167,14 @@ def register_routes(bp):
             return api_response(paginate_sequence(rows, page, per_page))
 
         query = _apply_employee_list_sort_joins(query, sort)
-        query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
+        if sort == "formal_department_short_name":
+            column = EMPLOYEE_SORT_FIELDS[sort]
+            query = query.order_by(
+                (column.asc() if direction == "asc" else column.desc()).nullslast(),
+                Employment.id,
+            )
+        else:
+            query = apply_sort(query, EMPLOYEE_SORT_FIELDS, sort, direction)
 
         return api_response(paginate_query(query, employment_to_dict, page, per_page))
 
@@ -181,6 +194,9 @@ def register_routes(bp):
             position_grade_id=payload.get("position_grade_id"),
             education_status=payload["education_status"],
         )
+        position = get_current_position(employment)
+        position.short_title = (payload.get("position_short_name") or "").strip() or None
+        update_staff_directory_fields(employment, payload)
         tenure_awards = ensure_tenure_awards(person.id, company_id)
         received_dates = {
             10: payload.get("tenure_10_received_date"),
@@ -227,7 +243,7 @@ def register_routes(bp):
                 update_person_name(employment.person, full_name, effective_date)
                 needs_recalc = True
 
-        if _payload_has(payload, "title") or _payload_has(payload, "position_grade_id"):
+        if any(key in payload for key in ("title", "position_grade_id", "position_short_name")):
             current_position = get_current_position(employment)
             title = payload.get("title")
             if title is None:
@@ -242,7 +258,11 @@ def register_routes(bp):
                 str(title).strip() or "Не указана",
                 position_grade_id,
                 effective_date,
+                **({"short_title": (payload["position_short_name"] or "").strip() or None}
+                   if "position_short_name" in payload else {}),
             )
+
+        update_staff_directory_fields(employment, payload)
 
         if _payload_has(payload, "education_status"):
             education_status = payload["education_status"]

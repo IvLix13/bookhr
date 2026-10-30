@@ -1,0 +1,14 @@
+[Unit]
+Description=BookHR staff directory synchronization
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=bookuchet
+Group=bookuchet
+WorkingDirectory=/opt/bookuchet/backend
+EnvironmentFile=/opt/bookuchet/.env.prod
+Environment=FLASK_APP=wsgi:app
+ExecStart=/opt/bookuchet/backend/.venv/bin/flask sync-staff-directory
+TimeoutStartSec=35min

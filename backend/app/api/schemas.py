@@ -121,10 +121,32 @@ class CancelEventSchema(BaseSchema):
             raise ValidationError({"comment": ["Укажите причину отмены"]})
 
 
-class CreateEmployeeSchema(BaseSchema):
+class StaffDirectoryFieldsSchema(BaseSchema):
+    cardnumber = fields.Str(allow_none=True, validate=validate.Length(max=128))
+    fio_short = fields.Str(allow_none=True, validate=validate.Length(max=256))
+    position_name = fields.Str(allow_none=True, validate=validate.Length(max=256))
+    position_short_name = fields.Str(allow_none=True, validate=validate.Length(max=256))
+    formal_department_short_name = fields.Str(allow_none=True, validate=validate.Length(max=256))
+    formal_department_name = fields.Str(allow_none=True)
+
+    @pre_load
+    def normalize_position_alias(self, data, **kwargs):
+        data = dict(data)
+        if "position_name" in data:
+            name = data.pop("position_name")
+            normalized = (name or "").strip() if isinstance(name, (str, type(None))) else name
+            title = data.get("title")
+            compared = (title or "").strip() if isinstance(title, (str, type(None))) else title
+            if "title" in data and normalized != compared:
+                raise ValidationError({"position_name": ["Название должности отличается от title"]})
+            data["title"] = normalized
+        return data
+
+
+class CreateEmployeeSchema(StaffDirectoryFieldsSchema):
     full_name = fields.Str(required=True, validate=validate.Length(min=1, max=256))
     hire_date = DateField(required=True)
-    title = fields.Str(load_default="Не указана")
+    title = fields.Str(load_default="Не указана", validate=validate.Length(max=256))
     position_grade_id = fields.Int(allow_none=True)
     actual_grade_id = fields.Int(allow_none=True)
     grade_date = DateField(allow_none=True)
@@ -141,10 +163,10 @@ class CreateEmployeeSchema(BaseSchema):
         validate_contract_pair(data)
 
 
-class UpdateEmployeeSchema(BaseSchema):
+class UpdateEmployeeSchema(StaffDirectoryFieldsSchema):
     full_name = fields.Str(validate=validate.Length(min=1, max=256))
     hire_date = DateField(allow_none=True)
-    title = fields.Str(allow_none=True)
+    title = fields.Str(allow_none=True, validate=validate.Length(max=256))
     position_grade_id = fields.Int(allow_none=True)
     actual_grade_id = fields.Int(allow_none=True)
     grade_date = DateField(allow_none=True)

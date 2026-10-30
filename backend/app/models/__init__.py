@@ -11,6 +11,7 @@ from app.models.employee import (
     Person,
     PersonNameHistory,
     PositionHistory,
+    StaffDirectoryState,
 )
 from app.models.event import Event, EventSource, EventStatus, EventStatusHistory, EventType
 from app.models.grade import EmployeeGradeHistory, GradeCatalog
@@ -53,6 +54,7 @@ __all__ = [
     "Person",
     "PersonNameHistory",
     "PositionHistory",
+    "StaffDirectoryState",
     "REWARD_STATUS_LABELS",
     "Reward",
     "RewardStatus",
