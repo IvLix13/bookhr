@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, onUnmounted } from 'vue'
 import { api } from '@/api/client'
 import type { RoleItem, UserListItem, UserRole } from '@/types'
 
@@ -12,6 +12,32 @@ const emit = defineEmits<{
   cancel: []
 }>()
 
+const employeeId = ref<number | null>(props.initial?.employment_id ?? null)
+const employeeQuery = ref('')
+const employeePage = ref(1)
+const employeePages = ref(0)
+const employeeOptions = ref<Array<{ id: number; full_name: string; title?: string; formal_department_short_name?: string }>>([])
+const searchError = ref('')
+let searchVersion = 0
+let searchTimer: ReturnType<typeof setTimeout> | undefined
+async function searchEmployees() {
+  const version = ++searchVersion
+  try {
+    const result = await api.employees({ q: employeeQuery.value, page: employeePage.value, per_page: 20, status: 'active' })
+    if (version !== searchVersion) return
+    employeeOptions.value = result.items as typeof employeeOptions.value
+    employeePages.value = result.pages
+    searchError.value = ''
+  } catch { if (version === searchVersion) searchError.value = 'Не удалось загрузить сотрудников' }
+}
+watch(employeeQuery, () => {
+  employeePage.value = 1
+  ++searchVersion
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(searchEmployees, 350)
+})
+watch(employeePage, searchEmployees)
+onUnmounted(() => { clearTimeout(searchTimer); ++searchVersion })
 const roles = ref<RoleItem[]>([])
 const submitting = ref(false)
 const error = ref('')
@@ -31,6 +57,7 @@ watch(
   () => props.initial,
   (value) => {
     resetPassword.value = ''
+    employeeId.value = value?.employment_id ?? null
     if (!value) {
       form.value = {
         username: '',
@@ -52,6 +79,7 @@ watch(
 
 onMounted(async () => {
   roles.value = (await api.roles()) as RoleItem[]
+  void searchEmployees()
 })
 
 async function submit() {
@@ -60,6 +88,7 @@ async function submit() {
   try {
     if (props.initial) {
       await api.updateUser(props.initial.id, {
+        employment_id: employeeId.value,
         full_name: form.value.full_name.trim(),
         role: form.value.role,
       })
@@ -73,6 +102,7 @@ async function submit() {
       await api.createUser({
         username: form.value.username.trim(),
         password: form.value.password,
+        employment_id: employeeId.value,
         full_name: form.value.full_name.trim(),
         role: form.value.role,
       })
@@ -119,6 +149,17 @@ async function submit() {
       </select>
     </label>
 
+    <fieldset>
+      <legend>Сотрудник для календаря отдела</legend>
+      <label>Поиск сотрудника<input v-model="employeeQuery" type="search" placeholder="ФИО" /></label>
+      <select v-model="employeeId" aria-label="Сотрудник для календаря отдела">
+        <option :value="null">Не привязан</option>
+        <option v-if="employeeId && !employeeOptions.some(e => e.id === employeeId)" :value="employeeId">Текущая привязка №{{ employeeId }}</option>
+        <option v-for="employee in employeeOptions" :key="employee.id" :value="employee.id">{{ employee.full_name }} · {{ employee.title }} · {{ employee.formal_department_short_name || 'Отдел не указан' }}</option>
+      </select>
+      <div class="actions"><button type="button" class="btn secondary" :disabled="employeePage <= 1" @click="employeePage--">Назад</button><span>{{ employeePage }} / {{ employeePages || 1 }}</span><button type="button" class="btn secondary" :disabled="employeePage >= employeePages" @click="employeePage++">Далее</button></div>
+      <p v-if="searchError" role="alert">{{ searchError }}</p>
+    </fieldset>
     <label v-if="isEdit && isLocal">
       Новый пароль
       <input

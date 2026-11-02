@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 import CalendarFeedPanel from '@/components/CalendarFeedPanel.vue'
 import DayEventsModal from '@/components/DayEventsModal.vue'
 import EventDetailModal from '@/components/EventDetailModal.vue'
@@ -12,6 +13,7 @@ import type { EventItem } from '@/types'
 import { loadCalendarEvents } from '@/utils/calendar'
 import { formatLocalDate, monthRange } from '@/utils/dates'
 
+const auth = useAuthStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -86,6 +88,7 @@ onMounted(loadEvents)
 
 <template>
   <div class="calendar-page">
+    <p v-if="auth.user?.role === 'viewer' && auth.user.calendar_access?.available === false" role="status">Не удалось определить ваш отдел. Обратитесь к администратору.</p>
     <PageState
       :loading="calendarResource.isLoading()"
       :refreshing="calendarResource.isRefreshing()"

@@ -20,7 +20,7 @@ describe('router access helpers', () => {
     auth.user = { id: 2, username: 'viewer', full_name: 'Viewer', role: 'viewer' }
 
     expect(postLoginNavigation(auth, undefined)).toEqual({ name: 'employees' })
-    expect(postLoginNavigation(auth, '/')).toEqual({ name: 'employees' })
+    expect(postLoginNavigation(auth, '/')).toBe('/')
     expect(postLoginNavigation(auth, '/contracts')).toBe('/contracts')
   })
 })

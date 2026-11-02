@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy.exc import IntegrityError
 
 from flask import request
+from app.services.event_visibility import visible_events
 from sqlalchemy.orm import selectinload
 
 from app.api.helpers import (
@@ -89,7 +90,7 @@ def _apply_event_list_sort_joins(query, sort: str):
 
 def register_routes(bp):
     @bp.get("/events")
-    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
     def list_events():
         company_id = get_request_company_id()
         date_from = parse_query_date(request.args.get("from"), field_name="from")
@@ -104,7 +105,7 @@ def register_routes(bp):
             default_direction="asc",
         )
 
-        query = Event.query.filter_by(company_id=company_id).options(
+        query = visible_events(Event.query.filter_by(company_id=company_id)).options(
             selectinload(Event.status_history).selectinload(EventStatusHistory.changed_by),
             selectinload(Event.created_by),
         )
@@ -144,20 +145,20 @@ def register_routes(bp):
         return api_response(paginate_query(query, event_to_dict, page, per_page))
 
     @bp.get("/events/<int:event_id>")
-    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
     def get_event(event_id: int):
-        event = db.session.get(Event, event_id)
+        event = visible_events(Event.query).filter_by(id=event_id).first()
         if not event or event.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
         return api_response(event_to_dict(event))
 
     @bp.get("/events/upcoming")
-    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
     def upcoming_events():
         company_id = get_request_company_id()
         limit = request.args.get("limit", 10, type=int)
 
-        query = Event.query.filter_by(company_id=company_id)
+        query = visible_events(Event.query.filter_by(company_id=company_id))
         # Only future/today planned — overdue belong in attention, not upcoming.
         query = apply_status_filter(query, EventStatus.PLANNED.value)
         events = query.order_by(Event.event_date.asc()).limit(limit).all()

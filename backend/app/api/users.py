@@ -51,7 +51,7 @@ def register_routes(bp):
         auth_source = request.args.get("auth_source", type=str)
         is_active = request.args.get("is_active", type=str)
 
-        query = User.query.join(Role, User.role_id == Role.id)
+        query = User.query.join(Role, User.role_id == Role.id).filter(User.company_id == current_user.company_id)
         if q:
             pattern = f"%{q}%"
             query = query.filter(or_(User.username.ilike(pattern), User.full_name.ilike(pattern)))
@@ -78,6 +78,8 @@ def register_routes(bp):
                 full_name=payload.get("full_name", ""),
                 role_name=payload.get("role", RoleName.VIEWER.value),
                 actor=current_user,
+                company_id=current_user.company_id,
+                employment_id=payload.get("employment_id"),
             )
             db.session.commit()
         except ValueError as exc:
@@ -91,7 +93,7 @@ def register_routes(bp):
         from app.api.helpers import get_json
 
         user = db.session.get(User, user_id)
-        if not user:
+        if not user or user.company_id != current_user.company_id:
             return api_response(message="Not found", status=404)
 
         payload = get_json()
@@ -102,6 +104,7 @@ def register_routes(bp):
                 full_name=payload.get("full_name") if "full_name" in payload else None,
                 role_name=payload.get("role") if "role" in payload else None,
                 is_active=payload.get("is_active") if "is_active" in payload else None,
+                **({"employment_id": payload["employment_id"]} if "employment_id" in payload else {}),
             )
             db.session.commit()
         except ValueError as exc:
@@ -113,7 +116,7 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN)
     def unlock_user_route(user_id: int):
         user = db.session.get(User, user_id)
-        if not user:
+        if not user or user.company_id != current_user.company_id:
             return api_response(message="Not found", status=404)
         try:
             unlock_user(user, actor=current_user)
@@ -129,7 +132,7 @@ def register_routes(bp):
         from app.api.helpers import get_json
 
         user = db.session.get(User, user_id)
-        if not user:
+        if not user or user.company_id != current_user.company_id:
             return api_response(message="Not found", status=404)
 
         payload = get_json()

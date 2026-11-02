@@ -91,6 +91,7 @@ def onboarding_plan_query(company_id):
         .filter(Employment.company_id == company_id)
         .options(
             selectinload(OnboardingPlan.cells),
+            selectinload(OnboardingPlan.employment).selectinload(Employment.position_history),
             selectinload(OnboardingPlan.employment)
             .selectinload(Employment.person)
             .selectinload(Person.name_history),
@@ -116,13 +117,24 @@ def names_match(left, right):
 
 
 def plan_dict(plan):
+    from app.services.department_heads import head_values, short_employee_name
+    from app.services.department_heads import get_current_position
+    from app.services.departments import department_key
     employment = plan.employment
+    head_status, head = head_values(employment)
+    position = get_current_position(employment)
     grades = [item for item in employment.grade_history if item.valid_to is None]
     grade = max(grades, key=lambda item: (item.assigned_date, item.id)) if grades else None
     return {
         "id": plan.id,
         "employment_id": employment.id,
         "full_name": current_plan_name(plan),
+        "employee_short_name": short_employee_name(employment),
+        "employee_position": position.title if position else None,
+        "department_key": department_key(employment),
+        "department_name": employment.formal_department_short_name,
+        "department_head_status": head_status,
+        "department_head": head,
         "grade": grade.grade.name if grade else None,
         "employment_status": employment.status,
         "hire_date": employment.hire_date.isoformat(),

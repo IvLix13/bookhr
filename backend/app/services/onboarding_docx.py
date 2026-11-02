@@ -27,10 +27,11 @@ def short_name(name):
 def employee_values(employment):
     if employment is None:
         return {key: "—" for key in ("short_name", "full_name", "position", "grade")}
+    from app.services.department_heads import short_employee_name
     name = get_current_name(employment.person)
     position = get_current_position(employment)
     grade = get_current_grade(employment)
-    return {"full_name": name or "—", "short_name": short_name(name),
+    return {"full_name": name or "—", "short_name": short_employee_name(employment),
             "position": position.title if position else "—", "grade": grade.grade.name if grade else "—"}
 
 
@@ -40,6 +41,10 @@ def document_context(plan):
     if plan.curator_name:
         curator.update(full_name=plan.curator_name, short_name=short_name(plan.curator_name))
     context = {f"{prefix}.{key}": value for prefix, values in [("employee", employee), ("curator", curator)] for key, value in values.items()}
+    from app.services.department_heads import head_values
+    _, head = head_values(plan.employment)
+    for key in ("position", "short_name", "grade"):
+        context[f"department_head.{key}"] = (head or {}).get(key) or "—"
     stages = document_stages()
     for key in stages:
         context[f"stages.{key}.planned_date"] = "—"
@@ -236,6 +241,7 @@ def _default_template(departments=None):
             paragraphs.append(f"{title}: {{{{ {variable} }}}} {{{{ {department_variable} }}}}")
         else:
             paragraphs.append(f"{title}: {{{{ {variable} }}}}" if variable else f"{title}: —")
+    paragraphs.extend(["Начальник отдела", "{{ department_head_position }}", "{{ department_head_name }}", "Грейд: {{ department_head_grade }}"])
     body = ''.join(f'<w:p><w:r><w:t>{escape(p)}</w:t></w:r></w:p>' for p in paragraphs)
     document = f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="{W}"><w:body>{body}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134"/></w:sectPr></w:body></w:document>'
     stream = BytesIO()

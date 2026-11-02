@@ -13,6 +13,7 @@ export interface Paginated<T> {
 }
 
 export interface User {
+  calendar_access?: { available: boolean; department: string | null; reason: string | null }
   id: number
   username: string
   full_name: string
@@ -28,6 +29,7 @@ export interface RoleItem {
 }
 
 export interface UserListItem {
+  employment_id?: number | null
   id: number
   username: string
   full_name: string

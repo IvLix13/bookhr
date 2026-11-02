@@ -365,10 +365,11 @@ export const api = {
     password: string
     full_name: string
     role: string
+    employment_id?: number | null
   }) => request('/api/users', { method: 'POST', body: JSON.stringify(body) }),
   updateUser: (
     id: number,
-    body: Partial<{ full_name: string; role: string; is_active: boolean }>,
+    body: Partial<{ full_name: string; role: string; is_active: boolean; employment_id: number | null }>,
   ) => request(`/api/users/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   unlockUser: (id: number) =>
     request(`/api/users/${id}/unlock`, { method: 'POST', body: JSON.stringify({}) }),

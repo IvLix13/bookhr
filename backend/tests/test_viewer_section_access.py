@@ -24,12 +24,6 @@ VIEWER_FORBIDDEN_GETS = [
     "/api/import/template?import_type=rewards",
     "/api/grades",
     "/api/grade-catalog",
-    "/api/events",
-    "/api/events?per_page=5",
-    "/api/events/upcoming",
-    "/api/events/upcoming?limit=8",
-    "/api/attention",
-    "/api/attention?limit=12",
 ]
 
 
@@ -86,8 +80,8 @@ def test_viewer_cannot_load_calendar_month_events(viewer_client, seed_company):
     response = viewer_client.get(
         f"/api/events?company_id={seed_company.id}&from=2026-01-01&to=2026-01-31"
     )
-    assert response.status_code == 403
-    assert response.get_json()["success"] is False
+    assert response.status_code == 200
+    assert response.get_json()["data"]["items"] == []
 
 
 def test_viewer_cannot_read_single_event(viewer_client, app, seed_company):
@@ -101,5 +95,5 @@ def test_viewer_cannot_read_single_event(viewer_client, app, seed_company):
         db.session.commit()
         event_id = event.id
     response = viewer_client.get(f"/api/events/{event_id}")
-    assert response.status_code == 403
+    assert response.status_code == 404
     assert response.get_json()["success"] is False

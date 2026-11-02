@@ -340,6 +340,8 @@ def delete_employment(employment: Employment, onboarding_delete=None) -> None:
     elif onboarding_delete is not None:
         from werkzeug.exceptions import Conflict
         raise Conflict("План уже удалён. Обновите список сотрудников.")
+    from app.models import User
+    User.query.filter_by(employment_id=employment.id).update({"employment_id": None})
     employment_id = employment.id
     person = employment.person
     person_id = person.id

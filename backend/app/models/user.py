@@ -46,6 +46,9 @@ class User(UserMixin, db.Model, TimestampMixin):
     locked_until = db.Column(db.DateTime(timezone=True), nullable=True)
     must_change_password = db.Column(db.Boolean, default=False, nullable=False)
 
+    employment_id = db.Column(db.Integer, db.ForeignKey("employments.id", ondelete="SET NULL"), nullable=True, index=True)
+    employment = db.relationship("Employment", foreign_keys=[employment_id])
+
     role = db.relationship("Role", back_populates="users")
     company = db.relationship("Company")
 

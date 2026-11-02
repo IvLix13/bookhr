@@ -49,7 +49,9 @@ from app.utils.dates import humanize_user_text_fields, today_moscow
 
 
 def user_to_dict(user: User) -> dict:
+    from app.services.event_visibility import calendar_access
     return {
+        "calendar_access": calendar_access(user),
         "id": user.id,
         "username": user.username,
         "full_name": user.full_name,
@@ -68,6 +70,7 @@ def role_to_dict(role: Role) -> dict:
 
 def user_admin_to_dict(user: User) -> dict:
     return {
+        "employment_id": user.employment_id,
         "id": user.id,
         "username": user.username,
         "full_name": user.full_name,
@@ -355,6 +358,10 @@ def event_to_dict(event: Event) -> dict:
         "attestation_mutation_blocked_reason": attestation_mutation_blocked_reason(event),
         "last_status_change": _last_status_change_to_dict(event),
     }
+    from flask_login import current_user
+    if current_user.is_authenticated and current_user.role_name == "viewer":
+        for key in ("grade_completion", "passport_completion", "contract_renewal"):
+            payload[key] = None
     return humanize_user_text_fields(payload)
 
 

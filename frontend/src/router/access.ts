@@ -12,15 +12,12 @@ function isSafeRedirectPath(target: string | undefined): target is string {
   return Boolean(target && target.startsWith('/') && !target.startsWith('//'))
 }
 
-/** Post-login navigation: never send viewer to `/` (calendar) by default. */
+/** Post-login navigation: preserve explicit calendar redirects for viewer. */
 export function postLoginNavigation(
   auth: AuthStore,
   redirect: string | undefined,
 ): RouteLocationRaw | string {
   if (!isSafeRedirectPath(redirect)) {
-    return defaultAppRoute(auth)
-  }
-  if (!auth.canEdit() && (redirect === '/' || redirect === '')) {
     return defaultAppRoute(auth)
   }
   return redirect
