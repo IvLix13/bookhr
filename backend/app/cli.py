@@ -15,6 +15,38 @@ from app.services.rule_engine import run_rule_engine
 
 
 def register_commands(app: Flask) -> None:
+    def maintenance_result(operation, yes, dry_run):
+        if yes and dry_run:
+            raise click.ClickException("Укажите только один режим: --yes или --dry-run")
+        try:
+            result = operation(apply=yes)
+            if yes:
+                db.session.commit()
+            else:
+                db.session.rollback()
+        except Exception as exc:
+            db.session.rollback()
+            raise click.ClickException(str(exc)) from exc
+        click.echo(json.dumps(result, ensure_ascii=False))
+        if not yes:
+            click.echo("Предварительный просмотр: база не изменена. Для выполнения добавьте --yes.")
+
+    @app.cli.command("extend-contracts-one-day")
+    @click.option("--yes", is_flag=True, help="Записать изменения (один раз для этой базы)")
+    @click.option("--dry-run", is_flag=True, help="Только показать результат; это режим по умолчанию")
+    def extend_contracts_one_day_command(yes, dry_run):
+        """Увеличить окончания ВСЕХ договоров на день; начала и сроки не менять."""
+        from app.services.database_maintenance import extend_contracts_one_day
+        maintenance_result(extend_contracts_one_day, yes, dry_run)
+
+    @app.cli.command("purge-cancelled-events")
+    @click.option("--yes", is_flag=True, help="Удалить отменённые мероприятия и связанные записи")
+    @click.option("--dry-run", is_flag=True, help="Только показать результат; это режим по умолчанию")
+    def purge_cancelled_events_command(yes, dry_run):
+        """Очистить выбранную базу от мероприятий со статусом cancelled."""
+        from app.services.database_maintenance import purge_cancelled_events
+        maintenance_result(purge_cancelled_events, yes, dry_run)
+
     @app.cli.command("sync-staff-directory")
     @click.option("--company-id", type=click.IntRange(min=1), default=None)
     @click.option("--person-id", type=click.IntRange(min=1), default=None, help="Локальный Person.id")
