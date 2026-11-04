@@ -357,7 +357,9 @@ def test_compute_grade_eligibility_max_rank_has_no_next_grade(app, seed_company)
         assert eligibility["eligible_date"] is None
 
 
-def test_no_university_extra_year_is_frozen_at_rank_entry(app, seed_company):
+def test_no_university_extra_year_recalculates_after_education_change(app, seed_company):
+    from app.services.grades import sync_current_grade_education
+
     with app.app_context():
         junior = GradeCatalog(
             name="Junior",
@@ -388,10 +390,12 @@ def test_no_university_extra_year_is_frozen_at_rank_entry(app, seed_company):
         assert compute_grade_eligibility(employment)["eligible_date"] == date(2026, 1, 1)
 
         employment.person.education_status = EducationStatus.YES.value
-        junior.extra_year_without_university = False
+        assert sync_current_grade_education(employment, EducationStatus.YES.value)
         db.session.commit()
 
-        assert compute_grade_eligibility(employment)["eligible_date"] == date(2026, 1, 1)
+        assert history.required_months == 12
+        assert history.rank_started_at == date(2024, 1, 1)
+        assert compute_grade_eligibility(employment)["eligible_date"] == date(2025, 1, 1)
 
 
 def test_same_rank_transfer_preserves_level_tenure(app, seed_company):

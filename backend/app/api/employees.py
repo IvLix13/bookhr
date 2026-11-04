@@ -67,7 +67,7 @@ from app.services.employees import (
     update_staff_directory_fields,
 )
 from app.services.events import refresh_overdue_events
-from app.services.grades import compute_grade_eligibility, resolve_unknown_education_snapshot
+from app.services.grades import compute_grade_eligibility, sync_current_grade_education
 from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import (
     MAX_EMPLOYMENT_PERIODS,
@@ -267,7 +267,7 @@ def register_routes(bp):
         if _payload_has(payload, "education_status"):
             education_status = payload["education_status"]
             employment.person.education_status = education_status
-            if resolve_unknown_education_snapshot(employment, education_status):
+            if sync_current_grade_education(employment, education_status):
                 needs_recalc = True
 
         if _payload_has(payload, "hire_date"):

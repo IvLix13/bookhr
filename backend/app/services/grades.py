@@ -63,15 +63,19 @@ def _new_rank_snapshot(
     }
 
 
-def resolve_unknown_education_snapshot(
+def sync_current_grade_education(
     employment: Employment,
     education_status: str,
 ) -> bool:
-    """Resolve a defensive unknown snapshot without changing established policy."""
+    """Apply education changes to the open grade without restarting rank tenure.
+
+    The legacy education_status_at_rank_entry column stores the education used
+    by the current tenure calculation. Closed history rows remain unchanged.
+    """
     current = _current_grade(employment)
     if (
         not current
-        or current.education_status_at_rank_entry != EducationStatus.UNKNOWN.value
+        or current.education_status_at_rank_entry == education_status
     ):
         return False
     current.required_months = _required_months(current.grade, education_status)
