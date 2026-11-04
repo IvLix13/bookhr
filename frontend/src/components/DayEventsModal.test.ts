@@ -63,13 +63,13 @@ describe('DayEventsModal', () => {
     document.body.innerHTML = ''
   })
 
-  it('shows contract expiry on a later page and opens its own event', async () => {
+  it('shows contract signing on a later page and opens its own event', async () => {
     vi.mocked(api.events).mockResolvedValueOnce({ items: [], page: 1, pages: 2, per_page: 200, total: 201 })
     vi.mocked(api.events).mockResolvedValueOnce({
       items: [{
         id: 201,
-        title: 'Договор до 24 июля 2026 г.: Иван Иванов',
-        event_type: 'contract',
+        title: 'Подписание договора: Иван Иванов',
+        event_type: 'contract_signing',
         event_date: '2026-07-24',
         status: 'planned',
         source: 'rule',
@@ -85,7 +85,7 @@ describe('DayEventsModal', () => {
       global: { stubs: { teleport: true, EventDetailModal: true } },
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('Договор до 24 июля 2026 г.: Иван Иванов')
+    expect(wrapper.text()).toContain('Подписание договора: Иван Иванов')
     await wrapper.get('.item-button').trigger('click')
     expect(wrapper.getComponent({ name: 'EventDetailModal' }).props('eventId')).toBe(201)
     wrapper.unmount()
@@ -240,3 +240,4 @@ describe('DayEventsModal', () => {
     expect(text).not.toContain('Отменённое')
   })
 })
+

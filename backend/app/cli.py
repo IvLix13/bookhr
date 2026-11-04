@@ -15,6 +15,38 @@ from app.services.rule_engine import run_rule_engine
 
 
 def register_commands(app: Flask) -> None:
+    def maintenance_result(operation, yes, dry_run):
+        if yes and dry_run:
+            raise click.ClickException("Укажите только один режим: --yes или --dry-run")
+        try:
+            result = operation(apply=yes)
+            if yes:
+                db.session.commit()
+            else:
+                db.session.rollback()
+        except Exception as exc:
+            db.session.rollback()
+            raise click.ClickException(str(exc)) from exc
+        click.echo(json.dumps(result, ensure_ascii=False))
+        if not yes:
+            click.echo("Предварительный просмотр: база не изменена. Для выполнения добавьте --yes.")
+
+    @app.cli.command("extend-contracts-one-day")
+    @click.option("--yes", is_flag=True, help="Записать изменения (один раз для этой базы)")
+    @click.option("--dry-run", is_flag=True, help="Только показать результат; это режим по умолчанию")
+    def extend_contracts_one_day_command(yes, dry_run):
+        """Увеличить окончания ВСЕХ договоров на день; начала и сроки не менять."""
+        from app.services.database_maintenance import extend_contracts_one_day
+        maintenance_result(extend_contracts_one_day, yes, dry_run)
+
+    @app.cli.command("purge-cancelled-events")
+    @click.option("--yes", is_flag=True, help="Удалить отменённые мероприятия и связанные записи")
+    @click.option("--dry-run", is_flag=True, help="Только показать результат; это режим по умолчанию")
+    def purge_cancelled_events_command(yes, dry_run):
+        """Очистить выбранную базу от мероприятий со статусом cancelled."""
+        from app.services.database_maintenance import purge_cancelled_events
+        maintenance_result(purge_cancelled_events, yes, dry_run)
+
     @app.cli.command("sync-staff-directory")
     @click.option("--company-id", type=click.IntRange(min=1), default=None)
     @click.option("--person-id", type=click.IntRange(min=1), default=None, help="Локальный Person.id")
@@ -84,12 +116,18 @@ def register_commands(app: Flask) -> None:
     def diagnose_contracts():
         """Read-only diagnosis; does not infer missing signatures or fix historical dates."""
         from app.models import Contract, ContractRenewal
-        from datetime import timedelta
         from app.utils.dates import calculate_contract_start
-        from app.services.contracts import renewal_for
+        from app.services.contracts import renewal_for, period
         for contract in Contract.query.order_by(Contract.id):
-            boundary = contract.end_date + timedelta(days=1) if ContractRenewal.query.filter_by(result_contract_id=contract.id).first() else contract.end_date
-            if contract.term_years and calculate_contract_start(boundary, contract.term_years) != contract.start_date:
+            incoming = ContractRenewal.query.filter_by(result_contract_id=contract.id).first()
+            inconsistent = False
+            if contract.term_years:
+                if incoming:
+                    source = db.session.get(Contract, incoming.source_contract_id)
+                    inconsistent = period(source, contract.term_years) != (contract.start_date, contract.end_date)
+                else:
+                    inconsistent = calculate_contract_start(contract.end_date, contract.term_years) != contract.start_date
+            if inconsistent:
                 click.echo(f"Check contract {contract.id}: start={contract.start_date}, end={contract.end_date}, term={contract.term_years}")
             renewal = renewal_for(contract.id)
             if renewal and renewal.term_years is None:
@@ -140,3 +178,4 @@ def register_commands(app: Flask) -> None:
             f"import_jobs={result.import_jobs_deleted}, "
             f"grade_catalog={result.grade_catalog_after}",
         )
+

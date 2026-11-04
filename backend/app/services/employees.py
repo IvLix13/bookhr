@@ -237,39 +237,39 @@ def sync_active_contract(
     term_years: float | None = None,
 ) -> Contract | None:
     """Apply HR-entered contract end date and term to the active contract."""
+    # Serialize creation/clearing with direct creation and signing for this employee.
+    from app.services.contracts import lock_employment_contracts
+    lock_employment_contracts(employment.id)
     contract = get_active_contract(employment)
     has_end = end_date is not None
     has_term = term_years is not None
 
     if not has_end and not has_term:
         if contract:
+            from app.services.contracts import renewal_for, ContractConflict
+            from app.models import ContractRenewal
+            renewal = renewal_for(contract.id)
+            if (renewal and renewal.result_contract_id) or ContractRenewal.query.filter_by(result_contract_id=contract.id).first():
+                raise ContractConflict("Нельзя убрать договор из подписанной цепочки")
             contract.is_active = False
         return None
 
     if not has_end or not has_term:
         raise ValueError("Укажите срок договора и дату окончания")
 
-    contract_start = calculate_contract_start(end_date, term_years)
-
     if contract:
-        from app.services.contracts import lock_contract, renewal_for
-        from app.models import ContractRenewal
-        from datetime import timedelta
+        from app.services.contracts import lock_contract, update_period
         contract = lock_contract(contract.id)
-        renewal = renewal_for(contract.id)
-        if renewal and renewal.result_contract_id and (end_date != contract.end_date or term_years != contract.term_years):
-            raise ValueError("Нельзя изменить период предыдущего подписанного договора")
-        if ContractRenewal.query.filter_by(result_contract_id=contract.id).first():
-            contract_start = calculate_contract_start(end_date + timedelta(days=1), term_years)
-        contract.start_date = contract_start
-        contract.end_date = end_date
-        contract.term_years = term_years
+        update_period(contract, end_date, term_years)
         contract.is_active = True
         return contract
 
+    from app.services.contracts import has_pending_contract, ContractConflict
+    if has_pending_contract(employment):
+        raise ContractConflict("У сотрудника уже есть подписанный следующий договор")
     new_contract = Contract(
         employment_id=employment.id,
-        start_date=contract_start,
+        start_date=calculate_contract_start(end_date, term_years),
         end_date=end_date,
         term_years=term_years,
         is_active=True,
@@ -496,3 +496,4 @@ def sync_employment_periods_from_import(
     if active:
         return active
     return existing[-1]
+

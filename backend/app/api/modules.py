@@ -182,6 +182,16 @@ def register_routes(bp):
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def create_contract():
         payload = load_schema(CreateContractSchema)
+        employment = Employment.query.filter_by(
+            id=payload["employment_id"], company_id=get_request_company_id()
+        ).with_for_update().first()
+        if not employment:
+            return api_response(message="Not found", status=404)
+        if employment.status != EmploymentStatus.ACTIVE.value:
+            return api_response(message="Сотрудник уволен", status=409)
+        from app.services.contracts import current_contract, has_pending_contract
+        if current_contract(employment) or has_pending_contract(employment):
+            return api_response(message="У сотрудника уже есть действующий или подписанный договор. Используйте редактирование или подписание", status=409)
         end_date = payload["end_date"]
         term_years = payload["term_years"]
         start_date = calculate_contract_start(end_date, term_years)
@@ -194,27 +204,20 @@ def register_routes(bp):
         )
         db.session.add(contract)
         db.session.flush()
-        employment = db.session.get(Employment, payload["employment_id"])
-        if employment:
-            recalculate_employment_events(employment)
-            refresh_overdue_events(employment.company_id)
+        recalculate_employment_events(employment)
+        refresh_overdue_events(employment.company_id)
         db.session.commit()
         return api_response(contract_to_dict(contract), status=201)
 
     @bp.patch("/contracts/<int:contract_id>")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def update_contract(contract_id: int):
-        from app.services.contracts import lock_contract, renewal_for
+        from app.services.contracts import lock_contract, update_period, ContractConflict
         contract = lock_contract(contract_id)
         if not contract or contract.employment.company_id != get_request_company_id():
             return api_response(message="Not found", status=404)
 
         payload = load_schema(UpdateContractSchema)
-        renewal = renewal_for(contract.id)
-        if renewal and renewal.result_contract_id and any(
-            key in payload and payload[key] != getattr(contract, key) for key in ("end_date", "term_years")
-        ):
-            return api_response(message="Нельзя изменить период предыдущего подписанного договора", status=409)
         if "end_date" in payload or "term_years" in payload:
             end_date = payload.get("end_date", contract.end_date)
             term_years = payload.get("term_years", contract.term_years)
@@ -223,13 +226,11 @@ def register_routes(bp):
                     message="Укажите срок договора и дату окончания",
                     status=400,
                 )
-            contract.end_date = end_date
-            contract.term_years = term_years
-            from app.models import ContractRenewal
-            from datetime import timedelta
-            # Existing legacy periods retain their convention. Signed successors are inclusive.
-            signed = ContractRenewal.query.filter_by(result_contract_id=contract.id).first()
-            contract.start_date = calculate_contract_start(end_date + timedelta(days=1) if signed else end_date, term_years)
+            try:
+                update_period(contract, end_date, term_years)
+            except ContractConflict as exc:
+                db.session.rollback()
+                return api_response(message=str(exc), status=409)
 
         if "notes" in payload:
             contract.notes = payload.get("notes")
@@ -537,3 +538,4 @@ def register_routes(bp):
 
         db.session.commit()
         return api_response(tenure_award_to_dict(award))
+

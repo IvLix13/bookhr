@@ -53,7 +53,43 @@ def contract_rule_key(contract: Contract) -> str:
 
 
 def contract_expiry_rule_key(contract: Contract) -> str:
+    """Legacy key retained only to identify retired expiry events."""
     return f"{CONTRACT_EXPIRY_RULE_PREFIX}:{contract.id}:{contract.end_date.isoformat()}"
+
+
+def is_contract_expiry_event(event: Event) -> bool:
+    return event.source == EventSource.RULE.value and (
+        bool(event.rule_key and event.rule_key.startswith(f"{CONTRACT_EXPIRY_RULE_PREFIX}:"))
+        or (event.event_type == EventType.CONTRACT.value and event.reference_type == "contract")
+    )
+
+
+def retire_contract_expiry_events(company_id=None, employment_id=None) -> int:
+    """Withdraw legacy automatic expiry markers, including completed ones."""
+    from app.services.contracts import lock_employment_contracts
+    from app.services.notifications import queue_notifications_for_event
+    query = Event.query.filter(
+        Event.source == EventSource.RULE.value,
+        db.or_(Event.rule_key.like(f"{CONTRACT_EXPIRY_RULE_PREFIX}:%"),
+               db.and_(Event.event_type == EventType.CONTRACT.value, Event.reference_type == "contract")),
+    )
+    if company_id is not None:
+        query = query.filter(Event.company_id == company_id)
+    if employment_id is not None:
+        query = query.filter(Event.employment_id == employment_id)
+    retired = 0
+    locked = set()
+    for event in query.order_by(Event.employment_id, Event.id).all():
+        if event.employment_id is not None and event.employment_id not in locked:
+            lock_employment_contracts(event.employment_id)
+            locked.add(event.employment_id)
+        db.session.refresh(event)
+        if event.status != EventStatus.CANCELLED.value:
+            transition_event_status(event, EventStatus.CANCELLED,
+                                    "Мероприятие окончания договора больше не используется", force=True)
+            retired += 1
+        queue_notifications_for_event(event)
+    return retired
 
 
 def grade_preparation_rule_key(grade_history_id: int, eligible_date: date) -> str:
@@ -195,12 +231,16 @@ def apply_manual_report_date(
     if contract is None and event.reference_id:
         contract = db.session.get(Contract, event.reference_id)
     default_date = subtract_months(contract.end_date, 4) if contract else None
+    previous_date = event.event_date
     event.event_date = report_date
     event.manual_date = default_date is None or report_date != default_date
     if event.status == EventStatus.COMPLETED.value:
         event.completed_at = datetime.combine(report_date, time(12, 0), tzinfo=MOSCOW)
     elif event.status == EventStatus.OVERDUE.value and event.event_date >= today_moscow():
         transition_event_status(event, EventStatus.PLANNED, "Date moved forward")
+    if previous_date != report_date:
+        from app.services.notifications import refresh_event_notifications
+        refresh_event_notifications(event)
     return event
 
 
@@ -301,7 +341,6 @@ def _expected_rule_keys(employment: Employment) -> set[str]:
 
     from app.services.contracts import rule_contracts, renewal_for
     for contract in rule_contracts(employment):
-        keys.add(contract_expiry_rule_key(contract))
         renewal = renewal_for(contract.id)
         if renewal:
             for event_id in (renewal.report_event_id, renewal.signing_event_id):
@@ -356,7 +395,10 @@ def contract_signing_rule_key(contract: Contract) -> str:
 
 def process_contract_rules(employment: Employment) -> int:
     from app.models import ContractRenewal
-    from app.services.contracts import rule_contracts, renewal_for, activate_signed_contracts
+    from app.services.contracts import rule_contracts, renewal_for, activate_signed_contracts, lock_employment_contracts
+    from app.services.notifications import refresh_event_notifications, queue_notifications_for_event
+    lock_employment_contracts(employment.id)
+    retire_contract_expiry_events(employment_id=employment.id)
     activate_signed_contracts(employment)
     count = 0
     name = get_current_name(employment.person) or "Сотрудник"
@@ -376,6 +418,7 @@ def process_contract_rules(employment: Employment) -> int:
                 EventType.REPORT, subtract_months(contract.end_date, 4),
                 f"Договор истекает {format_long_date_ru(contract.end_date)}", "contract", contract.id)
             renewal.report_event_id = report.id
+        previous_report_date = report.event_date
         if report.status in OPEN_EVENT_STATUSES:
             report.title = f"Подготовить рапорт на продление Договора: {name}"
             report.description = f"Договор истекает {format_long_date_ru(contract.end_date)}"
@@ -390,23 +433,19 @@ def process_contract_rules(employment: Employment) -> int:
                 EventType.CONTRACT_SIGNING, contract.end_date,
                 "Срок нового договора задаётся в подготовке рапорта", "contract", contract.id)
             renewal.signing_event_id = signing.id
+        previous_signing_date = signing.event_date
         if signing.status in OPEN_EVENT_STATUSES:
             signing.title = f"Подписание договора: {name}"
             signing.event_date = contract.end_date
             if signing.status == "overdue" and signing.event_date >= today_moscow():
                 transition_event_status(signing, EventStatus.PLANNED, "Date moved forward")
         renewal.source_end_date = contract.end_date
-        expiry_key = contract_expiry_rule_key(contract)
-        existing = Event.query.filter_by(rule_key=expiry_key).first()
-        if existing and existing.status == "cancelled":
-            # Only revive a superseded expiry, never a user cancellation.
-            last = existing.status_history[-1] if existing.status_history else None
-            if last and last.comment == "Superseded by recalculation":
-                transition_event_status(existing, EventStatus.PLANNED, "Date restored", force=True)
-        _upsert_rule_event(employment.company_id, employment.id, expiry_key,
-            f"Договор до {format_long_date_ru(contract.end_date)}: {name}", EventType.CONTRACT,
-            contract.end_date, "Окончание срока действия договора", "contract", contract.id)
-        count += 3
+        for event, previous_date in ((report, previous_report_date), (signing, previous_signing_date)):
+            if event.event_date != previous_date:
+                refresh_event_notifications(event)
+            else:
+                queue_notifications_for_event(event)
+        count += 2
     return count
 
 
@@ -588,6 +627,7 @@ RULE_PROCESSORS: list[tuple[str, Callable[[Employment], int]]] = [
 
 def recalculate_employment_events(employment: Employment) -> dict[str, int]:
     """Create/update current rule events and cancel superseded open ones."""
+    retired = retire_contract_expiry_events(employment_id=employment.id)
     if employment.status != EmploymentStatus.ACTIVE.value:
         cancelled = cancel_stale_rule_events(employment, set())
         return {
@@ -596,11 +636,11 @@ def recalculate_employment_events(employment: Employment) -> dict[str, int]:
             "grades": 0,
             "passports": 0,
             "tenure": 0,
-            "cancelled": cancelled,
+            "cancelled": cancelled + retired,
         }
 
     stats = {name: processor(employment) for name, processor in RULE_PROCESSORS}
-    stats["cancelled"] = cancel_stale_rule_events(
+    stats["cancelled"] = retired + cancel_stale_rule_events(
         employment,
         _expected_rule_keys(employment),
     )
@@ -608,6 +648,8 @@ def recalculate_employment_events(employment: Employment) -> dict[str, int]:
 
 
 def run_rule_engine(company_id: int | None = None) -> dict[str, int]:
+    # Retire markers of dismissed employees and old historical contracts too.
+    retired = retire_contract_expiry_events(company_id=company_id)
     query = Employment.query.filter_by(status=EmploymentStatus.ACTIVE.value)
     if company_id:
         query = query.filter_by(company_id=company_id)
@@ -618,7 +660,7 @@ def run_rule_engine(company_id: int | None = None) -> dict[str, int]:
         "grades": 0,
         "passports": 0,
         "tenure": 0,
-        "cancelled": 0,
+        "cancelled": retired,
     }
     for employment in query.all():
         result = recalculate_employment_events(employment)
@@ -627,3 +669,4 @@ def run_rule_engine(company_id: int | None = None) -> dict[str, int]:
 
     refresh_overdue_events(company_id)
     return stats
+

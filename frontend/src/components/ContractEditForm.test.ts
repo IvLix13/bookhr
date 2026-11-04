@@ -30,6 +30,22 @@ vi.mock('@/api/client', () => ({
 }))
 
 describe('ContractEditForm', () => {
+  it('preserves a signed leap-day start when saving or editing its end', async () => {
+    updateContract.mockClear()
+    const row: ContractRow = {
+      ...sampleRow, inclusive_period: true, start_date: '2028-02-29',
+      end_date: '2029-02-28', term_years: 1,
+    }
+    const wrapper = mount(ContractEditForm, { props: { row } })
+    expect(wrapper.text()).toContain('29 февраля 2028 г.')
+    expect(wrapper.text()).not.toContain('28 февраля 2028 г.')
+    await wrapper.get('form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateContract).toHaveBeenCalledWith(11, expect.objectContaining({ end_date: '2029-02-28', term_years: 1 }))
+    await wrapper.get('input[name="end_date"]').setValue('2030-02-28')
+    expect(wrapper.text()).toContain('Начало подписанного договора фиксировано: 29 февраля 2028 г.')
+  })
+
   it('sends term, end date and report date without start_date', async () => {
     const wrapper = mount(ContractEditForm, { props: { row: sampleRow } })
 
@@ -141,3 +157,4 @@ describe('ContractEditForm', () => {
     })
   })
 })
+

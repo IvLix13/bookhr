@@ -34,11 +34,11 @@ def test_report_signing_idempotency_and_history(hr_client, cycle):
     with hr_client.application.app_context():
         r = ContractRenewal.query.filter_by(source_contract_id=cid).one()
         result = db.session.get(Contract,r.result_contract_id)
-        assert (result.start_date,result.end_date,result.term_years)==(date(2027,12,1),date(2030,11,30),3)
+        assert (result.start_date,result.end_date,result.term_years)==(date(2027,12,1),date(2030,12,1),3)
         assert Contract.query.filter_by(employment_id=eid).count()==2
         assert get_active_contract(db.session.get(Employment,eid)).id==cid
         assert db.session.get(Contract,cid).is_active
-        assert Event.query.filter_by(event_type='contract', reference_id=cid).one().status!='cancelled'
+        assert Event.query.filter_by(event_type='contract', reference_id=cid).count()==0
     for event in (report,signing):
         assert hr_client.post(f'/api/events/{event}/reopen',json={}).status_code==409
     assert complete(hr_client,signing,extension_term_years=5).status_code==400
@@ -65,7 +65,7 @@ def test_reopen_and_edit_preserves_term(hr_client,cycle):
     with hr_client.application.app_context():
         r=ContractRenewal.query.filter_by(source_contract_id=cid).one()
         c=db.session.get(Contract,r.result_contract_id)
-        assert (c.start_date,c.end_date)==(date(2028,3,1),date(2033,2,28))
+        assert (c.start_date,c.end_date)==(date(2028,3,1),date(2033,3,1))
 
 def test_timer_late_read_and_activation(hr_client,cycle,monkeypatch):
     cid,eid,report,signing=cycle
@@ -105,12 +105,12 @@ def test_override_rejected(hr_client,cycle):
     assert complete(hr_client,signing,new_end_date='2030-01-01').status_code==400
 
 @pytest.mark.parametrize('end,term,start,expected',[
-    (date(2026,11,30),3,date(2026,12,1),date(2029,11,30)),
-    (date(2028,2,28),1,date(2028,2,29),date(2029,2,27)),
-    (date(2028,2,29),2,date(2028,3,1),date(2030,2,28)),
-    (date(2026,12,31),5,date(2027,1,1),date(2031,12,31)),
+    (date(2026,11,30),3,date(2026,12,1),date(2029,12,1)),
+    (date(2028,2,28),1,date(2028,2,29),date(2029,2,28)),
+    (date(2028,2,29),2,date(2028,3,1),date(2030,3,1)),
+    (date(2026,12,31),5,date(2027,1,1),date(2032,1,1)),
 ])
-def test_inclusive_period_boundaries(end,term,start,expected):
+def test_period_boundaries(end,term,start,expected):
     from app.services.contracts import period
     from types import SimpleNamespace
     assert period(SimpleNamespace(end_date=end),term)==(start,expected)
@@ -120,3 +120,4 @@ def test_viewer_cannot_prepare_or_sign(cycle,viewer_client):
     _,_,report,signing=cycle
     assert complete(viewer_client,report,extension_term_years=3).status_code==403
     assert complete(viewer_client,signing).status_code==403
+

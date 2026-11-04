@@ -85,20 +85,16 @@ watch(
   { flush: 'sync' },
 )
 
-function nextDay(iso: string): string {
-  const date = new Date(`${iso}T12:00:00Z`)
-  date.setUTCDate(date.getUTCDate() + 1)
-  return date.toISOString().slice(0, 10)
-}
-
 const derivedStart = computed(() => {
   const endDate = form.value.end_date
   const years = Number(form.value.term_years)
+  if (props.row?.inclusive_period || (endDate === props.row?.end_date && years === props.row?.term_years)) {
+    return formatShortDate(props.row?.start_date)
+  }
   if (!endDate || !Number.isFinite(years) || years <= 0) {
     return formatShortDate(props.row?.start_date)
   }
-  const boundary = props.row?.inclusive_period ? nextDay(endDate) : endDate
-  return formatShortDate(subtractYearsFromIsoDate(boundary, years))
+  return formatShortDate(subtractYearsFromIsoDate(endDate, years))
 })
 
 async function submit() {
@@ -134,14 +130,14 @@ async function submit() {
       <div>
         <h3>Редактирование договора: {{ row.full_name ?? 'Сотрудник' }}</h3>
         <p>
-          Дата начала считается автоматически от срока и даты окончания:
+          {{ row.inclusive_period ? 'Начало подписанного договора:' : 'Дата начала считается автоматически от срока и даты окончания:' }}
           {{ derivedStart }}
         </p>
       </div>
       <button class="btn ghost" type="button" @click="emit('cancel')">×</button>
     </header>
     <p v-else class="start-hint">
-      Дата начала считается автоматически от срока и даты окончания:
+      {{ row.inclusive_period ? 'Начало подписанного договора:' : 'Дата начала считается автоматически от срока и даты окончания:' }}
       {{ derivedStart }}
     </p>
 
@@ -173,6 +169,11 @@ async function submit() {
     </div>
     <p class="hint">
       По умолчанию за 4 месяца до окончания, можно указать другую дату.
+    </p>
+    <p v-if="row.inclusive_period" class="hint">
+      Начало подписанного договора фиксировано: {{ derivedStart }}.
+      Окончание рассчитывается как начало плюс выбранный срок.
+      При изменении срока дата окончания должна соответствовать этому началу.
     </p>
 
     <div class="actions">
@@ -252,3 +253,4 @@ input[type='date'] {
   color: var(--danger);
 }
 </style>
+

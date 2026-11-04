@@ -106,8 +106,18 @@ def _queue_delivery(
 
 
 def queue_notifications_for_event(event: Event) -> int:
-    if event.status in {EventStatus.COMPLETED.value, EventStatus.CANCELLED.value}:
+    from app.services.rule_engine import is_contract_expiry_event
+    if is_contract_expiry_event(event) or event.status in {EventStatus.COMPLETED.value, EventStatus.CANCELLED.value}:
+        _delete_unsent_notifications(event)
         return 0
+
+    # Also repair queues left by older versions after an event was moved.
+    NotificationDelivery.query.filter(
+        NotificationDelivery.event_id == event.id,
+        NotificationDelivery.status.in_([DeliveryStatus.PENDING.value, DeliveryStatus.FAILED.value]),
+        NotificationDelivery.idempotency_key.like("notify:%"),
+        ~NotificationDelivery.idempotency_key.endswith(f":{event.event_date.isoformat()}"),
+    ).delete(synchronize_session="fetch")
 
     rules = NotificationRule.query.filter(
         NotificationRule.is_enabled.is_(True),
@@ -139,13 +149,21 @@ def queue_notifications_for_event(event: Event) -> int:
     return created
 
 
-def refresh_attestation_notifications(event: Event) -> None:
-    """Replace unsent deliveries after a date change; preserve sent history."""
+def _delete_unsent_notifications(event: Event) -> None:
     NotificationDelivery.query.filter(
         NotificationDelivery.event_id == event.id,
         NotificationDelivery.status.in_([DeliveryStatus.PENDING.value, DeliveryStatus.FAILED.value]),
     ).delete(synchronize_session="fetch")
+
+
+def refresh_event_notifications(event: Event) -> None:
+    """Replace unsent deliveries after a date change; preserve sent history."""
+    _delete_unsent_notifications(event)
     queue_notifications_for_event(event)
+
+
+def refresh_attestation_notifications(event: Event) -> None:
+    refresh_event_notifications(event)
 
 
 def queue_escalation_for_event(event: Event, rule: NotificationRule) -> int:
@@ -173,6 +191,7 @@ def queue_escalation_for_event(event: Event, rule: NotificationRule) -> int:
 
 
 def process_pending_notifications() -> dict[str, int]:
+    from app.services.rule_engine import is_contract_expiry_event
     now = utcnow()
     moscow_now = datetime.now(MOSCOW)
     current_time = moscow_now.strftime("%H:%M")
@@ -199,10 +218,17 @@ def process_pending_notifications() -> dict[str, int]:
     for delivery in pending:
         event = delivery.event
         rule = delivery.rule
-        if not event or event.status in {
+        if not event or is_contract_expiry_event(event) or event.status in {
             EventStatus.COMPLETED.value,
             EventStatus.CANCELLED.value,
         }:
+            db.session.delete(delivery)
+            stats["skipped"] += 1
+            continue
+
+        if delivery.idempotency_key.startswith("notify:") and not delivery.idempotency_key.endswith(f":{event.event_date.isoformat()}"):
+            # A sender may run before run-rules has repaired an old queue.
+            db.session.delete(delivery)
             stats["skipped"] += 1
             continue
 
@@ -247,3 +273,4 @@ def process_pending_notifications() -> dict[str, int]:
             stats["escalations_queued"] += queue_escalation_for_event(event, rule)
 
     return stats
+
