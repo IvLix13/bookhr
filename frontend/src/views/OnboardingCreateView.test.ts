@@ -49,7 +49,7 @@ it('shows missing dates even when search hides them', async () => {
   await w.get('input[aria-label="Поиск мероприятий"]').setValue('Этап 1')
   await w.findAll('nav button')[3]!.trigger('click'); await flushPromises()
   expect(w.get('[role=alert]').text()).toContain('незаполненных')
-  expect(w.findAll('.row')).toHaveLength(50)
+  expect(w.findAll('.row')).toHaveLength(51)
   expect(mock.create).not.toHaveBeenCalled()
 })
 it('uses server pages for 120 employees', async () => {
@@ -58,4 +58,39 @@ it('uses server pages for 120 employees', async () => {
   await w.findAll('.pagination button')[1]!.trigger('click'); await flushPromises()
   expect(mock.employees).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
   expect(w.text()).toContain('Сотрудник 26')
+})
+
+it('shows responsible departments and keeps exemptions through search, preview, export and save', async () => {
+  mock.columns.mockResolvedValueOnce([
+    { id: 1, title: 'Пропуск', field_type: 'stage', responsible_department: 'Охрана', version: 1, is_archived: false },
+    { id: 2, title: 'Инструктаж', field_type: 'checkbox', responsible_department: 'HR', version: 1, is_archived: false },
+  ])
+  const w = await setup()
+  expect(w.text()).not.toContain('Без даты')
+  expect(w.text()).toContain('План работы ввода в должность')
+  expect(w.findAll('em.responsible-department').map(e => e.text())).toEqual(['Ответственный отдел: Охрана', 'Ответственный отдел: HR'])
+  await w.get('#field-1').setValue('2026-11-01')
+  await w.get('input[aria-label="Не нужно: Пропуск"]').setValue(true)
+  await w.get('input[aria-label="Не нужно: Инструктаж"]').setValue(true)
+  expect(w.get('#field-1').attributes('disabled')).toBeDefined()
+  expect((w.get('#field-1').element as HTMLInputElement).value).toBe('—')
+  await w.get('input[aria-label="Поиск мероприятий"]').setValue('Инструктаж')
+  await w.findAll('nav button')[1]!.trigger('click'); await flushPromises()
+  await w.findAll('nav button')[2]!.trigger('click'); await flushPromises()
+  await w.get('input[aria-label="Поиск мероприятий"]').setValue('')
+  // Re-enabling the stage restores the entered date; disabling it removes the requirement.
+  await w.get('input[aria-label="Не нужно: Пропуск"]').setValue(false)
+  expect((w.get('#field-1').element as HTMLInputElement).value).toBe('2026-11-01')
+  await w.get('input[aria-label="Не нужно: Пропуск"]').setValue(true)
+  await w.findAll('nav button')[3]!.trigger('click'); await flushPromises()
+  expect(w.find('[role=alert]').exists()).toBe(false)
+  await w.findAll('button').find(b => b.text().includes('Открыть план'))!.trigger('click')
+  expect(w.find('select').exists()).toBe(false)
+  await w.get('[aria-label="Действия с планом"]').trigger('click')
+  await w.findAll('button').find(b => b.text() === 'Выгрузить план')!.trigger('click'); await flushPromises()
+  expect(mock.export.mock.calls[0]![0].cells.every((c: { values: { is_not_required: boolean } }) => c.values.is_not_required)).toBe(true)
+  await w.get('[aria-label="Действия с планом"]').trigger('click')
+  await w.findAll('button').find(b => b.text() === 'Завершить')!.trigger('click'); await flushPromises()
+  expect(mock.create.mock.calls[0]![0]).toEqual(mock.export.mock.calls[0]![0])
+  expect(mock.replace).toHaveBeenCalledWith({ name: 'onboarding', query: { plan: 99 } })
 })

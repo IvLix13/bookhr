@@ -394,7 +394,7 @@ def test_viewer_can_export_valid_workbook(viewer_client):
     assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert "onboarding_plan.xlsx" in response.headers["Content-Disposition"]
     workbook = load_workbook(BytesIO(response.data))
-    assert workbook.active.title == "План обучения"
+    assert workbook.active.title == "План работы ввода в должность"
     assert workbook.active.cell(1, 1).value == "Этап / сотрудник"
 
 
@@ -467,7 +467,7 @@ def test_export_contains_all_plans_visible_columns_and_states(hr_client, seed_co
     assert sheet.cell(6, 27).number_format == "DD.MM.YYYY"
     assert sheet.cell(7, 27).value == "Выполнено"
     assert sheet.cell(7, 27).fill.fgColor.rgb.endswith("E2F5E9")
-    assert sheet.cell(8, 27).value == "Не нужно"
+    assert sheet.cell(8, 27).value == "—"
 
 
 def test_duplicate_dismissal_deletion_and_rehire(hr_client, seed_company):

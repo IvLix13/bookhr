@@ -137,7 +137,7 @@ export const api = {
     const response = await fetch('/api/onboarding/export', { credentials: 'include' })
     if (response.status === 401) unauthorizedHandler?.()
     if (!response.ok) {
-      let message = 'Не удалось скачать план обучения'
+      let message = 'Не удалось скачать план работы ввода в должность'
       try {
         const payload = await parseJsonResponse<unknown>(response)
         message = localizeApiMessage(payload.message) ?? message

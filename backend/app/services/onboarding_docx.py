@@ -232,7 +232,7 @@ def _replace_xml(xml, variables, departments=None, explicit_department_stages=fr
 
 def _default_template(departments=None):
     from xml.sax.saxutils import escape
-    paragraphs = ["План ввода в должность", "Сотрудник: {{ employee_name }}", "Должность: {{ employee_position }}", "Грейд: {{ employee_grade }}", "Наставник: {{ curator_name }}", "Грейд наставника: {{ curator_grade }}", "Плановые даты этапов"]
+    paragraphs = ["План работы ввода в должность", "Сотрудник: {{ employee_name }}", "Должность: {{ employee_position }}", "Грейд: {{ employee_grade }}", "Наставник: {{ curator_name }}", "Грейд наставника: {{ curator_grade }}", "Плановые даты этапов"]
     variables = document_variables()
     for stage, title in document_stages().items():
         variable = next((key for key, source in variables.items() if source == f"stages.{stage}.planned_date"), None)
@@ -294,7 +294,7 @@ def template_source(company_id):
     configured = current_app.config.get("ONBOARDING_DOCX_TEMPLATE")
     if configured:
         if not Path(configured).is_file():
-            raise ValueError("Не найден настроенный DOCX-шаблон плана ввода в должность")
+            raise ValueError("Не найден настроенный DOCX-шаблон плана работы ввода в должность")
         return Path(configured)
     return _default_template()
 
