@@ -66,6 +66,12 @@ def test_extend_all_including_archive_and_other_company_reschedules_only_contrac
         leap = Contract(employment_id=employee.id, start_date=date(2027, 2, 28),
                         end_date=date(2028, 2, 28), term_years=1, is_active=False)
         db.session.add_all([archived, leap])
+        source = db.session.get(Contract, maintenance_data[0])
+        legacy = Event(company_id=seed_company.id, employment_id=source.employment_id,
+                       title="Договор до...", event_type="contract", source="rule", status="planned",
+                       reference_type="contract", reference_id=source.id, event_date=source.end_date,
+                       rule_key=contract_expiry_rule_key(source))
+        db.session.add(legacy)
         db.session.commit()
         original = {c.id: (c.start_date, c.term_years, c.end_date) for c in Contract.query.all()}
         result = extend_contracts_one_day(apply=True)
@@ -81,7 +87,8 @@ def test_extend_all_including_archive_and_other_company_reschedules_only_contrac
         assert db.session.get(Event, maintenance_data[2]).event_date == date(2027, 8, 1)
         assert db.session.get(Event, maintenance_data[3]).event_date == date(2027, 12, 1)
         assert db.session.get(Event, maintenance_data[4]).event_date == date(2027, 11, 30)
-        assert Event.query.filter_by(rule_key=contract_expiry_rule_key(source)).one().event_date == date(2027, 12, 1)
+        assert Event.query.filter_by(rule_key=contract_expiry_rule_key(source)).first() is None
+        assert legacy.status == "cancelled"
         assert Event.query.filter_by(reference_type="contract", reference_id=source.id, event_type="contract", status="cancelled").count() == 1
         pending = NotificationDelivery.query.filter_by(event_id=maintenance_data[3], status="pending").all()
         assert len(pending) == 1 and pending[0].next_attempt_at.date() == date(2027, 12, 1)

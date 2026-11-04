@@ -55,7 +55,6 @@ def test_create_employee_creates_rule_events(hr_client, seed_company):
         ).all()
         types = {event.event_type for event in events}
         assert types == {
-            EventType.CONTRACT.value,
             EventType.CONTRACT_SIGNING.value,
             EventType.REPORT.value,
             EventType.GRADE.value,
@@ -623,5 +622,6 @@ def test_viewer_cannot_update_contract(viewer_client, seed_company):
         json={"end_date": "2027-01-01", "term_years": 3},
     )
     assert response.status_code == 403
+
 
 

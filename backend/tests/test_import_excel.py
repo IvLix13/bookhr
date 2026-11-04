@@ -142,7 +142,9 @@ def test_confirm_import_runs_rule_engine(app, tmp_path):
         assert "report" in event_types
         assert "grade" in event_types
         assert "passport" in event_types
-        assert len(events) == 6
+        assert "contract" not in event_types
+        assert "contract_signing" in event_types
+        assert len(events) == 5
 
 
 def test_confirm_import_accepts_datetime_cells(app, tmp_path):
@@ -962,4 +964,5 @@ def test_confirm_import_tenure_received_date_uses_cumulative_milestone(app, tmp_
         assert awards[20].is_received is True
         assert awards[20].received_date == date(2025, 1, 1)
         assert job.summary["tenure_marked"] == 3
+
 

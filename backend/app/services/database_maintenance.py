@@ -7,8 +7,7 @@ from app.extensions import db
 from app.models import AuditLog, Contract, ContractRenewal, Employment, Event, EventStatus, EventStatusHistory, NotificationDelivery
 from app.services.audit import log_audit
 from app.services.events import transition_event_status
-from app.services.notifications import queue_notifications_for_event
-from app.services.rule_engine import OPEN_EVENT_STATUSES, contract_expiry_rule_key, process_contract_rules
+from app.services.rule_engine import process_contract_rules, retire_contract_expiry_events
 from app.utils.dates import today_moscow
 
 
@@ -61,17 +60,7 @@ def extend_contracts_one_day(*, apply=False):
     db.session.flush()
 
     # Only contract rules are recalculated; other domain modules are untouched.
-    contract_events = Event.query.filter(
-        Event.reference_type == "contract", Event.source == "rule",
-        Event.status.in_(OPEN_EVENT_STATUSES),
-    ).all()
-    for event in contract_events:
-        contract = by_id.get(event.reference_id)
-        if (contract and event.event_type == "contract" and event.rule_key
-                and event.rule_key.startswith("contract-expiry:")
-                and event.rule_key != contract_expiry_rule_key(contract)):
-            transition_event_status(event, EventStatus.CANCELLED, "Superseded by recalculation")
-            queue_notifications_for_event(event)
+    retire_contract_expiry_events()
     employment_ids = {contract.employment_id for contract in contracts}
     for employment in Employment.query.filter(Employment.id.in_(employment_ids)).order_by(Employment.id):
         if employment.status == "active":

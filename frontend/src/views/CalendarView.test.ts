@@ -102,11 +102,11 @@ describe('CalendarView', () => {
     expect(wrapper.text()).not.toContain('Отменённое')
   })
 
-  it('shows contract expiry from a later page on the correct day', async () => {
+  it('shows contract signing from a later page on the correct day', async () => {
     const expiry = makeEvent({
       id: 201,
-      title: 'Договор до…: Иван Иванов',
-      event_type: 'contract',
+      title: 'Подписание договора: Иван Иванов',
+      event_type: 'contract_signing',
       source: 'rule',
       reference_type: 'contract',
       reference_id: 15,
@@ -138,3 +138,4 @@ describe('CalendarView', () => {
     wrapper.unmount()
   })
 })
+

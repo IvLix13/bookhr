@@ -131,14 +131,14 @@ def test_create_contract_checks_company_status_and_existing_contract(hr_client, 
 
 
 @pytest.mark.parametrize("late", [False, True])
-def test_signing_closes_expiry_preserves_calendar_and_removes_unsent(hr_client, seed_company, contract_cycle, monkeypatch, late):
+def test_early_and_late_signing_do_not_create_expiry(hr_client, seed_company, contract_cycle, monkeypatch, late):
     with hr_client.application.app_context():
         rule = NotificationRule(company_id=seed_company.id, recipient_user_id="test", event_type="contract")
         db.session.add(rule)
         recalculate_employment_events(db.session.get(Employment, contract_cycle[1]))
         db.session.commit()
-        expiry_id = Event.query.filter_by(reference_type="contract", reference_id=contract_cycle[0], event_type="contract").one().id
-        assert NotificationDelivery.query.filter_by(event_id=expiry_id).count() == 1
+        assert Event.query.filter_by(event_type="contract", source="rule").count() == 0
+        assert NotificationDelivery.query.count() == 0
     if late:
         for module in ("contracts", "events", "rule_engine"):
             monkeypatch.setattr(f"app.services.{module}.today_moscow", lambda: date(2027, 12, 2))
@@ -146,23 +146,26 @@ def test_signing_closes_expiry_preserves_calendar_and_removes_unsent(hr_client, 
     with hr_client.application.app_context():
         run_rule_engine()
         db.session.commit()
-        expiry = db.session.get(Event, expiry_id)
-        assert (expiry.status, expiry.event_date) == ("completed", date(2027, 11, 30))
-        assert NotificationDelivery.query.filter_by(event_id=expiry_id).count() == 0
+        assert Event.query.filter_by(event_type="contract", source="rule").count() == 0
+        assert NotificationDelivery.query.count() == 0
         result = db.session.get(Contract, result_id)
         assert result.start_date == date(2027, 12, 1)
         assert result.is_active is late
     data = hr_client.get("/api/events?from=2027-11-30&to=2027-11-30").get_json()["data"]["items"]
-    assert any(item["id"] == expiry_id and item["effective_status"] == "completed" for item in data)
+    assert {item["event_type"] for item in data} == {"contract_signing"}
 
 
-def test_signing_preserves_manual_expiry_cancellation(hr_client, contract_cycle):
+def test_signing_preserves_manual_contract_event(hr_client, seed_company, contract_cycle):
     with hr_client.application.app_context():
-        expiry_id = Event.query.filter_by(reference_type="contract", reference_id=contract_cycle[0], event_type="contract").one().id
-    assert hr_client.post(f"/api/events/{expiry_id}/cancel", json={"comment": "Не требуется"}).status_code == 200
+        event = Event(company_id=seed_company.id, employment_id=contract_cycle[1], title="Согласование договора",
+                      event_type="contract", source="manual", status="planned", event_date=date(2027, 11, 30),
+                      reference_type="contract", reference_id=contract_cycle[0])
+        db.session.add(event)
+        db.session.commit()
+        event_id = event.id
     sign(hr_client, contract_cycle)
     with hr_client.application.app_context():
-        assert db.session.get(Event, expiry_id).status == "cancelled"
+        assert db.session.get(Event, event_id).status == "planned"
 
 
 def test_next_renewal_uses_new_end_without_subtracting_day(hr_client, contract_cycle):

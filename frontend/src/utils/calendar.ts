@@ -2,7 +2,7 @@ import { api } from '@/api/client'
 import type { EventItem, Paginated } from '@/types'
 import { isShownOnCalendar } from '@/utils/statuses'
 
-/** Load the whole date range so contract expirations are not lost after page one. */
+/** Load the whole date range so events are not lost after page one. */
 export async function loadCalendarEvents(from: string, to: string): Promise<EventItem[]> {
   const items: EventItem[] = []
   let page = 1
@@ -15,3 +15,4 @@ export async function loadCalendarEvents(from: string, to: string): Promise<Even
   } while (page <= pages)
   return items
 }
+

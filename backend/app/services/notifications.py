@@ -106,7 +106,8 @@ def _queue_delivery(
 
 
 def queue_notifications_for_event(event: Event) -> int:
-    if event.status in {EventStatus.COMPLETED.value, EventStatus.CANCELLED.value}:
+    from app.services.rule_engine import is_contract_expiry_event
+    if is_contract_expiry_event(event) or event.status in {EventStatus.COMPLETED.value, EventStatus.CANCELLED.value}:
         _delete_unsent_notifications(event)
         return 0
 
@@ -190,6 +191,7 @@ def queue_escalation_for_event(event: Event, rule: NotificationRule) -> int:
 
 
 def process_pending_notifications() -> dict[str, int]:
+    from app.services.rule_engine import is_contract_expiry_event
     now = utcnow()
     moscow_now = datetime.now(MOSCOW)
     current_time = moscow_now.strftime("%H:%M")
@@ -216,7 +218,7 @@ def process_pending_notifications() -> dict[str, int]:
     for delivery in pending:
         event = delivery.event
         rule = delivery.rule
-        if not event or event.status in {
+        if not event or is_contract_expiry_event(event) or event.status in {
             EventStatus.COMPLETED.value,
             EventStatus.CANCELLED.value,
         }:
