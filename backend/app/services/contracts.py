@@ -4,7 +4,7 @@ from sqlalchemy import select, or_, and_
 from app.extensions import db
 from app.models import Contract, ContractRenewal, Event, Employment, EventStatus, EmploymentStatus
 from app.services.audit import log_audit
-from app.utils.dates import today_moscow, add_years
+from app.utils.dates import today_moscow, add_years, calculate_contract_start
 
 class ContractConflict(ValueError):
     pass
@@ -21,11 +21,15 @@ def current_contract_query(employment_id=None):
 def current_contract(employment):
     return current_contract_query(employment.id).order_by(Contract.end_date.desc(), Contract.id.desc()).first()
 
+def lock_employment_contracts(employment_id):
+    db.session.execute(select(Employment.id).where(
+        Employment.id == employment_id).with_for_update()).scalar_one()
+
 def lock_contract(contract_id):
     # Lock the employment first: signing successive future periods must use one lock order.
     employment_id = db.session.execute(select(Contract.employment_id).where(Contract.id == contract_id)).scalar_one_or_none()
     if employment_id is not None:
-        db.session.execute(select(Employment.id).where(Employment.id == employment_id).with_for_update()).scalar_one()
+        lock_employment_contracts(employment_id)
     return db.session.execute(select(Contract).where(Contract.id == contract_id).with_for_update().execution_options(populate_existing=True)).scalar_one_or_none()
 
 def renewal_for(contract_id):
@@ -34,6 +38,42 @@ def renewal_for(contract_id):
 def period(contract, term):
     start = contract.end_date + timedelta(days=1)
     return start, add_years(start, term) - timedelta(days=1)
+
+def update_period(contract, end_date, term_years):
+    """Keep saved dates on a no-op; signed periods stay adjacent to their source."""
+    if end_date == contract.end_date and term_years == contract.term_years:
+        return
+    renewal = renewal_for(contract.id)
+    if renewal and renewal.result_contract_id:
+        raise ContractConflict("Нельзя изменить период предыдущего подписанного договора")
+    old_period = {"start_date": contract.start_date.isoformat(), "end_date": contract.end_date.isoformat(),
+                  "term_years": contract.term_years}
+    incoming = ContractRenewal.query.filter_by(result_contract_id=contract.id).first()
+    if incoming:
+        source = db.session.get(Contract, incoming.source_contract_id)
+        start_date, expected_end = period(source, term_years)
+        if end_date != expected_end:
+            raise ContractConflict(
+                f"Начало подписанного договора фиксировано: {start_date:%d.%m.%Y}. "
+                f"Для выбранного срока окончание должно быть {expected_end:%d.%m.%Y}"
+            )
+        incoming.term_years = term_years
+    else:
+        start_date = calculate_contract_start(end_date, term_years)
+    contract.start_date = start_date
+    contract.end_date = end_date
+    contract.term_years = term_years
+    log_audit("contract_period_update", "contract", contract.id, old_period,
+              {"start_date": start_date.isoformat(), "end_date": end_date.isoformat(), "term_years": term_years})
+
+def has_pending_contract(employment):
+    return db.session.query(ContractRenewal.id).join(
+        Contract, Contract.id == ContractRenewal.source_contract_id
+    ).filter(
+        Contract.employment_id == employment.id,
+        ContractRenewal.result_contract_id.isnot(None),
+        ContractRenewal.activated_at.is_(None),
+    ).first() is not None
 
 def contract_context(event):
     if event.reference_type != "contract" or event.event_type not in {"report", "contract_signing"}:
@@ -48,10 +88,12 @@ def contract_context(event):
         report = db.session.get(Event, r.report_event_id)
         if not report or report.status != "completed" or not r.term_years:
             reason = "Сначала выполните подготовку рапорта и выберите срок договора"
-    dates = period(c, r.term_years) if c and r and r.term_years else (None, None)
+    result = db.session.get(Contract, r.result_contract_id) if r and r.result_contract_id else None
+    dates = (result.start_date, result.end_date) if result else (
+        period(c, r.term_years) if c and r and r.term_years else (None, None))
     return dict(stage="report" if event.event_type == "report" else "signing",
         source_contract_id=c.id if c else None, report_event_id=r.report_event_id if r else None,
-        signing_event_id=r.signing_event_id if r else None, term_years=r.term_years if r else None,
+        signing_event_id=r.signing_event_id if r else None, term_years=result.term_years if result else r.term_years if r else None,
         signing_date=c.end_date.isoformat() if c else None,
         new_start_date=dates[0].isoformat() if dates[0] else None,
         new_end_date=dates[1].isoformat() if dates[1] else None,
@@ -135,3 +177,4 @@ def rule_contracts(employment):
         ids.add(r.source_contract_id)  # preserve actual historical expiry and completed stages
         ids.add(r.result_contract_id)
     return Contract.query.filter(Contract.id.in_(ids)).all() if ids else []
+

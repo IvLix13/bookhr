@@ -195,12 +195,16 @@ def apply_manual_report_date(
     if contract is None and event.reference_id:
         contract = db.session.get(Contract, event.reference_id)
     default_date = subtract_months(contract.end_date, 4) if contract else None
+    previous_date = event.event_date
     event.event_date = report_date
     event.manual_date = default_date is None or report_date != default_date
     if event.status == EventStatus.COMPLETED.value:
         event.completed_at = datetime.combine(report_date, time(12, 0), tzinfo=MOSCOW)
     elif event.status == EventStatus.OVERDUE.value and event.event_date >= today_moscow():
         transition_event_status(event, EventStatus.PLANNED, "Date moved forward")
+    if previous_date != report_date:
+        from app.services.notifications import refresh_event_notifications
+        refresh_event_notifications(event)
     return event
 
 
@@ -356,7 +360,9 @@ def contract_signing_rule_key(contract: Contract) -> str:
 
 def process_contract_rules(employment: Employment) -> int:
     from app.models import ContractRenewal
-    from app.services.contracts import rule_contracts, renewal_for, activate_signed_contracts
+    from app.services.contracts import rule_contracts, renewal_for, activate_signed_contracts, lock_employment_contracts
+    from app.services.notifications import refresh_event_notifications, queue_notifications_for_event
+    lock_employment_contracts(employment.id)
     activate_signed_contracts(employment)
     count = 0
     name = get_current_name(employment.person) or "Сотрудник"
@@ -376,6 +382,7 @@ def process_contract_rules(employment: Employment) -> int:
                 EventType.REPORT, subtract_months(contract.end_date, 4),
                 f"Договор истекает {format_long_date_ru(contract.end_date)}", "contract", contract.id)
             renewal.report_event_id = report.id
+        previous_report_date = report.event_date
         if report.status in OPEN_EVENT_STATUSES:
             report.title = f"Подготовить рапорт на продление Договора: {name}"
             report.description = f"Договор истекает {format_long_date_ru(contract.end_date)}"
@@ -390,6 +397,7 @@ def process_contract_rules(employment: Employment) -> int:
                 EventType.CONTRACT_SIGNING, contract.end_date,
                 "Срок нового договора задаётся в подготовке рапорта", "contract", contract.id)
             renewal.signing_event_id = signing.id
+        previous_signing_date = signing.event_date
         if signing.status in OPEN_EVENT_STATUSES:
             signing.title = f"Подписание договора: {name}"
             signing.event_date = contract.end_date
@@ -403,9 +411,17 @@ def process_contract_rules(employment: Employment) -> int:
             last = existing.status_history[-1] if existing.status_history else None
             if last and last.comment == "Superseded by recalculation":
                 transition_event_status(existing, EventStatus.PLANNED, "Date restored", force=True)
-        _upsert_rule_event(employment.company_id, employment.id, expiry_key,
+        expiry = _upsert_rule_event(employment.company_id, employment.id, expiry_key,
             f"Договор до {format_long_date_ru(contract.end_date)}: {name}", EventType.CONTRACT,
             contract.end_date, "Окончание срока действия договора", "contract", contract.id)
+        if renewal.result_contract_id and expiry.status in OPEN_EVENT_STATUSES:
+            transition_event_status(expiry, EventStatus.COMPLETED, "Продление договора подписано")
+        for event, previous_date in ((report, previous_report_date), (signing, previous_signing_date)):
+            if event.event_date != previous_date:
+                refresh_event_notifications(event)
+            else:
+                queue_notifications_for_event(event)
+        queue_notifications_for_event(expiry)
         count += 3
     return count
 
@@ -627,3 +643,4 @@ def run_rule_engine(company_id: int | None = None) -> dict[str, int]:
 
     refresh_overdue_events(company_id)
     return stats
+
