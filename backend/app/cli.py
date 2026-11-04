@@ -84,12 +84,18 @@ def register_commands(app: Flask) -> None:
     def diagnose_contracts():
         """Read-only diagnosis; does not infer missing signatures or fix historical dates."""
         from app.models import Contract, ContractRenewal
-        from datetime import timedelta
         from app.utils.dates import calculate_contract_start
-        from app.services.contracts import renewal_for
+        from app.services.contracts import renewal_for, period
         for contract in Contract.query.order_by(Contract.id):
-            boundary = contract.end_date + timedelta(days=1) if ContractRenewal.query.filter_by(result_contract_id=contract.id).first() else contract.end_date
-            if contract.term_years and calculate_contract_start(boundary, contract.term_years) != contract.start_date:
+            incoming = ContractRenewal.query.filter_by(result_contract_id=contract.id).first()
+            inconsistent = False
+            if contract.term_years:
+                if incoming:
+                    source = db.session.get(Contract, incoming.source_contract_id)
+                    inconsistent = period(source, contract.term_years) != (contract.start_date, contract.end_date)
+                else:
+                    inconsistent = calculate_contract_start(contract.end_date, contract.term_years) != contract.start_date
+            if inconsistent:
                 click.echo(f"Check contract {contract.id}: start={contract.start_date}, end={contract.end_date}, term={contract.term_years}")
             renewal = renewal_for(contract.id)
             if renewal and renewal.term_years is None:
@@ -140,3 +146,4 @@ def register_commands(app: Flask) -> None:
             f"import_jobs={result.import_jobs_deleted}, "
             f"grade_catalog={result.grade_catalog_after}",
         )
+

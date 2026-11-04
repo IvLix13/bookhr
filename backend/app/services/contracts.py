@@ -37,7 +37,7 @@ def renewal_for(contract_id):
 
 def period(contract, term):
     start = contract.end_date + timedelta(days=1)
-    return start, add_years(start, term) - timedelta(days=1)
+    return start, add_years(start, term)
 
 def update_period(contract, end_date, term_years):
     """Keep saved dates on a no-op; signed periods stay adjacent to their source."""

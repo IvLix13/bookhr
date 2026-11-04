@@ -59,7 +59,7 @@ def test_noop_save_preserves_original_start(hr_client, contract_cycle, monkeypat
 
 
 @pytest.mark.parametrize("route", ["contract", "employee"])
-@pytest.mark.parametrize("end", ["2029-11-30", "2031-11-30"])
+@pytest.mark.parametrize("end", ["2029-11-30", "2030-11-30", "2031-11-30"])
 def test_signed_correction_rejects_overlap_and_gap(hr_client, contract_cycle, monkeypatch, route, end):
     cid = sign(hr_client, contract_cycle)
     monkeypatch.setattr("app.services.contracts.today_moscow", lambda: date(2027, 12, 1))
@@ -68,20 +68,20 @@ def test_signed_correction_rejects_overlap_and_gap(hr_client, contract_cycle, mo
     assert "Начало подписанного договора фиксировано" in response.get_json()["message"]
     with hr_client.application.app_context():
         c = db.session.get(Contract, cid)
-        assert (c.start_date, c.end_date, c.term_years) == (date(2027, 12, 1), date(2030, 11, 30), 3)
+        assert (c.start_date, c.end_date, c.term_years) == (date(2027, 12, 1), date(2030, 12, 1), 3)
 
 
 @pytest.mark.parametrize("route", ["contract", "employee"])
 def test_consistent_signed_correction_keeps_chain_and_context(hr_client, contract_cycle, monkeypatch, route):
     cid = sign(hr_client, contract_cycle)
     monkeypatch.setattr("app.services.contracts.today_moscow", lambda: date(2027, 12, 1))
-    assert correct(hr_client, route, cid, contract_cycle[1], "2032-11-30", 5).status_code == 200
+    assert correct(hr_client, route, cid, contract_cycle[1], "2032-12-01", 5).status_code == 200
     with hr_client.application.app_context():
         c = db.session.get(Contract, cid)
-        assert (c.start_date, c.end_date, c.term_years) == (date(2027, 12, 1), date(2032, 11, 30), 5)
+        assert (c.start_date, c.end_date, c.term_years) == (date(2027, 12, 1), date(2032, 12, 1), 5)
         assert ContractRenewal.query.filter_by(result_contract_id=cid).one().term_years == 5
     ctx = hr_client.get(f"/api/events/{contract_cycle[3]}").get_json()["data"]["contract_renewal"]
-    assert (ctx["new_start_date"], ctx["new_end_date"], ctx["term_years"]) == ("2027-12-01", "2032-11-30", 5)
+    assert (ctx["new_start_date"], ctx["new_end_date"], ctx["term_years"]) == ("2027-12-01", "2032-12-01", 5)
 
 
 @pytest.mark.parametrize("activated", [False, True])
@@ -163,3 +163,43 @@ def test_signing_preserves_manual_expiry_cancellation(hr_client, contract_cycle)
     sign(hr_client, contract_cycle)
     with hr_client.application.app_context():
         assert db.session.get(Event, expiry_id).status == "cancelled"
+
+
+def test_next_renewal_uses_new_end_without_subtracting_day(hr_client, contract_cycle):
+    result_id = sign(hr_client, contract_cycle)
+    with hr_client.application.app_context():
+        renewal = ContractRenewal.query.filter_by(source_contract_id=result_id).one()
+        next_report, next_signing = renewal.report_event_id, renewal.signing_event_id
+    preview = hr_client.get(f"/api/events/{contract_cycle[3]}").get_json()["data"]["contract_renewal"]
+    assert (preview["new_start_date"], preview["new_end_date"]) == ("2027-12-01", "2030-12-01")
+    assert hr_client.get(f"/api/events/{next_signing}").get_json()["data"]["event_date"] == "2030-12-01"
+    next_id = sign(hr_client, (result_id, contract_cycle[1], next_report, next_signing), term=1)
+    with hr_client.application.app_context():
+        next_contract = db.session.get(Contract, next_id)
+        assert (next_contract.start_date, next_contract.end_date) == (date(2030, 12, 2), date(2031, 12, 2))
+
+
+def test_diagnosis_accepts_new_leap_period_without_changing_it(hr_client, contract_cycle):
+    assert correct(hr_client, "contract", contract_cycle[0], contract_cycle[1], "2028-02-28", 2).status_code == 200
+    result_id = sign(hr_client, contract_cycle, term=1)
+    diagnosis = hr_client.application.test_cli_runner().invoke(args=["diagnose-contracts"])
+    assert diagnosis.exit_code == 0
+    assert f"Check contract {result_id}:" not in diagnosis.output
+    with hr_client.application.app_context():
+        result = db.session.get(Contract, result_id)
+        assert (result.start_date, result.end_date) == (date(2028, 2, 29), date(2029, 2, 28))
+
+
+@pytest.mark.parametrize("route", ["contract", "employee"])
+def test_old_signed_period_is_not_rewritten_on_noop(hr_client, contract_cycle, monkeypatch, route):
+    result_id = sign(hr_client, contract_cycle)
+    with hr_client.application.app_context():
+        # Previously signed periods retain their recorded dates after the update.
+        result = db.session.get(Contract, result_id)
+        result.end_date = date(2030, 11, 30)
+        db.session.commit()
+    monkeypatch.setattr("app.services.contracts.today_moscow", lambda: date(2027, 12, 1))
+    assert correct(hr_client, route, result_id, contract_cycle[1], "2030-11-30", 3).status_code == 200
+    with hr_client.application.app_context():
+        result = db.session.get(Contract, result_id)
+        assert (result.start_date, result.end_date) == (date(2027, 12, 1), date(2030, 11, 30))

@@ -34,15 +34,15 @@ describe('ContractEditForm', () => {
     updateContract.mockClear()
     const row: ContractRow = {
       ...sampleRow, inclusive_period: true, start_date: '2028-02-29',
-      end_date: '2029-02-27', term_years: 1,
+      end_date: '2029-02-28', term_years: 1,
     }
     const wrapper = mount(ContractEditForm, { props: { row } })
     expect(wrapper.text()).toContain('29 февраля 2028 г.')
     expect(wrapper.text()).not.toContain('28 февраля 2028 г.')
     await wrapper.get('form').trigger('submit.prevent')
     await flushPromises()
-    expect(updateContract).toHaveBeenCalledWith(11, expect.objectContaining({ end_date: '2029-02-27', term_years: 1 }))
-    await wrapper.get('input[name="end_date"]').setValue('2030-02-27')
+    expect(updateContract).toHaveBeenCalledWith(11, expect.objectContaining({ end_date: '2029-02-28', term_years: 1 }))
+    await wrapper.get('input[name="end_date"]').setValue('2030-02-28')
     expect(wrapper.text()).toContain('Начало подписанного договора фиксировано: 29 февраля 2028 г.')
   })
 
