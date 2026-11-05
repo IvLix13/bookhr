@@ -25,10 +25,25 @@ def short_employee_name(employment):
 def head_position(employment):
     """Format the plan's head title using the saved full formal department name."""
     department = " ".join((employment.formal_department_name or "").split())
-    parts = department.split(" ", 1)
+    parts = department.split(maxsplit=1)
     if len(parts) == 2:
         return f"Начальник отдела {parts[1]}"
     return get_current_position(employment).title
+
+
+def employee_position(employment):
+    """Format the plan employee's title and formal department in lowercase."""
+    position = get_current_position(employment)
+    title = " ".join((position.title if position else "").split()).lower()
+    if not title:
+        return None
+    department = " ".join((employment.formal_department_name or "").split()).lower()
+    parts = department.split(maxsplit=1)
+    if len(parts) == 2:
+        suffix = parts[1]
+        if title != suffix and not title.endswith(" " + suffix):
+            title += " " + suffix
+    return title
 
 
 def head_values(employment):

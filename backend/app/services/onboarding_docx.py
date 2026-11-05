@@ -13,7 +13,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 from flask import current_app
 
 from app.models.onboarding import OnboardingColumn
-from app.services.employees import get_current_grade, get_current_name, get_current_position
+from app.services.employees import get_current_grade, get_current_name
 from app.services.onboarding_document_catalog import document_stages, document_variables
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -38,12 +38,11 @@ def short_name(name):
 def employee_values(employment):
     if employment is None:
         return {key: "—" for key in ("short_name", "full_name", "position", "grade")}
-    from app.services.department_heads import short_employee_name
+    from app.services.department_heads import employee_position, short_employee_name
     name = get_current_name(employment.person)
-    position = get_current_position(employment)
     grade = get_current_grade(employment)
     return {"full_name": name or "—", "short_name": short_employee_name(employment),
-            "position": position.title if position else "—", "grade": grade.grade.name if grade else "—"}
+            "position": employee_position(employment) or "—", "grade": grade.grade.name if grade else "—"}
 
 
 def document_context(plan):
