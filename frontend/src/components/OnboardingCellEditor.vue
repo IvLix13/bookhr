@@ -15,7 +15,8 @@ onMounted(focus.activate)
 const text = ref(props.cell?.text_value ?? '')
 const date = ref(props.cell?.date_value ?? '')
 const planned = ref(props.cell?.planned_date ?? '')
-const state = ref<'pending' | 'in_progress' | 'completed' | 'not_required'>(props.cell?.is_not_required ? 'not_required' : props.cell?.is_completed ? 'completed' : props.cell?.is_in_progress ? 'in_progress' : 'pending')
+const notRequired = ref(props.cell?.is_not_required ?? false)
+const state = ref<'in_progress' | 'completed'>(props.cell?.is_completed ? 'completed' : 'in_progress')
 const isStage = computed(() => props.column.field_type === 'stage' || props.column.field_type === 'checkbox')
 const clear = ref(false)
 const completedDate = ref(props.cell?.completed_date ?? '')
@@ -24,7 +25,7 @@ const error = ref('')
 const conflict = ref(false)
 const discard = ref(false)
 const keepEditing = ref<HTMLButtonElement | null>(null)
-const draftValue = computed(() => JSON.stringify([text.value, date.value, planned.value, state.value, completedDate.value, clear.value]))
+const draftValue = computed(() => JSON.stringify([text.value, date.value, planned.value, state.value, notRequired.value, completedDate.value, clear.value]))
 const initialDraft = draftValue.value
 async function requestClose() {
   if (saving.value) return
@@ -52,12 +53,12 @@ async function save() {
   else if (props.column.field_type === 'text') body.text_value = text.value || null
   else if (props.column.field_type === 'date') body.date_value = date.value || null
   else if (isStage.value) {
-    body.is_in_progress = state.value === 'in_progress'
-    body.is_completed = state.value === 'completed'
-    body.is_not_required = state.value === 'not_required'
+    body.is_in_progress = !notRequired.value && state.value === 'in_progress'
+    body.is_completed = !notRequired.value && state.value === 'completed'
+    body.is_not_required = notRequired.value
     if (props.column.field_type === 'stage') {
       body.planned_date = planned.value || null
-      body.completed_date = state.value === 'completed' ? completedDate.value || null : null
+      body.completed_date = body.is_completed ? completedDate.value || null : null
     }
   }
   try {
@@ -84,9 +85,10 @@ async function save() {
           <label v-if="column.field_type === 'text'">Значение<input v-model="text" maxlength="10000" /></label>
           <label v-if="column.field_type === 'date'">Дата<input v-model="date" type="date" /></label>
           <template v-if="isStage">
-            <label>Состояние<select v-model="state" aria-label="Состояние этапа" @change="changeState"><option value="pending">Не начато</option><option value="in_progress">В работе</option><option value="completed">Выполнено</option><option value="not_required">Не нужно</option></select></label>
-            <label v-if="column.field_type === 'stage'">Плановая дата<input v-model="planned" type="date" :disabled="state === 'not_required'" /></label>
-            <label v-if="column.field_type === 'stage' && state === 'completed'">Дата выполнения<input v-model="completedDate" type="date" required /></label>
+            <label class="check"><input v-model="notRequired" type="checkbox" aria-label="Не нужно" />Не нужно</label>
+            <label>Состояние<select v-model="state" aria-label="Состояние этапа" :disabled="notRequired" @change="changeState"><option value="in_progress">В работе</option><option value="completed">Выполнено</option></select></label>
+            <label v-if="column.field_type === 'stage'">Плановая дата<input v-if="notRequired" value="—" disabled /><input v-else v-model="planned" type="date" /></label>
+            <label v-if="column.field_type === 'stage' && !notRequired && state === 'completed'">Дата выполнения<input v-model="completedDate" type="date" required /></label>
           </template>
           </fieldset>
           <button type="button" class="btn secondary" :disabled="saving || conflict" @click="clear = !clear">{{ clear ? 'Отменить очистку' : 'Очистить ячейку' }}</button>

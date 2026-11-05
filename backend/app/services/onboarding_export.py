@@ -21,24 +21,20 @@ DATE_FORMAT = "DD.MM.YYYY"
 
 def _cell_value(column: OnboardingColumn, cell: OnboardingCell | None):
     if cell is None:
-        return None
+        return "В работе" if column.field_type in ("stage", "checkbox") else None
     if cell.is_not_required:
-        return "Не нужно"
+        return "—"
     if column.field_type == "text":
         return cell.text_value
     if column.field_type == "date":
         return cell.date_value
-    if cell.is_in_progress:
-        if column.field_type == "stage" and cell.planned_date:
-            return f"В работе: {cell.planned_date.strftime('%d.%m.%Y')}"
-        return "В работе"
-    if column.field_type == "checkbox":
-        return "Выполнено" if cell.is_completed else "Не выполнено"
     if cell.is_completed:
-        if cell.completed_date:
+        if column.field_type == "stage" and cell.completed_date:
             return f"Выполнено: {cell.completed_date.strftime('%d.%m.%Y')}"
         return "Выполнено"
-    return cell.planned_date
+    if column.field_type == "stage" and cell.planned_date:
+        return f"В работе: {cell.planned_date.strftime('%d.%m.%Y')}"
+    return "В работе"
 
 
 def build_onboarding_workbook(company_id: int) -> BytesIO:
@@ -56,7 +52,7 @@ def build_onboarding_workbook(company_id: int) -> BytesIO:
 
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "План обучения"
+    sheet.title = "План работы ввода в должность"
 
     sheet.append(["Этап / сотрудник", *[plan["full_name"] or "—" for plan in serialized_plans]])
     sheet.append(["№", *range(1, len(plans) + 1)])

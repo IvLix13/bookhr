@@ -33,6 +33,6 @@ describe('Plan table search and states', () => {
     expect(w.findAll('thead th').at(-1)?.text()).toBe('Состояние / значение')
     await w.setProps({ plan: { ...plan, cells: { ...plan.cells, '1': { ...plan.cells['1']!, is_not_required: true } } } })
     expect(w.find('tr.row-completed').exists()).toBe(false)
-    expect(w.text()).toContain('Не нужно')
+    expect(w.get('tbody tr').findAll('td').slice(1).map(td => td.text())).toEqual(['—', '—', '—'])
   })
 })

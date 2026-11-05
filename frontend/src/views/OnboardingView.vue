@@ -64,7 +64,7 @@ onUnmounted(() => clearInterval(dayTimer))
 
 <template>
   <section class="card onboarding-page">
-    <header><h2>План обучения</h2><p>Ввод сотрудников в должность</p></header>
+    <header><h2>План работы ввода в должность</h2><p>Ввод сотрудников в должность</p></header>
     <div class="toolbar">
       <form @submit.prevent="search"><input v-model="query" aria-label="Поиск планов по ФИО" placeholder="ФИО (от 2 символов)" /><button class="btn" :disabled="loading">Найти</button></form>
       <button v-if="auth.canEdit()" class="btn secondary" @click="router.push({ name: 'onboarding-create' })">Создать план</button>

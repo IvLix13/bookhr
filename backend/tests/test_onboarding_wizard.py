@@ -6,6 +6,7 @@ import pytest
 from app.extensions import db
 from app.models import Person, PersonNameHistory, Employment, Company
 from app.models.onboarding import OnboardingPlan, OnboardingCell
+from app.services.onboarding_docx import document_context
 
 
 def prepare(client, company_id):
@@ -39,6 +40,8 @@ def test_preview_has_no_writes_and_creation_is_complete(hr_client, seed_company)
     result = response.get_json()['data']
     assert result['curator_name'] == 'Наставник Елена'
     assert len(result['cells']) == 3
+    for item in payload['cells'][:2]:
+        assert result['cells'][str(item['column_id'])]['is_in_progress'] is True
     assert hr_client.post('/api/onboarding/plans/from-wizard', json=payload).status_code == 409
 
 
@@ -95,5 +98,59 @@ def test_failure_during_cell_writes_rolls_back_plan(hr_client, seed_company, mon
         return original(*args, **kwargs)
     monkeypatch.setattr(routes, 'save_cell', fail_later)
     assert hr_client.post('/api/onboarding/plans/from-wizard', json=body).status_code == 400
+    with hr_client.application.app_context():
+        assert OnboardingPlan.query.count() == OnboardingCell.query.count() == 0
+
+
+@pytest.mark.parametrize('previous_date', [None, '2026-11-01'])
+def test_exempt_stages_survive_preview_creation_and_reopening(hr_client, seed_company, previous_date):
+    body = prepare(hr_client, seed_company.id)
+    stage = body['cells'][0]
+    column = hr_client.patch(f"/api/onboarding/columns/{stage['column_id']}", json={
+        'version': stage['column_version'], 'document_stage_key': 'nda',
+        'responsible_department': 'Охрана',
+    }).get_json()['data']
+    stage['column_version'] = column['version']
+    # A previously entered date must not leak into the preview or saved plan.
+    stage['values'] = {'planned_date': previous_date, 'is_not_required': True}
+    body['cells'][1]['values'] = {'is_not_required': True}
+    response = hr_client.post('/api/onboarding/plans/draft-docx', json=body)
+    assert response.status_code == 200
+    xml = ZipFile(BytesIO(response.data)).read('word/document.xml').decode()
+    assert '01.11.2026' not in xml
+    assert 'План работы ввода в должность' in xml
+    with hr_client.application.app_context():
+        assert OnboardingPlan.query.count() == OnboardingCell.query.count() == 0
+    response = hr_client.post('/api/onboarding/plans/from-wizard', json=body)
+    assert response.status_code == 201, response.get_json()
+    plan_id = response.get_json()['data']['id']
+    result = hr_client.get(f'/api/onboarding/plans/{plan_id}').get_json()['data']
+    for item in body['cells'][:2]:
+        cell = result['cells'][str(item['column_id'])]
+        assert cell['is_not_required'] is True
+        assert not cell['is_completed'] and not cell['is_in_progress']
+        assert cell['planned_date'] is cell['completed_date'] is None
+    with hr_client.application.app_context():
+        context = document_context(db.session.get(OnboardingPlan, plan_id))
+        assert context['nda_planned_date'] == '—'
+        assert context['nda_department'] == '(отв Охрана)'
+    response = hr_client.get(f'/api/onboarding/plans/{plan_id}/docx')
+    assert response.status_code == 200
+    assert '01.11.2026' not in ZipFile(BytesIO(response.data)).read('word/document.xml').decode()
+
+
+@pytest.mark.parametrize('values', [
+    {}, {'is_not_required': False},
+    {'is_not_required': True, 'is_completed': True},
+    {'is_not_required': True, 'is_in_progress': True},
+    {'is_completed': True, 'is_in_progress': True, 'planned_date': '2026-11-01', 'completed_date': '2026-11-01'},
+    {'is_not_required': True, 'completed_date': '2026-11-01'},
+    {'is_not_required': 'true'},
+])
+def test_wizard_rejects_missing_required_dates_and_conflicting_flags(hr_client, seed_company, values):
+    body = prepare(hr_client, seed_company.id)
+    body['cells'][0]['values'] = values
+    for route in ('draft-docx', 'from-wizard'):
+        assert hr_client.post(f'/api/onboarding/plans/{route}', json=body).status_code == 400
     with hr_client.application.app_context():
         assert OnboardingPlan.query.count() == OnboardingCell.query.count() == 0

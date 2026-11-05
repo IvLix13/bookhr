@@ -42,19 +42,25 @@ def validate_wizard(payload, company_id):
         raw = {key: None if value == '' and key.endswith(('date', 'value')) else value for key, value in item['values'].items()}
         values = CellSchema().load(dict(raw, version=0, column_version=column.version))
         allowed = {'text': {'text_value'}, 'date': {'date_value'},
-                   'stage': {'planned_date', 'completed_date', 'is_completed'},
-                   'checkbox': {'is_completed'}}[column.field_type]
+                   'stage': {'planned_date', 'completed_date', 'is_completed', 'is_not_required', 'is_in_progress'},
+                   'checkbox': {'is_completed', 'is_not_required', 'is_in_progress'}}[column.field_type]
         if set(item['values']) - allowed:
             raise ValueError('Значение не соответствует типу поля')
+        if column.field_type in ('stage', 'checkbox'):
+            if sum(bool(values.get(flag)) for flag in ('is_completed', 'is_not_required', 'is_in_progress')) > 1:
+                raise ValueError('У этапа может быть только одно состояние')
+            values['is_in_progress'] = not values.get('is_completed', False) and not values.get('is_not_required', False)
         if column.field_type == 'stage':
-            if not values.get('planned_date'):
-                raise ValueError('Укажите все плановые даты')
+            if values.get('is_not_required'):
+                values['planned_date'] = None
+            elif not values.get('planned_date'):
+                raise ValueError('Укажите плановые даты или отметьте «Не нужно»')
             if values.get('is_completed') and not values.get('completed_date'):
                 raise ValueError('Укажите фактическую дату выполнения')
             if not values.get('is_completed') and values.get('completed_date'):
                 raise ValueError('Фактическая дата допустима только для выполненного этапа')
         normalized.append((column, values))
-        cells.append(SimpleNamespace(column_id=column.id, planned_date=values.get('planned_date'), is_not_required=False))
+        cells.append(SimpleNamespace(column_id=column.id, planned_date=values.get('planned_date'), is_not_required=values.get('is_not_required', False)))
     name = get_current_name(mentor.person)
     if not name:
         raise ValueError('У наставника не заполнено ФИО')
