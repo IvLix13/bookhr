@@ -1,4 +1,6 @@
 {
+  "current_month": "document.current_month",
+  "current_year": "document.current_year",
   "employee_name": "employee.short_name",
   "employee_full_name": "employee.full_name",
   "employee_position": "employee.position",

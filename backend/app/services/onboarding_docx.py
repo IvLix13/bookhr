@@ -3,6 +3,7 @@
 Only {{ variable }} placeholders are supported, not arbitrary template code.
 Replacements span Word text runs, including tables, headers and footers.
 """
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 import re
@@ -17,6 +18,11 @@ from app.services.onboarding_document_catalog import document_stages, document_v
 
 W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 PLACEHOLDER = re.compile(r"{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}")
+MONTH_NAMES = (
+    "январь", "февраль", "март", "апрель",
+    "май", "июнь", "июль", "август",
+    "сентябрь", "октябрь", "ноябрь", "декабрь",
+)
 
 
 def short_name(name):
@@ -68,6 +74,11 @@ def document_context(plan):
     for key in stages:
         context[f"stages.{key}.planned_date"] = "; ".join(dates[key]) or "—"
         context[f"stages.{key}.department"] = "; ".join(f"(отв {department})" for department in departments[key])
+    today = date.today()
+    context.update({
+        "document.current_month": MONTH_NAMES[today.month - 1],
+        "document.current_year": str(today.year),
+    })
     variables = {}
     for key, source in document_variables().items():
         if source not in context:
