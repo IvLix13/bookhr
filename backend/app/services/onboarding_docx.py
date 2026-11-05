@@ -27,7 +27,12 @@ MONTH_NAMES = (
 
 def short_name(name):
     parts = (name or "").split()
-    return parts[0] + (" " + "".join(p[0] + "." for p in parts[1:]) if len(parts) > 1 else "") if parts else "—"
+    if not parts:
+        return "—"
+
+    surname = "-".join(part.capitalize() for part in parts[0].split("-"))
+    initials = "".join(part[0].upper() + "." for part in parts[1:])
+    return surname + (" " + initials if initials else "")
 
 
 def employee_values(employment):
