@@ -1,4 +1,9 @@
 from datetime import date
+from io import BytesIO
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
+
+import pytest
 from flask import g
 from app.extensions import db
 from app.models import Person, PersonNameHistory, Employment, PositionHistory, User, Event, Company
@@ -28,10 +33,90 @@ def test_head_and_docx(app, seed_company):
         db.session.add(plan); db.session.flush()
         context = document_context(plan)
         assert context['department_head_name'] == 'П.Петров'
-        assert context['employee_position'] == 'Специалист'
+        assert context['employee_position'] == 'специалист'
         assert head_values(head)[0] == 'not_found'
         employee(seed_company.id, title='Начальник отдела тестирования')
         assert head_values(row)[0] == 'ambiguous'
+
+
+@pytest.mark.parametrize('department, expected', [
+    ('Отдел разработки', 'Начальник отдела разработки'),
+    ('  Отдел\tразработки   программного обеспечения  ', 'Начальник отдела разработки программного обеспечения'),
+    ('Управление информационных технологий', 'Начальник отдела информационных технологий'),
+    (None, 'Начальник отдела разработки'),
+    ('', 'Начальник отдела разработки'),
+    ('   ', 'Начальник отдела разработки'),
+    ('Отдел', 'Начальник отдела разработки'),
+])
+def test_head_formal_department_in_plan_and_docx(hr_client, seed_company, department, expected):
+    with hr_client.application.app_context():
+        row = employee(seed_company.id)
+        # Use the head's full department, never the employee's name or the short code.
+        row.formal_department_name = 'Отдел сотрудника'
+        head = employee(seed_company.id, title='Начальник отдела разработки', name='Петров Пётр Петрович')
+        head.formal_department_name = department
+        plan = OnboardingPlan(employment_id=row.id)
+        db.session.add(plan)
+        db.session.commit()
+        plan_id, head_id = plan.id, head.id
+        db.session.expire_all()
+        assert db.session.get(Employment, head_id).formal_department_name == department
+
+    response = hr_client.get(f'/api/onboarding/plans/{plan_id}')
+    assert response.status_code == 200
+    assert response.get_json()['data']['department_head']['position'] == expected
+    response = hr_client.get(f'/api/onboarding/plans/{plan_id}/docx')
+    assert response.status_code == 200
+    with ZipFile(BytesIO(response.data)) as archive:
+        root = ET.fromstring(archive.read('word/document.xml'))
+    namespace = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    paragraphs = [''.join(p.itertext()) for p in root.iter(namespace + 'p')]
+    assert expected in paragraphs
+
+
+@pytest.mark.parametrize('title, department, expected', [
+    ('Инженер', 'Отдел Разработки', 'инженер разработки'),
+    ('  ВЕДУЩИЙ\tИНЖЕНЕР ОТДЕЛА  ', '  Отдел\tРазработки   ПО  ', 'ведущий инженер отдела разработки по'),
+    ('Инженер отдела разработки', 'Отдел РАЗРАБОТКИ', 'инженер отдела разработки'),
+    ('Инженер', None, 'инженер'),
+    ('Инженер', '   ', 'инженер'),
+    ('Инженер', 'Отдел', 'инженер'),
+    (None, 'Отдел разработки', None),
+])
+def test_employee_position_in_wizard_saved_plan_and_docx(hr_client, seed_company, title, department, expected):
+    with hr_client.application.app_context():
+        row = employee(seed_company.id, title=title or 'Специалист')
+        if title is None:
+            db.session.delete(PositionHistory.query.filter_by(employment_id=row.id).one())
+        row.formal_department_name = department
+        mentor = employee(seed_company.id, department='02', name='Наставник Елена Ивановна')
+        mentor.formal_department_name = 'Отдел наставника'
+        db.session.commit()
+        row_id, mentor_id = row.id, mentor.id
+
+    payload = {'employment_id': row_id, 'mentor_id': mentor_id, 'cells': []}
+    preview = hr_client.post('/api/onboarding/plans/draft-docx', json=payload)
+    assert preview.status_code == 200
+    created = hr_client.post('/api/onboarding/plans/from-wizard', json=payload)
+    assert created.status_code == 201
+    plan = created.get_json()['data']
+    assert plan['employee_position'] == expected
+    saved = hr_client.get(f'/api/onboarding/plans/{plan["id"]}')
+    assert saved.get_json()['data']['employee_position'] == expected
+    document = hr_client.get(f'/api/onboarding/plans/{plan["id"]}/docx')
+    assert document.status_code == 200
+    for response in (preview, document):
+        with ZipFile(BytesIO(response.data)) as archive:
+            root = ET.fromstring(archive.read('word/document.xml'))
+        namespace = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+        paragraphs = [''.join(p.itertext()) for p in root.iter(namespace + 'p')]
+        assert 'Должность: ' + (expected or '—') in paragraphs
+
+    # Formatting must not replace the original directory data in the database.
+    with hr_client.application.app_context():
+        assert db.session.get(Employment, row_id).formal_department_name == department
+        position = PositionHistory.query.filter_by(employment_id=row_id).first()
+        assert (position.title if position else None) == title
 
 
 def test_viewer_scope_and_transfer(viewer_client, app, seed_company):
