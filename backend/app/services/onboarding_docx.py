@@ -56,6 +56,11 @@ def document_context(plan):
     _, head = head_values(plan.employment)
     for key in ("position", "short_name", "grade"):
         context[f"department_head.{key}"] = (head or {}).get(key) or "—"
+    parts = context["department_head.short_name"].split(maxsplit=1)
+    if len(parts) == 2:
+        surname = "-".join(part.capitalize() for part in parts[0].split("-"))
+        initial = parts[1][0].upper()
+        context["department_head.short_name"] = f"{initial}.{surname}"
     stages = document_stages()
     for key in stages:
         context[f"stages.{key}.planned_date"] = "—"

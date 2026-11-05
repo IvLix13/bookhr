@@ -27,7 +27,7 @@ def test_head_and_docx(app, seed_company):
         plan = OnboardingPlan(employment_id=row.id)
         db.session.add(plan); db.session.flush()
         context = document_context(plan)
-        assert context['department_head_name'] == 'Петров П.П.'
+        assert context['department_head_name'] == 'П.Петров'
         assert context['employee_position'] == 'Специалист'
         assert head_values(head)[0] == 'not_found'
         employee(seed_company.id, title='Начальник отдела тестирования')
