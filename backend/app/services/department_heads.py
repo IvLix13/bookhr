@@ -22,6 +22,15 @@ def short_employee_name(employment):
     return parts[0] + (" " + "".join(p[0] + "." for p in parts[1:]) if len(parts)>1 else "") if parts else "—"
 
 
+def head_position(employment):
+    """Format the plan's head title using the saved full formal department name."""
+    department = " ".join((employment.formal_department_name or "").split())
+    parts = department.split(" ", 1)
+    if len(parts) == 2:
+        return f"Начальник отдела {parts[1]}"
+    return get_current_position(employment).title
+
+
 def head_values(employment):
     key = department_key(employment)
     if not key:
@@ -39,5 +48,5 @@ def head_values(employment):
     row = candidates[0]
     grade = get_current_grade(row)
     return "found", {"employment_id": row.id, "short_name": short_employee_name(row),
-                     "position": get_current_position(row).title,
+                     "position": head_position(row),
                      "grade": grade.grade.name if grade else None}

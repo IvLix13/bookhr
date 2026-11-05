@@ -1,4 +1,9 @@
 from datetime import date
+from io import BytesIO
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
+
+import pytest
 from flask import g
 from app.extensions import db
 from app.models import Person, PersonNameHistory, Employment, PositionHistory, User, Event, Company
@@ -32,6 +37,41 @@ def test_head_and_docx(app, seed_company):
         assert head_values(head)[0] == 'not_found'
         employee(seed_company.id, title='Начальник отдела тестирования')
         assert head_values(row)[0] == 'ambiguous'
+
+
+@pytest.mark.parametrize('department, expected', [
+    ('Отдел разработки', 'Начальник отдела разработки'),
+    ('  Отдел\tразработки   программного обеспечения  ', 'Начальник отдела разработки программного обеспечения'),
+    ('Управление информационных технологий', 'Начальник отдела информационных технологий'),
+    (None, 'Начальник отдела разработки'),
+    ('', 'Начальник отдела разработки'),
+    ('   ', 'Начальник отдела разработки'),
+    ('Отдел', 'Начальник отдела разработки'),
+])
+def test_head_formal_department_in_plan_and_docx(hr_client, seed_company, department, expected):
+    with hr_client.application.app_context():
+        row = employee(seed_company.id)
+        # Use the head's full department, never the employee's name or the short code.
+        row.formal_department_name = 'Отдел сотрудника'
+        head = employee(seed_company.id, title='Начальник отдела разработки', name='Петров Пётр Петрович')
+        head.formal_department_name = department
+        plan = OnboardingPlan(employment_id=row.id)
+        db.session.add(plan)
+        db.session.commit()
+        plan_id, head_id = plan.id, head.id
+        db.session.expire_all()
+        assert db.session.get(Employment, head_id).formal_department_name == department
+
+    response = hr_client.get(f'/api/onboarding/plans/{plan_id}')
+    assert response.status_code == 200
+    assert response.get_json()['data']['department_head']['position'] == expected
+    response = hr_client.get(f'/api/onboarding/plans/{plan_id}/docx')
+    assert response.status_code == 200
+    with ZipFile(BytesIO(response.data)) as archive:
+        root = ET.fromstring(archive.read('word/document.xml'))
+    namespace = '{http://schemas.openxmlformats.org/wordprocessingml/2006/main}'
+    paragraphs = [''.join(p.itertext()) for p in root.iter(namespace + 'p')]
+    assert expected in paragraphs
 
 
 def test_viewer_scope_and_transfer(viewer_client, app, seed_company):
