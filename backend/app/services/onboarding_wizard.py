@@ -64,5 +64,6 @@ def validate_wizard(payload, company_id):
     name = get_current_name(mentor.person)
     if not name:
         raise ValueError('У наставника не заполнено ФИО')
-    draft = SimpleNamespace(employment=employee, curator_name=name, cells=cells)
+    draft = SimpleNamespace(employment=employee, curator_name=name,
+                            curator_employment_id=mentor.id, cells=cells)
     return draft, normalized
