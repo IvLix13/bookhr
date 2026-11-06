@@ -50,6 +50,11 @@ def document_context(plan):
     curator = employee_values(None)
     if plan.curator_name:
         curator.update(full_name=plan.curator_name, short_name=short_name(plan.curator_name))
+    from app.services.onboarding_curators import curator_for_plan
+    mentor = curator_for_plan(plan)
+    if mentor is not None:
+        grade = get_current_grade(mentor)
+        curator["grade"] = grade.grade.name if grade else "—"
     context = {f"{prefix}.{key}": value for prefix, values in [("employee", employee), ("curator", curator)] for key, value in values.items()}
     from app.services.department_heads import head_values
     _, head = head_values(plan.employment)

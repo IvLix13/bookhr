@@ -24,9 +24,10 @@ class OnboardingPlan(db.Model, TimestampMixin):
     id = db.Column(db.Integer, primary_key=True)
     employment_id = db.Column(db.Integer, db.ForeignKey("employments.id"), nullable=False, unique=True)
     curator_name = db.Column(db.String(256), nullable=True)
+    curator_employment_id = db.Column(db.Integer, db.ForeignKey("employments.id", name="fk_onboarding_curator", ondelete="SET NULL"), nullable=True)
     version = db.Column(db.Integer, nullable=False, default=1, server_default="1")
     __mapper_args__ = {"version_id_col": version}
-    employment = db.relationship("Employment")
+    employment = db.relationship("Employment", foreign_keys=[employment_id])
     cells = db.relationship("OnboardingCell", back_populates="plan")
 
 

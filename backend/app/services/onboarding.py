@@ -269,13 +269,22 @@ def save_cell(plan, column, payload):
 
 
 def save_plan(plan, payload):
+    from app.services.onboarding_curators import matching_curator, normalized_name
     check_version(payload["version"], plan.version)
-    old = {"curator_name": plan.curator_name, "version": plan.version}
+    old = {"curator_name": plan.curator_name, "version": plan.version,
+           "curator_employment_id": plan.curator_employment_id}
     name = payload["curator_name"]
     plan.curator_name = (name.strip() or None) if name is not None else None
+    if not plan.curator_name:
+        plan.curator_employment_id = None
+    elif (plan.curator_employment_id is None
+          or normalized_name(plan.curator_name) != normalized_name(old["curator_name"])):
+        mentor = matching_curator(plan.employment, plan.curator_name)
+        plan.curator_employment_id = mentor.id if mentor is not None else None
     db.session.flush()
     log_audit("update", "onboarding_plan", plan.id, old,
-              {"curator_name": plan.curator_name, "version": plan.version})
+              {"curator_name": plan.curator_name, "version": plan.version,
+               "curator_employment_id": plan.curator_employment_id})
 
 
 class DeleteSchema(Schema):
@@ -297,6 +306,7 @@ def _snapshot(value):
 
 def plan_delete_preview(plan):
     value = plan_dict(plan)
+    value["curator_employment_id"] = plan.curator_employment_id
     return {"version": plan.version, "snapshot": _snapshot(value),
             "cell_count": len(plan.cells), "full_name": value["full_name"],
             "hire_date": value["hire_date"]}

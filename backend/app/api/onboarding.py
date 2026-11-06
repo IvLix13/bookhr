@@ -192,13 +192,15 @@ def register_routes(bp):
     def onboarding_from_wizard():
         from app.services.onboarding_wizard import validate_wizard
         draft, cells = validate_wizard(get_json(), get_request_company_id())
-        plan = OnboardingPlan(employment_id=draft.employment.id, curator_name=draft.curator_name)
+        plan = OnboardingPlan(employment_id=draft.employment.id, curator_name=draft.curator_name,
+                              curator_employment_id=draft.curator_employment_id)
         db.session.add(plan)
         db.session.flush()
         for column, values in cells:
             save_cell(plan, column, dict(values))
         log_audit("create", "onboarding_plan", plan.id, None,
-                  {"employment_id": plan.employment_id, "curator_name": plan.curator_name})
+                  {"employment_id": plan.employment_id, "curator_name": plan.curator_name,
+                   "curator_employment_id": plan.curator_employment_id})
         db.session.expire(plan, ['cells'])
         return api_response(plan_dict(plan), status=201)
 
