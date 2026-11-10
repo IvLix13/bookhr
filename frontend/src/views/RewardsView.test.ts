@@ -69,7 +69,7 @@ vi.mock('@/api/client', () => ({
     createReward,
     updateReward,
     deleteReward,
-    employees:
+    employees,
     rewardStatistics,
     downloadRewardStatistics,
     downloadRewardsPersonalized,
