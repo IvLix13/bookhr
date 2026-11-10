@@ -469,6 +469,8 @@ def save_employment_periods_from_form(
         number = index + 1
         hire = period["hire_date"]
         dismissal = period.get("dismissal_date")
+        if hire is None:
+            raise ValueError(f"Укажите начало работы периода {number}")
         if index < len(existing):
             if require_existing_ids and period.get("id") != existing[index].id:
                 raise ValueError("История периодов изменилась. Обновите карточку сотрудника")
