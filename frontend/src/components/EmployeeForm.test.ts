@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import EmployeeForm from '@/components/EmployeeForm.vue'
 import { useAuthStore } from '@/stores/auth'
-import type { Employee, Grade } from '@/types'
+import type { Employee, EmployeePeriod, Grade } from '@/types'
 
 const grades: Grade[] = [
   { id: 1, name: 'Junior', rank: 1, min_years: 1, is_active: true },
@@ -13,7 +13,7 @@ const grades: Grade[] = [
 const { createEmployee, updateEmployee, gradeCatalog, employeePeriods } = vi.hoisted(() => ({
   createEmployee: vi.fn(async () => ({})),
   updateEmployee: vi.fn(async () => ({})),
-  employeePeriods: vi.fn(async (id: number) => [{ id, hire_date: '2020-01-01', dismissal_date: null, status: 'active' }]),
+  employeePeriods: vi.fn(async (id: number): Promise<EmployeePeriod[]> => [{ id, hire_date: '2020-01-01', dismissal_date: null, status: 'active' }]),
   gradeCatalog: vi.fn(async () => grades),
 }))
 
