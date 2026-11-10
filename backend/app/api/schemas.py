@@ -143,7 +143,14 @@ class StaffDirectoryFieldsSchema(BaseSchema):
         return data
 
 
+class EmployeePeriodSchema(BaseSchema):
+    id = fields.Int(allow_none=True)
+    hire_date = DateField(required=True)
+    dismissal_date = DateField(allow_none=True)
+
+
 class CreateEmployeeSchema(StaffDirectoryFieldsSchema):
+    periods = fields.List(fields.Nested(EmployeePeriodSchema), validate=validate.Length(min=1, max=3))
     full_name = fields.Str(required=True, validate=validate.Length(min=1, max=256))
     hire_date = DateField(required=True)
     title = fields.Str(load_default="Не указана", validate=validate.Length(max=256))
@@ -161,9 +168,12 @@ class CreateEmployeeSchema(StaffDirectoryFieldsSchema):
     @validates_schema
     def validate_dates(self, data, **kwargs):
         validate_contract_pair(data)
+        if data.get("periods") and data["periods"][-1]["hire_date"] != data["hire_date"]:
+            raise ValidationError({"hire_date": ["Должно совпадать с началом последнего периода"]})
 
 
 class UpdateEmployeeSchema(StaffDirectoryFieldsSchema):
+    periods = fields.List(fields.Nested(EmployeePeriodSchema), validate=validate.Length(min=1, max=3))
     full_name = fields.Str(validate=validate.Length(min=1, max=256))
     hire_date = DateField(allow_none=True)
     title = fields.Str(allow_none=True, validate=validate.Length(max=256))
@@ -180,6 +190,8 @@ class UpdateEmployeeSchema(StaffDirectoryFieldsSchema):
     def validate_dates(self, data, **kwargs):
         if "contract_end" in data or "contract_term_years" in data:
             validate_contract_pair(data)
+        if data.get("periods") and data.get("hire_date") and data["periods"][-1]["hire_date"] != data["hire_date"]:
+            raise ValidationError({"hire_date": ["Должно совпадать с началом последнего периода"]})
 
 
 class DismissEmployeeSchema(BaseSchema):
