@@ -3,6 +3,7 @@ import type { OnboardingColumn, OnboardingCell, OnboardingPlan, OnboardingFieldT
 import { localizeApiMessage } from '@/utils/labels'
 import type {
   ApiResponse,
+  EmployeePeriod,
   AttentionSummary,
   DashboardStats,
   Paginated,
@@ -193,6 +194,7 @@ export const api = {
   me: () => request('/api/me'),
   employees: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/employees${buildQuery(params)}`),
+  employeePeriods: (id: number) => request<EmployeePeriod[]>(`/api/employees/${id}/periods`),
   createEmployee: (body: Record<string, unknown>) =>
     request('/api/employees', { method: 'POST', body: JSON.stringify(body) }),
   updateEmployee: (id: number, body: Record<string, unknown>) =>

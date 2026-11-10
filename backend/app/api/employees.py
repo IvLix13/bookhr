@@ -59,6 +59,7 @@ from app.services.employees import (
     get_current_name,
     get_current_position,
     rehire_person,
+    save_employment_periods_from_form,
     sync_active_contract,
     sync_actual_grade,
     sync_passport,
@@ -72,6 +73,7 @@ from app.services.rule_engine import recalculate_employment_events
 from app.services.tenure import (
     MAX_EMPLOYMENT_PERIODS,
     count_employment_periods,
+    employment_periods,
     ensure_tenure_awards,
     total_tenure_years,
 )
@@ -178,22 +180,52 @@ def register_routes(bp):
 
         return api_response(paginate_query(query, employment_to_dict, page, per_page))
 
+    @bp.get("/employees/<int:employment_id>/periods")
+    @login_required
+    def employee_period_history(employment_id: int):
+        employment = db.session.get(Employment, employment_id)
+        if not employment or employment.company_id != get_request_company_id():
+            return api_response(message="Not found", status=404)
+        periods = employment_periods(employment.person_id, employment.company_id)
+        return api_response([
+            {
+                "id": period.id,
+                "hire_date": period.hire_date.isoformat(),
+                "dismissal_date": period.dismissal_date.isoformat() if period.dismissal_date else None,
+                "status": period.status,
+            }
+            for period in periods
+        ])
+
     @bp.post("/employees")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     def create_employee():
         payload = load_schema(CreateEmployeeSchema)
         company_id = get_request_company_id()
         hire_date = payload["hire_date"]
+        periods = payload.get("periods")
         full_name = payload["full_name"].strip()
 
         person, employment = create_person_with_employment(
             company_id=company_id,
             full_name=full_name,
-            hire_date=hire_date,
+            hire_date=periods[0]["hire_date"] if periods else hire_date,
             title=(payload.get("title") or "Не указана").strip() or "Не указана",
             position_grade_id=payload.get("position_grade_id"),
             education_status=payload["education_status"],
         )
+        if periods is not None:
+            try:
+                employment = save_employment_periods_from_form(
+                    person, company_id, periods,
+                    title=(payload.get("title") or "Не указана").strip() or "Не указана",
+                    position_grade_id=payload.get("position_grade_id"),
+                    require_existing_ids=False,
+                )
+            except ValueError as exc:
+                db.session.rollback()
+                return api_response(message=str(exc), status=400)
+
         position = get_current_position(employment)
         position.short_title = (payload.get("position_short_name") or "").strip() or None
         update_staff_directory_fields(employment, payload)
@@ -221,6 +253,10 @@ def register_routes(bp):
         )
         sync_passport(person, payload.get("passport_until"))
         db.session.flush()
+        if periods is not None:
+            for historical in employment_periods(person.id, company_id):
+                if historical.id != employment.id:
+                    recalculate_employment_events(historical)
         recalculate_employment_events(employment)
         refresh_overdue_events(employment.company_id)
         db.session.commit()
@@ -236,6 +272,25 @@ def register_routes(bp):
         payload = load_schema(UpdateEmployeeSchema)
         effective_date = payload.get("effective_date") or today_moscow()
         needs_recalc = False
+        periods_changed = "periods" in payload
+
+        if periods_changed:
+            current_position = get_current_position(employment)
+            try:
+                employment = save_employment_periods_from_form(
+                    employment.person,
+                    employment.company_id,
+                    payload["periods"],
+                    title=(payload.get("title") or (current_position.title if current_position else "Не указана")).strip() or "Не указана",
+                    position_grade_id=(
+                        payload["position_grade_id"] if "position_grade_id" in payload
+                        else (current_position.position_grade_id if current_position else None)
+                    ),
+                )
+            except ValueError as exc:
+                db.session.rollback()
+                return api_response(message=str(exc), status=400)
+            needs_recalc = True
 
         if _payload_has(payload, "full_name"):
             full_name = (payload.get("full_name") or "").strip()
@@ -309,6 +364,10 @@ def register_routes(bp):
 
         db.session.flush()
         if needs_recalc:
+            if periods_changed:
+                for historical in employment_periods(employment.person_id, employment.company_id):
+                    if historical.id != employment.id:
+                        recalculate_employment_events(historical)
             recalculate_employment_events(employment)
             refresh_overdue_events(employment.company_id)
         db.session.commit()

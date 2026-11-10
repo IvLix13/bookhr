@@ -2,10 +2,11 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import GradeCreateModal from '@/components/GradeCreateModal.vue'
 import { api } from '@/api/client'
-import type { EducationStatus, Employee, Grade } from '@/types'
+import type { EducationStatus, Employee, EmployeePeriod, Grade } from '@/types'
 import { useAuthStore } from '@/stores/auth'
 
 type GradeField = 'position' | 'actual'
+type PeriodDraft = { id: number | null; hire_date: string; dismissal_date: string }
 
 const props = defineProps<{
   initial?: Employee | null
@@ -62,8 +63,48 @@ const activeGrades = computed(() => grades.value.filter((grade) => grade.is_acti
 const submitting = ref(false)
 const error = ref('')
 const createGradeFor = ref<GradeField | null>(null)
+const periods = ref<PeriodDraft[]>([{ id: null, hire_date: '', dismissal_date: '' }])
+const periodsLoading = ref(false)
+const periodsError = ref('')
+let periodsRequestId = 0
+
+function addPeriod() {
+  if (props.readonly || periods.value.length >= 3) return
+  periods.value.push({ id: null, hire_date: '', dismissal_date: '' })
+}
+
+function removePeriod(index: number) {
+  if (props.readonly || periods.value.length <= 1 || periods.value[index]?.id !== null) return
+  periods.value.splice(index, 1)
+}
+
+function validatePeriods() {
+  if (periodsLoading.value || periodsError.value) {
+    throw new Error('Не удалось загрузить историю работы. Откройте карточку повторно')
+  }
+  periods.value.forEach((period, index) => {
+    const number = index + 1
+    if (!period.hire_date) throw new Error('Укажите начало работы периода ' + number)
+    if (period.dismissal_date && period.dismissal_date < period.hire_date) {
+      throw new Error('Увольнение периода ' + number + ' не может быть раньше начала')
+    }
+    if (index < periods.value.length - 1 && !period.dismissal_date) {
+      throw new Error('Укажите дату увольнения периода ' + number)
+    }
+    if (index > 0) {
+      const previousEnd = periods.value[index - 1]?.dismissal_date
+      if (!previousEnd || period.hire_date <= previousEnd) {
+        throw new Error('Начало периода ' + number + ' должно быть позже увольнения предыдущего')
+      }
+    }
+  })
+}
+
 
 function resetForm() {
+  periods.value = [{ id: null, hire_date: '', dismissal_date: '' }]
+  periodsLoading.value = false
+  periodsError.value = ''
   form.value = {
     full_name: '',
     title: '',
@@ -89,10 +130,30 @@ function resetForm() {
 watch(
   () => props.initial,
   (value) => {
+    const requestId = ++periodsRequestId
     if (!value) {
       resetForm()
       return
     }
+    periods.value = [{ id: null, hire_date: value.hire_date, dismissal_date: '' }]
+    periodsLoading.value = true
+    periodsError.value = ''
+    void api.employeePeriods(value.id)
+      .then((items: EmployeePeriod[]) => {
+        if (requestId !== periodsRequestId) return
+        periods.value = items.map((item) => ({
+          id: item.id,
+          hire_date: item.hire_date,
+          dismissal_date: item.dismissal_date ?? '',
+        }))
+      })
+      .catch(() => {
+        if (requestId !== periodsRequestId) return
+        periodsError.value = 'Не удалось загрузить историю периодов работы'
+      })
+      .finally(() => {
+        if (requestId === periodsRequestId) periodsLoading.value = false
+      })
     form.value = {
       full_name: value.full_name ?? '',
       title: value.title ?? '',
@@ -177,6 +238,7 @@ async function submit() {
       throw new Error('Укажите наличие высшего образования')
     }
     validateContractFields()
+    validatePeriods()
 
     const body: Record<string, unknown> = {
       full_name: form.value.full_name.trim(),
@@ -186,7 +248,12 @@ async function submit() {
       position_short_name: form.value.position_short_name.trim() || null,
       formal_department_short_name: form.value.formal_department_short_name.trim() || null,
       formal_department_name: form.value.formal_department_name.trim() || null,
-      hire_date: form.value.hire_date,
+      hire_date: periods.value[periods.value.length - 1]!.hire_date,
+      periods: periods.value.map((period) => ({
+        id: period.id,
+        hire_date: period.hire_date,
+        dismissal_date: period.dismissal_date || null,
+      })),
       education_status: form.value.education_status,
       position_grade_id: form.value.position_grade_id
         ? Number(form.value.position_grade_id)
@@ -253,15 +320,50 @@ async function submit() {
         <input v-model="form.formal_department_name" name="formal_department_name" :disabled="readonly" />
       </label>
       <p class="directory-note">При включённой синхронизации внешний сервис обновляет номер карточки, сокращённое ФИО, должность и формальный отдел. Грейды ведутся в BookHR.</p>
-      <label>
-        Начало работы
-        <input
-          v-model="form.hire_date"
-          type="date"
-          required
-          :disabled="readonly"
-        />
-      </label>
+      <section class="periods-section" aria-label="Периоды работы">
+        <div class="periods-heading">
+          <div>
+            <h4>Периоды работы</h4>
+            <p>Учитываются при расчёте суммарного стажа и наград за выслугу лет.</p>
+          </div>
+          <button
+            v-if="!readonly && periods.length < 3"
+            class="btn ghost period-add"
+            type="button"
+            :disabled="periodsLoading || Boolean(periodsError)"
+            @click="addPeriod"
+          >+ Добавить период</button>
+        </div>
+        <p v-if="periodsLoading" class="period-hint">Загрузка истории работы…</p>
+        <p v-if="periodsError" class="error" role="alert">{{ periodsError }}</p>
+        <div class="periods-list">
+          <div v-for="(period, index) in periods" :key="period.id ?? 'new-' + index" class="period-card">
+            <div class="period-card-header">
+              <strong>Период {{ index + 1 }}</strong>
+              <span v-if="index === periods.length - 1 && !period.dismissal_date" class="period-current">Текущий</span>
+              <span v-else-if="period.dismissal_date" class="period-closed">Завершён</span>
+              <button
+                v-if="!readonly && period.id === null && periods.length > 1"
+                class="btn ghost period-remove"
+                type="button"
+                :disabled="periodsLoading"
+                @click="removePeriod(index)"
+              >Убрать</button>
+            </div>
+            <div class="period-fields">
+              <label>
+                Начало работы
+                <input v-model="period.hire_date" name="period_hire_date" type="date" required :disabled="readonly || periodsLoading || Boolean(periodsError)" />
+              </label>
+              <label>
+                Дата увольнения
+                <input v-model="period.dismissal_date" name="period_dismissal_date" type="date" :disabled="readonly || periodsLoading || Boolean(periodsError)" />
+              </label>
+            </div>
+          </div>
+        </div>
+        <p class="period-hint">До 3 периодов. Перед следующим приёмом укажите дату увольнения. Для работающего сотрудника последнее увольнение оставьте пустым. Сохранённые периоды нельзя убрать из карточки — только исправить даты.</p>
+      </section>
       <label>
         Высшее образование
         <select v-model="form.education_status" required :disabled="readonly">
@@ -338,7 +440,7 @@ async function submit() {
       </label>
       <label>
         Окончание договора
-        <input v-model="form.contract_end" type="date" :disabled="readonly" />
+        <input v-model="form.contract_end" name="contract_end" type="date" :disabled="readonly" />
       </label>
       <label>
         Срок паспорта
@@ -361,7 +463,7 @@ async function submit() {
       </template>
     </div>
     <div v-if="!readonly" class="actions">
-      <button class="btn" type="submit" :disabled="submitting">
+      <button class="btn" type="submit" :disabled="submitting || periodsLoading || Boolean(periodsError)">
         {{ submitting ? 'Сохранение...' : 'Сохранить' }}
       </button>
       <button class="btn ghost" type="button" @click="emit('cancel')">
@@ -383,6 +485,19 @@ async function submit() {
 </template>
 
 <style scoped>
+.periods-section { grid-column: 1 / -1; display: grid; gap: 0.75rem; min-width: 0; }
+.periods-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.65rem; }
+.periods-heading h4 { margin: 0 0 0.25rem; font-size: 1rem; }
+.periods-heading p, .period-hint { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.periods-list { display: grid; gap: 0.65rem; }
+.period-card { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0.85rem; display: grid; gap: 0.7rem; }
+.period-card-header { display: flex; align-items: center; gap: 0.55rem; flex-wrap: wrap; }
+.period-card-header strong { font-size: 0.92rem; }
+.period-current, .period-closed { font-size: 0.78rem; color: var(--muted); }
+.period-current { color: var(--success, #15803d); }
+.period-remove { margin-left: auto; color: var(--danger); }
+.period-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.7rem; }
+.period-add { flex-shrink: 0; }
 .directory-note { grid-column: 1 / -1; color: var(--muted); font-size: 0.85rem; margin: 0; }
 
 .form {
