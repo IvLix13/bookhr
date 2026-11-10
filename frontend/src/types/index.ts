@@ -43,6 +43,13 @@ export interface UserListItem {
   updated_at: string | null
 }
 
+export interface EmployeePeriod {
+  id: number | null
+  hire_date: string
+  dismissal_date: string | null
+  status?: string
+}
+
 export interface Employee {
   id: number
   person_uuid: string
