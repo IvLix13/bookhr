@@ -302,6 +302,8 @@ export const api = {
     request('/api/rewards', { method: 'POST', body: JSON.stringify(body) }),
   updateReward: (id: number, body: Record<string, unknown>) =>
     request(`/api/rewards/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deleteReward: (id: number) =>
+    request(`/api/rewards/${id}`, { method: 'DELETE' }),
   events: (params: TableQueryParams = {}) =>
     request<Paginated<unknown>>(`/api/events${buildQuery(params)}`),
   getEvent: (id: number) => request(`/api/events/${id}`),
