@@ -445,6 +445,56 @@ def rehire_person(
     return employment
 
 
+def save_employment_periods_from_form(
+    person: Person,
+    company_id: int,
+    periods: list[dict],
+    *,
+    title: str,
+    position_grade_id: int | None = None,
+    require_existing_ids: bool = True,
+) -> Employment:
+    """Validate and save a person's periods without replacing saved employment identities."""
+    existing = employment_periods(person.id, company_id)
+    if not existing:
+        raise ValueError("Не найдено трудоустройство сотрудника")
+    if not 1 <= len(periods) <= MAX_EMPLOYMENT_PERIODS:
+        raise ValueError("Можно указать от 1 до 3 периодов работы")
+    if len(periods) < len(existing):
+        raise ValueError("Сохранённые периоды нельзя удалить из карточки сотрудника")
+
+    previous_dismissal = None
+    pairs: list[tuple[date, date | None]] = []
+    for index, period in enumerate(periods):
+        number = index + 1
+        hire = period["hire_date"]
+        dismissal = period.get("dismissal_date")
+        if index < len(existing):
+            if require_existing_ids and period.get("id") != existing[index].id:
+                raise ValueError("История периодов изменилась. Обновите карточку сотрудника")
+            if not require_existing_ids and period.get("id") is not None:
+                raise ValueError("При создании сотрудника ID периодов указывать нельзя")
+        elif period.get("id") is not None:
+            raise ValueError("Новый период не должен содержать ID")
+
+        if dismissal is not None and dismissal < hire:
+            raise ValueError(f"Увольнение периода {number} не может быть раньше начала")
+        if index > 0 and (previous_dismissal is None or hire <= previous_dismissal):
+            raise ValueError(f"Начало периода {number} должно быть позже увольнения предыдущего")
+        if index < len(periods) - 1 and dismissal is None:
+            raise ValueError(f"Укажите увольнение периода {number} перед следующим периодом")
+        previous_dismissal = dismissal
+        pairs.append((hire, dismissal))
+
+    return sync_employment_periods_from_import(
+        person,
+        company_id,
+        pairs,
+        title=title,
+        position_grade_id=position_grade_id,
+    )
+
+
 def sync_employment_periods_from_import(
     person: Person,
     company_id: int,
