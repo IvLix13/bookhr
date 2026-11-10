@@ -4,7 +4,7 @@ from io import BytesIO
 from openpyxl import load_workbook
 
 from app.extensions import db
-from app.models import Company, EmployeeGradeHistory, GradeCatalog, Reward, RewardStatus
+from app.models import AuditLog, Company, EmployeeGradeHistory, GradeCatalog, Reward, RewardStatus
 from app.models.reward import REWARD_STATUS_LABELS
 from app.services.employees import create_person_with_employment
 from app.utils.dates import today_moscow
@@ -356,3 +356,70 @@ def test_rewards_personalized_export_rejects_invalid_status(hr_client):
 
 def test_rewards_personalized_export_viewer_forbidden(viewer_client):
     assert viewer_client.get("/api/rewards/export").status_code == 403
+
+
+def test_delete_reward_hr_removes_row_and_logs_audit(hr_client, seed_company):
+    employment = _create_employment(seed_company.id)
+    reward = Reward(
+        employment_id=employment.id,
+        reward_type="Благодарность",
+        status=RewardStatus.NOT_DELIVERED.value,
+        directive_text="Приказ №1",
+        notes="Ошибка ввода",
+    )
+    db.session.add(reward)
+    db.session.commit()
+    reward_id = reward.id
+
+    response = hr_client.delete(f"/api/rewards/{reward_id}")
+    assert response.status_code == 200
+    assert db.session.get(Reward, reward_id) is None
+    assert hr_client.get("/api/rewards").get_json()["data"]["total"] == 0
+
+    audit = AuditLog.query.filter_by(action="delete", entity_type="reward", entity_id=reward_id).one()
+    assert audit.old_value["employment_id"] == employment.id
+    assert audit.old_value["reward_type"] == "Благодарность"
+    assert audit.old_value["directive_text"] == "Приказ №1"
+    assert audit.new_value is None
+
+    assert hr_client.delete(f"/api/rewards/{reward_id}").status_code == 404
+
+
+def test_delete_reward_admin_allowed(admin_client, seed_company):
+    employment = _create_employment(seed_company.id)
+    reward = Reward(employment_id=employment.id, reward_type="Премия")
+    db.session.add(reward)
+    db.session.commit()
+    reward_id = reward.id
+
+    assert admin_client.delete(f"/api/rewards/{reward_id}").status_code == 200
+    assert db.session.get(Reward, reward_id) is None
+
+
+def test_delete_reward_viewer_forbidden(viewer_client, seed_company):
+    employment = _create_employment(seed_company.id)
+    reward = Reward(employment_id=employment.id, reward_type="Грамота")
+    db.session.add(reward)
+    db.session.commit()
+
+    assert viewer_client.delete(f"/api/rewards/{reward.id}").status_code == 403
+    assert db.session.get(Reward, reward.id) is not None
+
+
+def test_delete_reward_anonymous_requires_login(client):
+    assert client.delete("/api/rewards/999999").status_code == 401
+
+
+def test_delete_reward_from_another_company_returns_404(hr_client, seed_company):
+    other_company = Company(name="Другая компания")
+    db.session.add(other_company)
+    db.session.commit()
+    other_employment = _create_employment(other_company.id)
+    reward = Reward(employment_id=other_employment.id, reward_type="Чужое поощрение")
+    db.session.add(reward)
+    db.session.commit()
+    reward_id = reward.id
+
+    assert hr_client.delete(f"/api/rewards/{reward_id}").status_code == 404
+    assert db.session.get(Reward, reward_id) is not None
+    assert AuditLog.query.filter_by(action="delete", entity_type="reward", entity_id=reward_id).first() is None

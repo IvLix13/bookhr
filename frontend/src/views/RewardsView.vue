@@ -18,6 +18,9 @@ import { useAuthStore } from '@/stores/auth'
 const auth = useAuthStore()
 const editing = ref<RewardRow | null>(null)
 const modalOpen = ref(false)
+const deleteTarget = ref<RewardRow | null>(null)
+const deleting = ref(false)
+const deleteError = ref('')
 const statisticsOpen = ref(false)
 const statistics = ref<RewardStatistics | null>(null)
 const statisticsLoading = ref(false)
@@ -97,6 +100,10 @@ function onKeydown(event: KeyboardEvent) {
     closeStatistics()
     return
   }
+  if (deleteTarget.value) {
+    closeDeleteDialog()
+    return
+  }
   if (modalOpen.value) closeModal()
 }
 
@@ -124,6 +131,38 @@ function closeModal() {
 async function handleSaved() {
   closeModal()
   await table.reload()
+}
+
+function openDeleteDialog(row: RewardRow) {
+  if (!auth.canEdit()) return
+  deleteTarget.value = row
+  deleteError.value = ''
+}
+
+function closeDeleteDialog() {
+  if (deleting.value) return
+  deleteTarget.value = null
+  deleteError.value = ''
+}
+
+async function confirmDelete() {
+  const reward = deleteTarget.value
+  if (!auth.canEdit() || !reward || deleting.value) return
+  deleting.value = true
+  deleteError.value = ''
+  try {
+    await api.deleteReward(reward.id)
+    deleteTarget.value = null
+    if (table.rows.value.length === 1 && table.query.value.page > 1) {
+      table.setPage(table.query.value.page - 1)
+    } else {
+      await table.reload()
+    }
+  } catch (err) {
+    deleteError.value = normalizeError(err)
+  } finally {
+    deleting.value = false
+  }
 }
 
 async function openStatistics() {
@@ -235,19 +274,40 @@ async function downloadPersonalizedExport() {
           />
         </template>
         <template #cell-actions="{ row }">
-          <button
-            v-if="auth.canEdit()"
-            class="btn secondary"
-            type="button"
-            @click="startEdit(row)"
-          >
-            Изменить
-          </button>
+          <div v-if="auth.canEdit()" class="row-actions">
+            <button class="btn secondary" type="button" @click="startEdit(row)">
+              Изменить
+            </button>
+            <button class="btn ghost delete-action" type="button" @click="openDeleteDialog(row)">
+              Удалить
+            </button>
+          </div>
         </template>
       </DataTable>
     </PageState>
 
     <Teleport to="body">
+      <div v-if="deleteTarget" class="overlay" @click.self="closeDeleteDialog">
+        <section class="card modal delete-modal" role="dialog" aria-modal="true" aria-labelledby="reward-delete-title">
+          <header class="modal-header">
+            <h3 id="reward-delete-title">Удалить поощрение?</h3>
+            <button class="btn ghost" type="button" aria-label="Закрыть удаление" :disabled="deleting" @click="closeDeleteDialog">×</button>
+          </header>
+          <p>
+            Вы действительно хотите удалить поощрение «{{ deleteTarget.reward_type }}»
+            для сотрудника {{ deleteTarget.full_name }}?
+          </p>
+          <p class="delete-warning">Восстановить удалённую запись не получится.</p>
+          <p v-if="deleteError" class="error" role="alert">{{ deleteError }}</p>
+          <div class="stats-actions">
+            <button class="btn secondary" type="button" :disabled="deleting" @click="closeDeleteDialog">Отмена</button>
+            <button class="btn delete-confirm" type="button" :disabled="deleting" @click="confirmDelete">
+              {{ deleting ? 'Удаление…' : 'Удалить поощрение' }}
+            </button>
+          </div>
+        </section>
+      </div>
+
       <div
         v-if="statisticsOpen"
         class="overlay"
@@ -366,6 +426,23 @@ async function downloadPersonalizedExport() {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.delete-action,
+.delete-warning {
+  color: var(--danger);
+}
+
+.delete-confirm {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
 }
 
 .stats-note {
