@@ -148,6 +148,11 @@ class EmployeePeriodSchema(BaseSchema):
     hire_date = DateField(required=True)
     dismissal_date = DateField(allow_none=True)
 
+    @validates_schema
+    def validate_hire(self, data, **kwargs):
+        if data.get("hire_date") is None:
+            raise ValidationError({"hire_date": ["Укажите начало работы"]})
+
 
 class CreateEmployeeSchema(StaffDirectoryFieldsSchema):
     periods = fields.List(fields.Nested(EmployeePeriodSchema), validate=validate.Length(min=1, max=3))
@@ -168,6 +173,8 @@ class CreateEmployeeSchema(StaffDirectoryFieldsSchema):
     @validates_schema
     def validate_dates(self, data, **kwargs):
         validate_contract_pair(data)
+        if data.get("hire_date") is None:
+            raise ValidationError({"hire_date": ["Укажите начало работы"]})
         if data.get("periods") and data["periods"][-1]["hire_date"] != data["hire_date"]:
             raise ValidationError({"hire_date": ["Должно совпадать с началом последнего периода"]})
 
