@@ -157,9 +157,11 @@ def test_saved_period_cannot_be_removed_from_card(hr_client, seed_company):
     assert [item["id"] for item in history] == [item["id"] for item in original]
 
 
-def test_periods_list_is_company_scoped(hr_client, seed_company):
+def test_periods_list_ignores_client_company_override(hr_client, seed_company):
     response = _create(hr_client, seed_company.id, name="Стаж Другой Компании")
     assert response.status_code == 201
     employment_id = response.get_json()["data"]["id"]
-    forbidden = hr_client.get(f"/api/employees/{employment_id}/periods?company_id=999999")
-    assert forbidden.status_code == 404
+    history = hr_client.get(f"/api/employees/{employment_id}/periods?company_id=999999")
+    assert history.status_code == 200
+    assert history.get_json()["data"][0]["id"] == employment_id
+    assert hr_client.get("/api/employees/999999/periods").status_code == 404
