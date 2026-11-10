@@ -144,6 +144,28 @@ def update_reward(reward: Reward, payload: dict) -> Reward:
     return reward
 
 
+def delete_reward(reward: Reward) -> None:
+    """Delete a single reward, keeping its details in the audit log."""
+    log_audit(
+        "delete",
+        "reward",
+        reward.id,
+        {
+            "employment_id": reward.employment_id,
+            "reward_type": reward.reward_type,
+            "status": reward.status,
+            "directive_text": reward.directive_text,
+            "status_changed_date": (
+                reward.status_changed_date.isoformat() if reward.status_changed_date else None
+            ),
+            "delivered_date": reward.delivered_date.isoformat() if reward.delivered_date else None,
+            "notes": reward.notes,
+        },
+        None,
+    )
+    db.session.delete(reward)
+
+
 def list_rewards_for_company(
     company_id: int,
     status: str | None = None,
