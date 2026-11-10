@@ -35,6 +35,7 @@ const {
   rewards,
   createReward,
   updateReward,
+  deleteReward,
   employees,
   rewardStatistics,
   downloadRewardStatistics,
@@ -49,6 +50,7 @@ const {
   })),
   createReward: vi.fn(async () => ({})),
   updateReward: vi.fn(async () => ({})),
+  deleteReward: vi.fn(async () => ({})),
   employees: vi.fn(async () => ({
     items: [{ id: 10, full_name: 'Иванов Иван' }],
     total: 1,
@@ -66,7 +68,8 @@ vi.mock('@/api/client', () => ({
     rewards,
     createReward,
     updateReward,
-    employees,
+    deleteReward,
+    employees:
     rewardStatistics,
     downloadRewardStatistics,
     downloadRewardsPersonalized,
@@ -79,6 +82,8 @@ describe('RewardsView', () => {
     rewards.mockClear()
     createReward.mockClear()
     updateReward.mockClear()
+    deleteReward.mockReset()
+    deleteReward.mockResolvedValue({})
     employees.mockClear()
     rewardStatistics.mockClear()
     downloadRewardStatistics.mockClear()
@@ -141,6 +146,53 @@ describe('RewardsView', () => {
     await wrapper.findAll('.btn.secondary').find(button => button.text() === 'Изменить')!.trigger('click')
     await flushPromises()
     expect(document.body.textContent).toContain('Редактирование поощрения')
+  })
+
+  it('shows delete action only for admin and hr', async () => {
+    const viewer = await mountView('viewer')
+    expect(viewer.findAll('button').some(button => button.text() === 'Удалить')).toBe(false)
+    viewer.unmount()
+
+    const admin = await mountView('admin')
+    expect(admin.findAll('button').some(button => button.text() === 'Удалить')).toBe(true)
+    admin.unmount()
+  })
+
+  it('opens delete confirmation and cancels without request', async () => {
+    const wrapper = await mountView('hr')
+    await wrapper.findAll('button').find(button => button.text() === 'Удалить')!.trigger('click')
+    expect(wrapper.get('#reward-delete-title').text()).toBe('Удалить поощрение?')
+    expect(wrapper.get('.delete-modal').text()).toContain('Иванов Иван')
+    expect(wrapper.get('.delete-modal').text()).toContain('Благодарность')
+
+    await wrapper.get('.delete-modal .btn.secondary').trigger('click')
+    expect(wrapper.find('.delete-modal').exists()).toBe(false)
+    expect(deleteReward).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('deletes selected reward and refreshes the list after confirmation', async () => {
+    const wrapper = await mountView('hr')
+    await wrapper.findAll('button').find(button => button.text() === 'Удалить')!.trigger('click')
+    await wrapper.findAll('.delete-modal button').find(button => button.text() === 'Удалить поощрение')!.trigger('click')
+    await flushPromises()
+
+    expect(deleteReward).toHaveBeenCalledWith(sampleReward.id)
+    expect(rewards).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('.delete-modal').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('shows an API failure and leaves confirmation open', async () => {
+    deleteReward.mockRejectedValueOnce(new ApiError('Ошибка удаления', 500))
+    const wrapper = await mountView('hr')
+    await wrapper.findAll('button').find(button => button.text() === 'Удалить')!.trigger('click')
+    await wrapper.findAll('.delete-modal button').find(button => button.text() === 'Удалить поощрение')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('.delete-modal [role="alert"]').text()).toContain('Ошибка удаления')
+    expect(wrapper.find('.delete-modal').exists()).toBe(true)
+    wrapper.unmount()
   })
 
   it('opens status counts and downloads them', async () => {
