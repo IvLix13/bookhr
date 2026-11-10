@@ -24,6 +24,7 @@ from app.services.rewards import (
     build_reward_statistics_workbook,
     build_rewards_personalized_workbook,
     create_reward,
+    delete_reward,
     reward_status_statistics,
     update_reward,
 )
@@ -140,3 +141,18 @@ def register_routes(bp):
         except ValueError as exc:
             return api_response(message=str(exc), status=400)
         return api_response(reward_to_dict(reward))
+
+    @bp.delete("/rewards/<int:reward_id>")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def delete_reward_route(reward_id: int):
+        reward = (
+            Reward.query.join(Employment, Reward.employment_id == Employment.id)
+            .filter(Reward.id == reward_id, Employment.company_id == get_request_company_id())
+            .first()
+        )
+        if reward is None:
+            return api_response(message="Not found", status=404)
+
+        delete_reward(reward)
+        db.session.commit()
+        return api_response(message="Deleted")
