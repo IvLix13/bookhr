@@ -11,6 +11,12 @@ const plan: OnboardingPlan = { id: 1, employment_id: 1, full_name: 'Иванов
   '2': { version: 1, text_value: 'Разработка', date_value: null, planned_date: null, completed_date: null, is_completed: false, is_in_progress: false, is_not_required: false },
 } }
 describe('Plan table search and states', () => {
+  it('shows stages by configured position even if props are delivered out of order', () => {
+    const unsorted = [{ ...columns[0]!, sort_order: 9 }, { ...columns[1]!, sort_order: 1 }]
+    const w = mount(Details, { props: { plan, columns: unsorted, today: '2026-10-28', editable: false } })
+    expect(w.findAll('tbody th').map(item => item.text())).toEqual(['Отдел', 'Пропуск'])
+  })
+
   it('searches visible labels, dates and values without changing row identity', async () => {
     const w = mount(Details, { props: { plan, columns, today: '2026-10-28', editable: true } })
     for (const q of [' охрана ', 'ВЫПОЛНЕНО', '14 октября 2026', 'Пропуск']) {
@@ -26,6 +32,17 @@ describe('Plan table search and states', () => {
     await w.setProps({ plan: { ...plan, cells: { ...plan.cells, '2': { ...plan.cells['2']!, text_value: 'нет совпадения' } } } })
     expect(w.findAll('tbody tr')).toHaveLength(1)
     expect(w.get('input').element.value).toBe('нет совпадения')
+  })
+  it('shows overdue for past unfinished stage and recalculates at the deadline', async () => {
+    const unfinished = { ...plan, cells: { ...plan.cells, '1': { ...plan.cells['1']!, is_completed: false, completed_date: null } } }
+    const w = mount(Details, { props: { plan: unfinished, columns, today: '2026-10-28', editable: true } })
+    expect(w.get('.status.overdue').text()).toBe('Просрочено')
+    expect(w.get('.cell-button').attributes('aria-label')).toContain('Просрочено')
+    await w.get('input').setValue('просрочено')
+    expect(w.findAll('tbody tr')).toHaveLength(1)
+    await w.get('input').setValue('')
+    await w.setProps({ today: '2026-10-15' })
+    expect(w.get('.status.in_progress').text()).toBe('В работе')
   })
   it('highlights the completed row and gives exemption priority', async () => {
     const w = mount(Details, { props: { plan, columns, today: '2026-10-28', editable: false } })

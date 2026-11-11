@@ -5,7 +5,7 @@ import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
 import type { Employee, Paginated } from '@/types'
 import type { OnboardingColumn, OnboardingCell, OnboardingDraft } from '@/types/onboarding'
-import { moscowToday } from '@/utils/onboarding'
+import { moscowToday, sortOnboardingColumns } from '@/utils/onboarding'
 import OnboardingDialog from '@/components/OnboardingDialog.vue'
 const router = useRouter()
 const step = ref(0), review = ref(false), busy = ref(false), loading = ref(false)
@@ -39,7 +39,7 @@ async function loadPeople(reset = false) {
 async function loadStructure() {
   loading.value = true
   try {
-    const fresh = (await api.onboardingColumns()).filter(c => !c.is_archived)
+    const fresh = sortOnboardingColumns((await api.onboardingColumns()).filter(c => !c.is_archived))
     const old = new Map(columns.value.map(c => [c.id, c]))
     const retained: Record<number, Partial<OnboardingCell>> = {}
     for (const c of fresh) retained[c.id] = old.get(c.id)?.field_type === c.field_type ? { ...values.value[c.id] } : {}

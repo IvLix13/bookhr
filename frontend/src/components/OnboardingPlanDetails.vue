@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { formatShortDate } from '@/utils/dates'
-import { cellLabel, stageLabels, stageState } from '@/utils/onboarding'
+import { cellLabel, sortOnboardingColumns, stageLabels, stageState } from '@/utils/onboarding'
 import type { OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 const props = defineProps<{ plan: OnboardingPlan; columns: OnboardingColumn[]; today: string; editable: boolean }>()
 const emit = defineEmits<{ edit: [column: OnboardingColumn] }>()
@@ -9,10 +9,10 @@ const query = ref('')
 const scroll = ref<HTMLElement | null>(null)
 function isStage(c: OnboardingColumn) { return c.field_type === 'stage' || c.field_type === 'checkbox' }
 function state(c: OnboardingColumn) { return stageState(c, props.plan.cells[c.id], props.today) }
-function label(c: OnboardingColumn) { const value = state(c); return isStage(c) ? (value ? stageLabels[value] : '—') : cellLabel(props.plan, c) }
+function label(c: OnboardingColumn) { const value = state(c); return isStage(c) ? (value ? stageLabels[value] : '—') : cellLabel(props.plan, c, props.today) }
 function planned(c: OnboardingColumn) { return c.field_type === 'stage' && !props.plan.cells[c.id]?.is_not_required ? formatShortDate(props.plan.cells[c.id]?.planned_date) : '—' }
 function completed(c: OnboardingColumn) { return c.field_type === 'stage' && state(c) === 'completed' ? formatShortDate(props.plan.cells[c.id]?.completed_date) : '—' }
-const visible = computed(() => props.columns.filter(c => [c.title, c.responsible_department, label(c), planned(c), completed(c)].join(' ').toLocaleLowerCase('ru').includes(query.value.trim().toLocaleLowerCase('ru'))))
+const visible = computed(() => sortOnboardingColumns(props.columns).filter(c => [c.title, c.responsible_department, label(c), planned(c), completed(c)].join(' ').toLocaleLowerCase('ru').includes(query.value.trim().toLocaleLowerCase('ru'))))
 watch(query, () => { if (scroll.value) scroll.value.scrollTop = 0 })
 watch(() => props.plan.id, () => { query.value = '' })
 </script>
@@ -24,7 +24,7 @@ watch(() => props.plan.id, () => { query.value = '' })
       <table><thead><tr><th scope="col">Этап / поле</th><th scope="col">Ответственный отдел</th><th scope="col">Плановый срок</th><th scope="col">Выполнено</th><th scope="col">Состояние / значение</th></tr></thead>
         <tbody><tr v-for="column in visible" :key="column.id" :class="{ 'row-completed': isStage(column) && state(column) === 'completed' }">
           <th scope="row">{{ column.title }}</th><td>{{ column.responsible_department || '—' }}</td><td>{{ planned(column) }}</td><td>{{ completed(column) }}</td>
-          <td :class="isStage(column) ? (state(column)?.replace('_', '-') || 'not-required') : ''"><button v-if="editable" type="button" class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column)}`" @click="emit('edit', column)"><span class="status" :class="isStage(column) ? state(column) : ''">{{ label(column) }}</span></button><span v-else class="status" :class="isStage(column) ? state(column) : ''">{{ label(column) }}</span></td>
+          <td :class="isStage(column) ? (state(column)?.replace('_', '-') || 'not-required') : ''"><button v-if="editable" type="button" class="cell-button" :aria-label="`${column.title}, ${plan.full_name}: ${cellLabel(plan, column, today)}`" @click="emit('edit', column)"><span class="status" :class="isStage(column) ? state(column) : ''">{{ label(column) }}</span></button><span v-else class="status" :class="isStage(column) ? state(column) : ''">{{ label(column) }}</span></td>
         </tr></tbody>
       </table><p v-if="!visible.length" class="empty">Ничего не найдено</p>
     </div>
@@ -44,7 +44,7 @@ td:nth-child(3), td:nth-child(4) { font-variant-numeric: tabular-nums; }
 .row-completed > th, .row-completed > td { background: #e2f5e9; }
 .cell-button { background: transparent; border: 0; color: inherit; font: inherit; text-align: left; width: 100%; min-height: 32px; padding: 0; white-space: pre-wrap; } .cell-button:hover { text-decoration: underline; }
 .status { display: inline-block; padding: .25rem .6rem; border-radius: var(--radius-pill); }
-.status.completed { color: #16803c; background: #ccebd8; } .status.in_progress { color: #886200; background: #fff4df; } .not-required { color: var(--muted); }
+.status.completed { color: #16803c; background: #ccebd8; } .status.in_progress { color: #886200; background: #fff4df; } .status.overdue { color: #b42318; background: #fce6e6; } .not-required { color: var(--muted); }
 .empty { padding: 1rem; color: var(--muted); }
 @media (max-width: 640px), (max-height: 650px) { .plan-details { flex: none; } .details-scroll { max-height: 55dvh; } }
 @media (max-width: 640px) { .details-header { flex-wrap: wrap; } input { width: 100%; } }

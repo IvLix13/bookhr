@@ -23,6 +23,20 @@ async function setup() {
   await w.findAll('nav button')[2]!.trigger('click'); await flushPromises()
   return w
 }
+it('uses display order consistently when creating and reviewing a plan', async () => {
+  mock.columns.mockResolvedValueOnce([
+    { id: 31, title: 'Третий', field_type: 'stage', sort_order: 30, version: 1, is_archived: false },
+    { id: 11, title: 'Первый', field_type: 'stage', sort_order: 10, version: 1, is_archived: false },
+    { id: 21, title: 'Второй', field_type: 'checkbox', sort_order: 20, version: 1, is_archived: false },
+  ])
+  const w = await setup()
+  expect(w.findAll('.stage-name label').map(label => label.text())).toEqual(['Первый', 'Второй', 'Третий'])
+  await w.get('#field-11').setValue('2026-11-01')
+  await w.get('#field-31').setValue('2026-11-02')
+  await w.findAll('nav button')[3]!.trigger('click'); await flushPromises()
+  await w.findAll('button').find(button => button.text().includes('Открыть план'))!.trigger('click')
+  expect(w.findAll('.stage-name label').map(label => label.text())).toEqual(['Первый', 'Второй', 'Третий'])
+})
 it('keeps all 50 dates when searching and navigating and saves a complete payload', async () => {
   const w = await setup()
   expect(w.findAll('.row')).toHaveLength(51)

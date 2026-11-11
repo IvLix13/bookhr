@@ -1,24 +1,30 @@
 import type { OnboardingCell, OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 import { formatShortDate } from '@/utils/dates'
 
-export type StageState = 'completed' | 'in_progress'
+/** Sort fields by the user-configured position, not API response order. */
+export function sortOnboardingColumns(columns: readonly OnboardingColumn[]): OnboardingColumn[] {
+  return [...columns].sort((a, b) => (a.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.sort_order ?? Number.MAX_SAFE_INTEGER) || a.id - b.id)
+}
+
+export type StageState = 'completed' | 'in_progress' | 'overdue'
 export function moscowToday() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(new Date())
 }
-export function stageState(_column: OnboardingColumn, cell: OnboardingCell | undefined, _today: string): StageState | null {
+export function stageState(column: OnboardingColumn, cell: OnboardingCell | undefined, today: string): StageState | null {
   if (cell?.is_not_required) return null
   if (cell?.is_completed) return 'completed'
+  if (column.field_type === 'stage' && cell?.planned_date && cell.planned_date < today) return 'overdue'
   return 'in_progress'
 }
 export const stageLabels: Record<StageState, string> = {
-  completed: 'Выполнено', in_progress: 'В работе',
+  completed: 'Выполнено', in_progress: 'В работе', overdue: 'Просрочено',
 }
-export function cellLabel(plan: OnboardingPlan, column: OnboardingColumn) {
+export function cellLabel(plan: OnboardingPlan, column: OnboardingColumn, today = moscowToday()) {
   const cell = plan.cells[column.id]
   if (cell?.is_not_required) return '—'
   if (column.field_type === 'text') return cell?.text_value || '—'
   if (column.field_type === 'date') return formatShortDate(cell?.date_value)
-  const state = stageState(column, cell, '')!
+  const state = stageState(column, cell, today)!
   const date = column.field_type === 'stage' ? (cell?.is_completed ? cell.completed_date : cell?.planned_date) : null
   return date ? `${stageLabels[state]} · ${formatShortDate(date)}` : stageLabels[state]
 }
@@ -27,7 +33,7 @@ export function planSummary(plan: OnboardingPlan, columns: OnboardingColumn[], t
   const stages = active.filter(c => c.field_type === 'stage' || c.field_type === 'checkbox')
     .sort((a, b) => a.sort_order - b.sort_order || a.id - b.id)
   const required = stages.filter(c => !plan.cells[c.id]?.is_not_required)
-  const counts = { completed: 0, in_progress: 0 }
+  const counts = { completed: 0, in_progress: 0, overdue: 0 }
   for (const column of required) {
     const state = stageState(column, plan.cells[column.id], today)
     if (state) counts[state]++
