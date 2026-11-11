@@ -28,6 +28,9 @@ const curatorConflict = ref(false)
 const curatorSaveBlocked = computed(() =>
   curatorSaving.value || curatorConflict.value || !editable.value || loading.value || !!error.value,
 )
+const curatorSubmitBlocked = computed(() =>
+  curatorSaveBlocked.value || (auth.user?.role === 'viewer' && !dirty.value),
+)
 const state = computed(() => ({ dirty: dirty.value, busy: curatorSaving.value }))
 function editCurator() {
   if (blocked.value) return
@@ -41,7 +44,7 @@ function editCurator() {
   curatorEditing.value = true
 }
 async function saveCurator() {
-  if (curatorSaveBlocked.value || !dirty.value) return
+  if (curatorSubmitBlocked.value) return
   curatorSaving.value = true
   curatorError.value = ''
   try {
@@ -147,7 +150,7 @@ onMounted(load)
         <label :for="`curator-${plan.id}`">ФИО наставника</label>
         <input ref="mentorInput" :id="`curator-${plan.id}`" v-model="curator" maxlength="256" :disabled="curatorSaveBlocked" />
         <small v-if="auth.user?.role === 'viewer'">Укажите полное ФИО действующего сотрудника вашего отдела.</small>
-        <div class="form-actions"><button class="btn" :disabled="curatorSaveBlocked || !dirty">{{ curatorSaving ? 'Сохранение…' : 'Сохранить наставника' }}</button><button type="button" class="btn secondary" :disabled="curatorSaving" @click="curatorEditing = false">Отмена</button></div>
+        <div class="form-actions"><button class="btn" :disabled="curatorSubmitBlocked">{{ curatorSaving ? 'Сохранение…' : 'Сохранить наставника' }}</button><button type="button" class="btn secondary" :disabled="curatorSaving" @click="curatorEditing = false">Отмена</button></div>
         <p v-if="curatorError" role="alert" class="error">{{ curatorError }}</p>
         <p v-if="curatorConflict">Ваш ввод сохранён. Закройте форму и откройте её снова для редактирования актуальной версии.</p>
       </form>
