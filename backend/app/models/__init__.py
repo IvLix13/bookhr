@@ -19,6 +19,7 @@ from app.models.import_job import ImportJob, ImportRow, ImportStatus, ImportType
 from app.models.manual_statistics import ManualStatisticsSnapshot
 from app.models.notification import DeliveryStatus, NotificationDelivery, NotificationRule
 from app.models.passport import Passport, PassportStatus
+from app.models.personal_document_errors import PersonalDocumentErrorsSnapshot
 from app.models.reward import REWARD_STATUS_LABELS, Reward, RewardStatus
 from app.models.tenure import TenureAward
 from app.models.user import AuthSource, Role, RoleName, User
@@ -53,6 +54,7 @@ __all__ = [
     "PassportStatus",
     "Person",
     "PersonNameHistory",
+    "PersonalDocumentErrorsSnapshot",
     "PositionHistory",
     "StaffDirectoryState",
     "REWARD_STATUS_LABELS",

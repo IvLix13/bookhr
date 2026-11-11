@@ -1,3 +1,6 @@
+import type { Employee } from '@/types'
+
+export type OnboardingCandidate = Pick<Employee, 'id' | 'person_uuid' | 'full_name' | 'actual_grade' | 'hire_date' | 'status'>
 export type OnboardingFieldType = 'text' | 'date' | 'stage' | 'checkbox'
 export interface OnboardingColumn {
   id: number

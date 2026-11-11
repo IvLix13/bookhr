@@ -3,17 +3,18 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRouter } from 'vue-router'
 import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
-import type { Employee, Paginated } from '@/types'
-import type { OnboardingColumn, OnboardingCell, OnboardingDraft } from '@/types/onboarding'
+import { useAuthStore } from '@/stores/auth'
+import type { OnboardingCandidate, OnboardingColumn, OnboardingCell, OnboardingDraft } from '@/types/onboarding'
 import { moscowToday, sortOnboardingColumns } from '@/utils/onboarding'
 import OnboardingDialog from '@/components/OnboardingDialog.vue'
 const router = useRouter()
+const auth = useAuthStore()
 const step = ref(0), review = ref(false), busy = ref(false), loading = ref(false)
-const employee = ref<Employee>(), mentor = ref<Employee>()
+const employee = ref<OnboardingCandidate>(), mentor = ref<OnboardingCandidate>()
 const columns = ref<OnboardingColumn[]>([])
 const values = ref<Record<number, Partial<OnboardingCell>>>({})
 const search = ref(''), stageSearch = ref(''), page = ref(1), pages = ref(1)
-const people = ref<Employee[]>([])
+const people = ref<OnboardingCandidate[]>([])
 const error = ref(''), dirty = ref(false), menu = ref(false), discard = ref(false), saved = ref(false)
 let requestId = 0, alive = true, timer: ReturnType<typeof setTimeout> | undefined
 const steps = ['Сотрудник', 'Наставник', 'Мероприятия', 'Проверка']
@@ -22,7 +23,7 @@ const dated = computed(() => columns.value.filter(c => c.field_type === 'stage' 
 const filled = computed(() => dated.value.filter(c => values.value[c.id]?.planned_date).length)
 const visible = computed(() => columns.value.filter(c => c.title.toLocaleLowerCase('ru').includes(stageSearch.value.toLocaleLowerCase('ru'))))
 const eligiblePeople = computed(() => people.value.filter(p => step.value !== 1 || p.person_uuid !== employee.value?.person_uuid))
-const grade = (p?: Employee) => p?.actual_grade?.name || 'Грейд не назначен'
+const grade = (p?: OnboardingCandidate) => p?.actual_grade?.name || 'Грейд не назначен'
 const payload = (): OnboardingDraft => ({ employment_id: employee.value!.id, mentor_id: mentor.value!.id, cells: columns.value.map(c => ({ column_id: c.id, column_version: c.version, values: { ...values.value[c.id] } })) })
 function markDirty() { dirty.value = true }
 async function loadPeople(reset = false) {
@@ -30,7 +31,7 @@ async function loadPeople(reset = false) {
   const id = ++requestId
   loading.value = true
   try {
-    const data = await api.employees({ q: search.value, active_only: step.value === 1, page: page.value, per_page: 25 }) as Paginated<Employee>
+    const data = await api.onboardingCandidates({ q: search.value, active_only: step.value === 1, page: page.value, per_page: 25 })
     if (!alive || id !== requestId) return
     people.value = data.items; pages.value = data.pages || 1
   } catch (err) { if (alive && id === requestId) error.value = normalizeError(err) }
@@ -47,7 +48,7 @@ async function loadStructure() {
   } catch (err) { error.value = normalizeError(err) }
   finally { loading.value = false }
 }
-function selectPerson(p: Employee) {
+function selectPerson(p: OnboardingCandidate) {
   if (step.value === 0) { employee.value = p; if (mentor.value?.person_uuid === p.person_uuid) mentor.value = undefined }
   else mentor.value = p
   markDirty()
@@ -113,7 +114,7 @@ onUnmounted(() => { alive = false; requestId++; clearTimeout(timer); window.remo
 <template>
   <section class="card creation-page">
     <header class="page-head"><div><p>План работы ввода в должность / Создание плана</p><h2>{{ review ? 'Проверьте план перед сохранением' : 'Новый план работы ввода в должность' }}</h2></div>
-      <div v-if="review" class="menu-anchor"><button class="btn ghost" :disabled="busy" :aria-expanded="menu" aria-label="Действия с планом" @click="menu = !menu">☰</button><div v-if="menu" class="action-menu card"><button class="btn ghost" @click="exportDraft">Выгрузить план</button><button class="btn" @click="finish">Завершить</button><button class="btn ghost" @click="close">Отменить создание</button></div></div>
+      <div v-if="review" class="menu-anchor"><button class="btn ghost" :disabled="busy" :aria-expanded="menu" aria-label="Действия с планом" @click="menu = !menu">☰</button><div v-if="menu" class="action-menu card"><button v-if="auth.canEdit()" class="btn ghost" @click="exportDraft">Выгрузить план</button><button class="btn" @click="finish">Завершить</button><button class="btn ghost" @click="close">Отменить создание</button></div></div>
     </header>
     <template v-if="review"><div class="summary"><div>Сотрудник<strong>{{ employee?.full_name }}</strong>{{ grade(employee) }}</div><div>Наставник<strong>{{ mentor?.full_name }}</strong>{{ grade(mentor) }}<button class="btn secondary" :disabled="busy" @click="review = false; go(1)">Изменить наставника</button></div></div></template>
     <component :is="review ? 'div' : OnboardingDialog" v-bind="review ? {} : { title: 'Создание плана', busy }" @close="close">

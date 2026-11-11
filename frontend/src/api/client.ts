@@ -1,5 +1,6 @@
 import { ApiError } from '@/api/errors'
-import type { OnboardingColumn, OnboardingCell, OnboardingPlan, OnboardingFieldType, OnboardingDeletePreview } from '@/types/onboarding'
+import type { OnboardingCandidate, OnboardingColumn, OnboardingCell, OnboardingPlan, OnboardingFieldType, OnboardingDeletePreview } from '@/types/onboarding'
+import type { PersonalDocumentErrorsResult } from '@/types/personalDocumentErrors'
 import { localizeApiMessage } from '@/utils/labels'
 import type {
   ApiResponse,
@@ -112,6 +113,8 @@ function triggerDownload(blob: Blob, filename: string) {
 }
 
 export const api = {
+  refreshPersonalDocumentErrors: () =>
+    request<PersonalDocumentErrorsResult>('/api/personal-document-errors/refresh', { method: 'POST' }),
   onboardingTemplateInfo: () => request<{ version: number }>('/api/onboarding/docx-template/info'),
   downloadOnboardingTemplate: async () => {
     const response = await fetch('/api/onboarding/docx-template', { credentials: 'include' })
@@ -134,6 +137,8 @@ export const api = {
     request<OnboardingColumn[]>('/api/onboarding/columns/order', { method: 'PATCH', body: JSON.stringify({ columns }) }),
   onboardingPlans: (params: TableQueryParams = {}) =>
     request<Paginated<OnboardingPlan>>(`/api/onboarding/plans${buildQuery(params)}`),
+  onboardingCandidates: (params: TableQueryParams = {}) =>
+    request<Paginated<OnboardingCandidate>>(`/api/onboarding/employees${buildQuery(params)}`),
   downloadOnboarding: async () => {
     const response = await fetch('/api/onboarding/export', { credentials: 'include' })
     if (response.status === 401) unauthorizedHandler?.()

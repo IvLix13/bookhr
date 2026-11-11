@@ -10,7 +10,7 @@ def normalized_name(name):
     return " ".join((name or "").split()).casefold()
 
 
-def matching_curator(employee, name):
+def matching_curator(employee, name, *, employment_ids=None):
     """Support old text-only plans using an unambiguous full current name."""
     target = normalized_name(name)
     if not target:
@@ -18,6 +18,7 @@ def matching_curator(employee, name):
     matches = [
         row for row in company_employments(employee.company_id)
         if row.status == "active" and row.person_id != employee.person_id
+        and (employment_ids is None or row.id in employment_ids)
         and normalized_name(get_current_name(row.person)) == target
     ]
     return matches[0] if len(matches) == 1 else None

@@ -1,5 +1,6 @@
 export const MODULE_LABELS = {
   onboarding: 'План работы ввода в должность',
+  personalDocumentErrors: 'Ошибки в ЛД',
   calendar: 'Календарь',
   statistics: 'Статистика',
   employees: 'Сотрудники',

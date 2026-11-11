@@ -84,21 +84,25 @@ def cell_dict(cell):
     return {key: value.isoformat() if isinstance(value, date) else value for key, value in result.items()}
 
 
-def onboarding_plan_query(company_id):
-    """Return the company-scoped plan query with all display data preloaded."""
-    return (
+def _plan_scope(company_id, employment_ids):
+    query = (
         OnboardingPlan.query.join(Employment, OnboardingPlan.employment_id == Employment.id)
         .filter(Employment.company_id == company_id)
-        .options(
-            selectinload(OnboardingPlan.cells),
-            selectinload(OnboardingPlan.employment).selectinload(Employment.position_history),
-            selectinload(OnboardingPlan.employment)
-            .selectinload(Employment.person)
-            .selectinload(Person.name_history),
-            selectinload(OnboardingPlan.employment)
-            .selectinload(Employment.grade_history)
-            .selectinload(EmployeeGradeHistory.grade),
-        )
+    )
+    return query.filter(Employment.id.in_(employment_ids)) if employment_ids is not None else query
+
+
+def onboarding_plan_query(company_id, *, employment_ids=None):
+    """Return the scoped plan query with all display data preloaded."""
+    return _plan_scope(company_id, employment_ids).options(
+        selectinload(OnboardingPlan.cells),
+        selectinload(OnboardingPlan.employment).selectinload(Employment.position_history),
+        selectinload(OnboardingPlan.employment)
+        .selectinload(Employment.person)
+        .selectinload(Person.name_history),
+        selectinload(OnboardingPlan.employment)
+        .selectinload(Employment.grade_history)
+        .selectinload(EmployeeGradeHistory.grade),
     )
 
 
@@ -108,21 +112,19 @@ def current_plan_name(plan):
     return name.full_name if name else None
 
 
-def names_match(left, right):
-    if not isinstance(left, str) or not isinstance(right, str):
-        return False
-    folded_left = left.strip().casefold()
-    folded_right = right.strip().casefold()
-    return bool(folded_left) and folded_left == folded_right
-
-
-def plan_dict(plan):
+def plan_dict(plan, *, employment_ids=None):
     from app.services.department_heads import employee_position, head_values, short_employee_name
     from app.services.departments import department_key
+    from app.services.onboarding_curators import curator_for_plan
     employment = plan.employment
     head_status, head = head_values(employment)
     grades = [item for item in employment.grade_history if item.valid_to is None]
     grade = max(grades, key=lambda item: (item.assigned_date, item.id)) if grades else None
+    curator_name = plan.curator_name
+    if curator_name and employment_ids is not None:
+        mentor = curator_for_plan(plan)
+        if mentor is None or mentor.id not in employment_ids:
+            curator_name = None
     return {
         "id": plan.id,
         "employment_id": employment.id,
@@ -136,7 +138,7 @@ def plan_dict(plan):
         "grade": grade.grade.name if grade else None,
         "employment_status": employment.status,
         "hire_date": employment.hire_date.isoformat(),
-        "curator_name": plan.curator_name,
+        "curator_name": curator_name,
         "version": plan.version,
         "cells": {str(cell.column_id): cell_dict(cell) for cell in plan.cells},
     }
@@ -149,14 +151,10 @@ def find_column(column_id, company_id):
     return column
 
 
-def find_plan(plan_id, company_id):
-    from app.models import Employment
-    plan = OnboardingPlan.query.join(Employment, OnboardingPlan.employment_id == Employment.id).filter(
-        OnboardingPlan.id == plan_id, Employment.company_id == company_id
-    ).first()
-    if plan is None:
-        raise NotFound()
-    return plan
+def find_plan(plan_id, company_id, *, employment_ids=None):
+    return _plan_scope(company_id, employment_ids).filter(
+        OnboardingPlan.id == plan_id
+    ).first_or_404()
 
 
 def check_version(expected, actual):
@@ -268,7 +266,7 @@ def save_cell(plan, column, payload):
     return cell
 
 
-def save_plan(plan, payload):
+def save_plan(plan, payload, *, employment_ids=None):
     from app.services.onboarding_curators import matching_curator, normalized_name
     check_version(payload["version"], plan.version)
     old = {"curator_name": plan.curator_name, "version": plan.version,
@@ -277,6 +275,11 @@ def save_plan(plan, payload):
     plan.curator_name = (name.strip() or None) if name is not None else None
     if not plan.curator_name:
         plan.curator_employment_id = None
+    elif employment_ids is not None:
+        mentor = matching_curator(plan.employment, plan.curator_name, employment_ids=employment_ids)
+        if mentor is None:
+            raise ValueError("Укажите полное ФИО действующего наставника из вашего отдела. ФИО должно быть уникальным в отделе.")
+        plan.curator_employment_id = mentor.id
     elif (plan.curator_employment_id is None
           or normalized_name(plan.curator_name) != normalized_name(old["curator_name"])):
         mentor = matching_curator(plan.employment, plan.curator_name)
