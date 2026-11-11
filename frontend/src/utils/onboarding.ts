@@ -1,6 +1,11 @@
 import type { OnboardingCell, OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 import { formatShortDate } from '@/utils/dates'
 
+/** Sort fields by the user-configured position, not API response order. */
+export function sortOnboardingColumns(columns: readonly OnboardingColumn[]): OnboardingColumn[] {
+  return [...columns].sort((a, b) => (a.sort_order ?? Number.MAX_SAFE_INTEGER) - (b.sort_order ?? Number.MAX_SAFE_INTEGER) || a.id - b.id)
+}
+
 export type StageState = 'completed' | 'in_progress' | 'overdue'
 export function moscowToday() {
   return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Moscow' }).format(new Date())

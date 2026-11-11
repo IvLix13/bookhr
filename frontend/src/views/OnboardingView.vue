@@ -5,7 +5,7 @@ import { api } from '@/api/client'
 import { normalizeError } from '@/api/errors'
 import { useAuthStore } from '@/stores/auth'
 import OnboardingPlanCard from '@/components/OnboardingPlanCard.vue'
-import { moscowToday } from '@/utils/onboarding'
+import { moscowToday, sortOnboardingColumns } from '@/utils/onboarding'
 import OnboardingPlanModal from '@/components/OnboardingPlanModal.vue'
 import OnboardingColumnsModal from '@/components/OnboardingColumnsModal.vue'
 import type { OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
@@ -16,7 +16,7 @@ const auth = useAuthStore()
 const today = ref(moscowToday())
 const selectedPlanId = ref<number | null>(null)
 const columns = ref<OnboardingColumn[]>([])
-const visibleColumns = computed(() => columns.value.filter(c => !c.is_archived))
+const visibleColumns = computed(() => sortOnboardingColumns(columns.value.filter(c => !c.is_archived)))
 const plans = ref<OnboardingPlan[]>([])
 const page = ref(1)
 const pages = ref(0)

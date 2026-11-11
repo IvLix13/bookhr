@@ -5,6 +5,7 @@ import OnboardingColumnEditorDialog from './OnboardingColumnEditorDialog.vue'
 import OnboardingDeleteDialog from './OnboardingDeleteDialog.vue'
 import { api } from '@/api/client'
 import { ApiError, normalizeError } from '@/api/errors'
+import { sortOnboardingColumns } from '@/utils/onboarding'
 import type { OnboardingColumn, OnboardingFieldType } from '@/types/onboarding'
 
 const icons = {
@@ -42,7 +43,8 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const typeNames = { text: 'Текст', date: 'Дата', stage: 'Этап с датами', checkbox: 'Этап без даты' }
 function mapping(column: OnboardingColumn) { return documentStages.value.find(s => s.key === column.document_stage_key) }
 function placeholders(column: OnboardingColumn) { const stage = column.field_type === 'stage' ? mapping(column) : undefined; return [stage?.date_placeholder, stage?.department_placeholder] }
-const filtered = computed(() => props.columns.filter(c => [c.title, c.responsible_department, typeNames[c.field_type], mapping(c)?.title, ...placeholders(c)].join(' ').toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())))
+const ordered = computed(() => sortOnboardingColumns(props.columns))
+const filtered = computed(() => ordered.value.filter(c => [c.title, c.responsible_department, typeNames[c.field_type], mapping(c)?.title, ...placeholders(c)].join(' ').toLocaleLowerCase().includes(query.value.trim().toLocaleLowerCase())))
 function showMenu(column: OnboardingColumn, event: MouseEvent) {
   const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
   menuPosition.value = { top: Math.max(8, Math.min(rect.bottom + 4, window.innerHeight - 260)) + 'px', left: Math.max(8, Math.min(rect.right - 230, window.innerWidth - 238)) + 'px' }
@@ -65,11 +67,77 @@ const busy = ref(false)
 const error = ref('')
 const stale = ref(false)
 const deleteTarget = ref<OnboardingColumn | null>(null)
+const orderOpen = ref(false)
+const orderIds = ref<number[]>([])
+const originalOrderIds = ref<number[]>([])
+const orderSnapshot = ref('')
+const draggingId = ref<number | null>(null)
+const orderStale = ref(false)
+const orderDirty = computed(() => orderOpen.value && orderIds.value.some((id, i) => id !== originalOrderIds.value[i]))
+const byId = computed(() => new Map(props.columns.map(c => [c.id, c])))
+const arranged = computed(() => orderIds.value.map(id => byId.value.get(id)).filter((c): c is OnboardingColumn => !!c))
+const combinedDirty = computed(() => dirty.value || orderDirty.value)
 const deleteBusy = computed(() => busy.value || !!deleteTarget.value || editorOpen.value)
+function signature(columns: OnboardingColumn[]) {
+  return sortOnboardingColumns(columns).map(c => [c.id, c.version, c.sort_order].join(':')).join('|')
+}
+function beginOrder() {
+  if (busy.value || editorOpen.value) return
+  const sorted = ordered.value
+  originalOrderIds.value = sorted.map(c => c.id)
+  orderIds.value = [...originalOrderIds.value]
+  orderSnapshot.value = signature(props.columns)
+  orderStale.value = false
+  error.value = ''
+  orderOpen.value = true
+}
+function moveOrder(id: number, target: number) {
+  if (busy.value || orderStale.value) return
+  const from = orderIds.value.indexOf(id)
+  if (from < 0 || !Number.isFinite(target)) return
+  const to = Math.max(0, Math.min(orderIds.value.length - 1, Math.floor(target)))
+  if (from === to) return
+  const updated = [...orderIds.value]
+  updated.splice(from, 1)
+  updated.splice(to, 0, id)
+  orderIds.value = updated
+}
+function startDrag(id: number, event: DragEvent) {
+  if (busy.value || orderStale.value) { event.preventDefault(); return }
+  draggingId.value = id
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(id))
+  }
+}
+function dropOrder(id: number) {
+  if (draggingId.value !== null) moveOrder(draggingId.value, orderIds.value.indexOf(id))
+  draggingId.value = null
+}
+function cancelOrder() {
+  if (busy.value) return
+  if (orderDirty.value && !window.confirm('Сбросить несохранённый порядок этапов?')) return
+  orderOpen.value = false
+  orderIds.value = []
+  error.value = ''
+}
+watch(() => props.columns, incoming => {
+  if (!orderOpen.value || signature(incoming) === orderSnapshot.value) return
+  if (orderDirty.value || busy.value) {
+    orderStale.value = true
+    error.value = 'Структура изменилась. Вернитесь к настройкам и откройте порядок заново.'
+  } else {
+    const sorted = sortOnboardingColumns(incoming)
+    originalOrderIds.value = sorted.map(c => c.id)
+    orderIds.value = [...originalOrderIds.value]
+    orderSnapshot.value = signature(incoming)
+  }
+})
+
 const archiveTarget = ref<OnboardingColumn | null>(null)
 const initialDraft = ref(JSON.stringify({ title: '', field_type: 'stage', responsible_department: '', document_stage_key: '' }))
 const dirty = computed(() => JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department, document_stage_key: draft.document_stage_key }) !== initialDraft.value)
-watch([dirty, deleteBusy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
+watch([combinedDirty, deleteBusy], ([dirty, busy]) => emit('state', { dirty, busy }), { immediate: true })
 function edit(column?: OnboardingColumn) {
   Object.assign(draft, { id: column?.id ?? 0, version: column?.version ?? 0, title: column?.title ?? '', field_type: column?.field_type ?? 'stage', responsible_department: column?.responsible_department ?? '', document_stage_key: column?.document_stage_key ?? '' })
   initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department, document_stage_key: draft.document_stage_key })
@@ -88,12 +156,14 @@ async function run(action: () => Promise<unknown>, reset = false) {
     if (reset) { editorOpen.value = false; initialDraft.value = JSON.stringify({ title: draft.title, field_type: draft.field_type, responsible_department: draft.responsible_department, document_stage_key: draft.document_stage_key }) }
     archiveTarget.value = null
     emit('changed')
+    return true
   } catch (err) {
     error.value = normalizeError(err)
     if (err instanceof ApiError && err.status === 409) {
       stale.value = true
       emit('changed')
     }
+    return false
   } finally { busy.value = false }
 }
 function save() {
@@ -103,8 +173,18 @@ function save() {
     ? api.updateOnboardingColumn(draft.id, { ...payload, version: draft.version }).then(value => { result.value = value })
     : api.createOnboardingColumn(payload).then(value => { result.value = value }), true)
 }
+async function saveOrder() {
+  if (!orderDirty.value || orderStale.value || busy.value) return
+  const applied = await run(() => api.orderOnboardingColumns(arranged.value.map(c => ({ id: c.id, version: c.version }))))
+  if (applied) {
+    orderOpen.value = false
+    orderIds.value = []
+  } else if (stale.value) {
+    orderStale.value = true
+  }
+}
 function move(index: number, delta: number) {
-  const next = [...props.columns]
+  const next = [...ordered.value]
   const item = next.splice(index, 1)[0]!
   next.splice(index + delta, 0, item)
   return run(() => api.orderOnboardingColumns(next.map(c => ({ id: c.id, version: c.version }))))
@@ -117,8 +197,41 @@ function archive(column: OnboardingColumn) {
 <template>
   <section class="card columns-panel" aria-label="Настройка этапов">
     <h3>Структура таблицы</h3>
-    <p>Сотрудники отображаются карточками. Грейд и ФИО — системные данные. Этапы и поля общие для всей компании. Архивирование сохраняет значения.</p>
-    <div class="table-toolbar"><input type="search" v-model="query" aria-label="Поиск по таблице" placeholder="Поиск по таблице" /><button class="btn" :disabled="busy" @click="edit()">Добавить этап</button></div>
+    <p>Сотрудники отображаются карточками. Грейд и ФИО — системные данные. Этапы и поля общие для всей компании. Архивирование сохраняет значения. Порядок задаётся один раз для всей компании и применяется в планах и мастере создания.</p>
+    <div v-if="orderOpen" class="order-workspace" aria-label="Порядок отображения этапов">
+      <h4>Порядок отображения этапов</h4>
+      <p>Перетаскивайте строки за маркер, выбирайте позицию или используйте стрелки. В архиве этапы тоже можно упорядочивать — они останутся скрытыми в планах.</p>
+      <form @submit.prevent="saveOrder">
+        <div class="order-scroll" role="list" aria-label="Порядок этапов">
+          <div v-for="(column, index) in arranged" :key="column.id" class="order-item" role="listitem"
+            :class="{ dragging: draggingId === column.id }" @dragover.prevent @drop.prevent="dropOrder(column.id)">
+            <span class="drag-handle" :draggable="!busy && !orderStale" :title="'Перетащить: ' + column.title" aria-hidden="true"
+              @dragstart="startDrag(column.id, $event)" @dragend="draggingId = null">⠿</span>
+            <span class="order-index">{{ index + 1 }}</span>
+            <div class="order-info"><strong>{{ column.title }}</strong><small>{{ typeNames[column.field_type] }}<span v-if="column.is_archived"> · В архиве</span></small></div>
+            <label class="position-choice">Позиция
+              <select :value="index + 1" :aria-label="'Позиция: ' + column.title" :disabled="busy || orderStale"
+                @change="moveOrder(column.id, Number(($event.target as HTMLSelectElement).value) - 1)">
+                <option v-for="position in arranged.length" :key="position" :value="position">{{ position }}</option>
+              </select>
+            </label>
+            <div class="order-buttons">
+              <button type="button" class="btn secondary" :aria-label="'Выше: ' + column.title" :disabled="busy || orderStale || index === 0" @click="moveOrder(column.id, index - 1)">↑</button>
+              <button type="button" class="btn secondary" :aria-label="'Ниже: ' + column.title" :disabled="busy || orderStale || index === arranged.length - 1" @click="moveOrder(column.id, index + 1)">↓</button>
+            </div>
+          </div>
+          <p v-if="!arranged.length" class="muted">Нет этапов для настройки.</p>
+        </div>
+        <p v-if="error" role="alert" class="error">{{ error }}</p>
+        <div class="order-footer">
+          <span aria-live="polite">{{ orderDirty ? 'Есть несохранённые изменения' : 'Порядок не изменён' }}</span>
+          <button type="button" class="btn secondary" :disabled="busy" @click="cancelOrder">Назад к настройкам</button>
+          <button type="submit" class="btn" :disabled="busy || orderStale || !orderDirty">{{ busy ? 'Сохранение…' : 'Сохранить порядок' }}</button>
+        </div>
+      </form>
+    </div>
+    <template v-else>
+    <div class="table-toolbar"><input type="search" v-model="query" aria-label="Поиск по таблице" placeholder="Поиск по таблице" /><div class="toolbar-buttons"><button type="button" class="btn secondary" :disabled="busy || editorOpen" @click="beginOrder">Настроить порядок</button><button class="btn" :disabled="busy" @click="edit()">Добавить этап</button></div></div>
     <div v-if="result" class="creation-result" role="status"><strong>{{ result.title }} — сохранено</strong><p>Плейсхолдеры для DOCX</p><div v-for="(value, index) in placeholders(result)" :key="index"><template v-if="value"><span>{{ index ? 'Ответственный отдел' : 'Дата этапа' }}: </span><code>{{ value }}</code> <button class="btn secondary" @click="copy(value)">Копировать</button></template></div><p v-if="!placeholders(result).some(Boolean)">Для плейсхолдеров выберите этап с датами и сопоставление в документе.</p></div>
     <OnboardingColumnEditorDialog v-if="editorOpen" @close="closeEditor" :busy="busy">
     <h3>{{ draft.id ? 'Изменить этап' : 'Добавить этап' }}</h3>
@@ -135,21 +248,44 @@ function archive(column: OnboardingColumn) {
     <p v-if="stagesError" role="alert" class="error">{{ stagesError }} <button class="btn secondary" type="button" @click="loadDocumentStages">Повторить загрузку этапов документа</button></p>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
     <p v-if="stale">Список обновляется. Ввод сохранён; выберите поле заново для редактирования.</p>
-    <div class="table-scroll" @scroll="menu = null"><table class="table"><thead><tr><th>Название</th><th>Ответственный отдел</th><th>Тип</th><th>Соответствует этапу в документе</th><th>Плейсхолдер даты</th><th>Плейсхолдер отдела</th><th aria-label="Действия"></th></tr></thead><tbody><tr v-for="column in filtered" :key="column.id"><td>{{ column.title }} <span v-if="column.is_archived">(архив)</span></td><td>{{ column.responsible_department || '—' }}</td><td>{{ typeNames[column.field_type] }}</td><td>{{ mapping(column)?.title || 'Не сопоставлен' }}</td><td v-for="(value, index) in placeholders(column)" :key="index"><template v-if="value"><code>{{ value }}</code><button class="btn secondary copy-button" @click="copy(value)" aria-label="Копировать плейсхолдер">⧉</button></template><span v-else>—</span></td><td><button class="btn secondary" :disabled="busy" aria-label="Действия с этапом" :aria-expanded="menu?.id === column.id" @click="showMenu(column, $event)">☰</button></td></tr><tr v-if="!filtered.length"><td colspan="7">Ничего не найдено</td></tr></tbody></table></div>
+    <div class="table-scroll" @scroll="menu = null"><table class="table"><thead><tr><th scope="col">№</th><th>Название</th><th>Ответственный отдел</th><th>Тип</th><th>Соответствует этапу в документе</th><th>Плейсхолдер даты</th><th>Плейсхолдер отдела</th><th aria-label="Действия"></th></tr></thead><tbody><tr v-for="column in filtered" :key="column.id"><td class="order-number">{{ ordered.findIndex(c => c.id === column.id) + 1 }}</td><td>{{ column.title }} <span v-if="column.is_archived">(архив)</span></td><td>{{ column.responsible_department || '—' }}</td><td>{{ typeNames[column.field_type] }}</td><td>{{ mapping(column)?.title || 'Не сопоставлен' }}</td><td v-for="(value, index) in placeholders(column)" :key="index"><template v-if="value"><code>{{ value }}</code><button class="btn secondary copy-button" @click="copy(value)" aria-label="Копировать плейсхолдер">⧉</button></template><span v-else>—</span></td><td><button class="btn secondary" :disabled="busy" aria-label="Действия с этапом" :aria-expanded="menu?.id === column.id" @click="showMenu(column, $event)">☰</button></td></tr><tr v-if="!filtered.length"><td colspan="8">Ничего не найдено</td></tr></tbody></table></div>
     <p>Показано {{ filtered.length }} из {{ columns.length }}</p>
-    <Teleport to="body"><div v-if="menu" class="menu-backdrop" @click.self="menu = null" @keydown.esc.stop="menu = null"><div ref="menuElement" class="row-menu card" role="dialog" aria-label="Действия с этапом" tabindex="-1" :style="menuPosition"><button class="btn secondary" @click="edit(menu!)">Изменить</button><button class="btn secondary" :disabled="columns.indexOf(menu) === 0" @click="move(columns.indexOf(menu!), -1); menu = null">Вверх в общем списке</button><button class="btn secondary" :disabled="columns.indexOf(menu) === columns.length - 1" @click="move(columns.indexOf(menu!), 1); menu = null">Вниз в общем списке</button><button class="btn secondary" @click="menu.is_archived ? archive(menu) : archiveTarget = menu; menu = null">{{ menu.is_archived ? 'Восстановить' : 'Архивировать' }}</button><button class="btn danger" @click="deleteTarget = menu; menu = null">Удалить</button></div></div></Teleport>
+    <Teleport to="body"><div v-if="menu" class="menu-backdrop" @click.self="menu = null" @keydown.esc.stop="menu = null"><div ref="menuElement" class="row-menu card" role="dialog" aria-label="Действия с этапом" tabindex="-1" :style="menuPosition"><button class="btn secondary" @click="edit(menu!)">Изменить</button><button class="btn secondary" :disabled="ordered.indexOf(menu) === 0" @click="move(columns.indexOf(menu!), -1); menu = null">Вверх в общем списке</button><button class="btn secondary" :disabled="ordered.indexOf(menu) === ordered.length - 1" @click="move(columns.indexOf(menu!), 1); menu = null">Вниз в общем списке</button><button class="btn secondary" @click="menu.is_archived ? archive(menu) : archiveTarget = menu; menu = null">{{ menu.is_archived ? 'Восстановить' : 'Архивировать' }}</button><button class="btn danger" @click="deleteTarget = menu; menu = null">Удалить</button></div></div></Teleport>
     <div v-if="archiveTarget" role="alert" class="archive-confirm">
       <p>Скрыть «{{ archiveTarget.title }}» у всех сотрудников? Значения останутся сохранены.</p>
       <button class="btn" :disabled="busy" @click="archive(archiveTarget)" aria-label="Подтвердить архивирование" title="Архивировать"><svg viewBox="0 0 24 24"><path :d="icons.archive" /></svg></button>
       <button class="btn secondary" :disabled="busy" @click="archiveTarget = null" aria-label="Отменить архивирование" title="Отмена"><svg viewBox="0 0 24 24"><path :d="icons.close" /></svg></button>
     </div>
     <OnboardingDeleteDialog v-if="deleteTarget" kind="columns" :id="deleteTarget.id" :title="`Удалить поле «${deleteTarget.title}»`" @close="deleteTarget = null" @conflict="emit('changed')" @deleted="if (draft.id === deleteTarget.id) { result = null; editorOpen = false; } deleteTarget = null; emit('changed')" />
+    </template>
   </section>
 </template>
 
 <style scoped>
 .columns-panel { display:flex;flex-direction:column;min-height:0;overflow:hidden; }
-.table-toolbar { display:flex;justify-content:space-between;gap:1rem;margin-bottom:1rem; }
+.table-toolbar { display:flex;justify-content:space-between;gap:1rem;margin-bottom:1rem;align-items:center; }
+.toolbar-buttons { display:flex;gap:.5rem;align-items:center;flex-wrap:wrap; }
+.order-number { width:3rem;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums; }
+.order-workspace { min-height:0;display:flex;flex-direction:column;gap:.6rem; }
+.order-workspace h4 { margin:.5rem 0 0; }
+.order-workspace p { color:var(--muted);margin:.25rem 0 .6rem;font-size:.9rem; }
+.order-workspace form { display:flex;flex-direction:column;min-height:0; }
+.order-scroll { overflow:auto;min-height:0;max-height:49dvh;border:1px solid var(--border);border-radius:var(--radius-md); }
+.order-item { display:flex;align-items:center;gap:.8rem;min-height:60px;padding:.55rem .75rem;border-bottom:1px solid var(--border); }
+.order-item:last-child { border-bottom:0; }
+.order-item.dragging { background:var(--accent-soft); }
+.drag-handle { cursor:grab;user-select:none;font-size:1.4rem;color:var(--muted); }
+.order-index { width:2rem;text-align:center;font-variant-numeric:tabular-nums;color:var(--muted); }
+.order-info { flex:1;min-width:0;overflow-wrap:anywhere; }
+.order-info strong,.order-info small { display:block; }
+.order-info small { font-size:.8rem;color:var(--muted);margin-top:.2rem; }
+.position-choice { display:flex;gap:.4rem;align-items:center;font-size:.8rem;color:var(--muted); }
+.position-choice select { width:4.6rem;padding:.45rem;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface);color:var(--text);font:inherit; }
+.order-buttons { display:flex;gap:.25rem; }
+.order-buttons button { min-width:36px;padding:.35rem .55rem; }
+.order-footer { display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:.6rem;margin-top:1rem; }
+.order-footer span { margin-right:auto;color:var(--muted);font-size:.85rem; }
+@media(max-width:700px){ .order-item{flex-wrap:wrap} .position-choice{margin-left:auto} .drag-handle{display:none} .table-toolbar{flex-wrap:wrap} }
 .table-toolbar input { width:min(420px,60%);padding:.65rem .8rem;border:1px solid var(--border);border-radius:var(--radius-sm); }
 .table-scroll { overflow:auto;min-height:0;max-height:55dvh; }
 .table { min-width:1050px; }

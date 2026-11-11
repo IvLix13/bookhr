@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { formatShortDate } from '@/utils/dates'
-import { cellLabel, stageLabels, stageState } from '@/utils/onboarding'
+import { cellLabel, sortOnboardingColumns, stageLabels, stageState } from '@/utils/onboarding'
 import type { OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 const props = defineProps<{ plan: OnboardingPlan; columns: OnboardingColumn[]; today: string; editable: boolean }>()
 const emit = defineEmits<{ edit: [column: OnboardingColumn] }>()
@@ -12,7 +12,7 @@ function state(c: OnboardingColumn) { return stageState(c, props.plan.cells[c.id
 function label(c: OnboardingColumn) { const value = state(c); return isStage(c) ? (value ? stageLabels[value] : '—') : cellLabel(props.plan, c, props.today) }
 function planned(c: OnboardingColumn) { return c.field_type === 'stage' && !props.plan.cells[c.id]?.is_not_required ? formatShortDate(props.plan.cells[c.id]?.planned_date) : '—' }
 function completed(c: OnboardingColumn) { return c.field_type === 'stage' && state(c) === 'completed' ? formatShortDate(props.plan.cells[c.id]?.completed_date) : '—' }
-const visible = computed(() => props.columns.filter(c => [c.title, c.responsible_department, label(c), planned(c), completed(c)].join(' ').toLocaleLowerCase('ru').includes(query.value.trim().toLocaleLowerCase('ru'))))
+const visible = computed(() => sortOnboardingColumns(props.columns).filter(c => [c.title, c.responsible_department, label(c), planned(c), completed(c)].join(' ').toLocaleLowerCase('ru').includes(query.value.trim().toLocaleLowerCase('ru'))))
 watch(query, () => { if (scroll.value) scroll.value.scrollTop = 0 })
 watch(() => props.plan.id, () => { query.value = '' })
 </script>
