@@ -131,10 +131,9 @@ describe('Onboarding cards', () => {
     expect(wrapper.findComponent(OnboardingCellEditor).exists()).toBe(true)
     wrapper.unmount()
   })
-  it('viewer edits only the employee with the same name and cannot configure the table', async () => {
+  it('viewer can create plans and edit plans returned by the API', async () => {
     mock.editable = false
     mock.role = 'viewer'
-    mock.fullName = '  иванов '
     mock.plans.mockResolvedValueOnce({ items: [
       { id: 10, full_name: 'Иванов', grade: 'Junior', cells: { '1': cell } },
       { id: 20, full_name: 'Петров', grade: 'Senior', cells: { '1': cell } },
@@ -142,15 +141,13 @@ describe('Onboarding cards', () => {
     const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
     expect(wrapper.text()).not.toContain('Настроить этапы')
-    expect(wrapper.text()).not.toContain('Добавить сотрудника')
-    expect(wrapper.text()).toContain('Скачать Excel')
-    await wrapper.findAll('.expand-button')[0]!.trigger('click')
+    expect(wrapper.text()).not.toContain('Скачать Excel')
+    await wrapper.findAll('button').find(b => b.text() === 'Создать план')!.trigger('click')
+    expect(mock.push).toHaveBeenCalledWith({ name: 'onboarding-create' })
+    await wrapper.findAll('.expand-button')[1]!.trigger('click')
     await flushPromises()
-    expect(wrapper.text()).not.toContain('Изменить наставника')
-    expect(wrapper.findAll('.cell-button').map(button => button.attributes('aria-label'))).toEqual(['NDA, Иванов: Просрочено · 1 октября 2026 г.'])
-    expect(wrapper.text()).toContain('Петров')
     await wrapper.get('.cell-button').trigger('click')
-    expect(wrapper.getComponent(OnboardingCellEditor).props('planId')).toBe(10)
+    expect(wrapper.getComponent(OnboardingCellEditor).props('planId')).toBe(20)
     wrapper.unmount()
   })
   it('downloads the full table and reports download errors', async () => {
@@ -330,8 +327,8 @@ describe('New onboarding states and clearing', () => {
     await wrapper.get('.expand-button').trigger('click')
     await flushPromises()
     expect(wrapper.get('.not-required').text()).toBe('—')
-    expect(wrapper.find('.overdue').exists()).toBe(false)
-    expect(wrapper.find('.completed').exists()).toBe(false)
+    expect(wrapper.find('tbody .overdue').exists()).toBe(false)
+    expect(wrapper.find('tbody .completed').exists()).toBe(false)
     wrapper.unmount()
   })
   it('marks completed cells for green background styling', async () => {

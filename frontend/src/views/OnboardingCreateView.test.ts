@@ -2,12 +2,14 @@ import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import View from './OnboardingCreateView.vue'
 enableAutoUnmount(afterEach)
-const mock = vi.hoisted(() => ({ employees: vi.fn(), columns: vi.fn(), create: vi.fn(), export: vi.fn(), push: vi.fn(), replace: vi.fn() }))
+const mock = vi.hoisted(() => ({ employees: vi.fn(), columns: vi.fn(), create: vi.fn(), export: vi.fn(), push: vi.fn(), replace: vi.fn(), canEdit: true }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mock.push, replace: mock.replace }), onBeforeRouteLeave: vi.fn() }))
-vi.mock('@/api/client', () => ({ api: { employees: mock.employees, onboardingColumns: mock.columns, createOnboardingWizard: mock.create, downloadOnboardingDraft: mock.export } }))
+vi.mock('@/api/client', () => ({ api: { onboardingCandidates: mock.employees, onboardingColumns: mock.columns, createOnboardingWizard: mock.create, downloadOnboardingDraft: mock.export } }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ canEdit: () => mock.canEdit }) }))
 const people = Array.from({ length: 120 }, (_, i) => ({ id: i + 1, person_uuid: String(i + 1), full_name: `Сотрудник ${i + 1}`, hire_date: '2026-01-01', status: 'active' }))
 beforeEach(() => {
   vi.clearAllMocks()
+  mock.canEdit = true
   mock.columns.mockResolvedValue(Array.from({ length: 50 }, (_, i) => ({ id: i + 1, title: `Этап ${i + 1}`, field_type: 'stage', version: 1, is_archived: false })))
   mock.employees.mockImplementation(async ({ page, q }) => ({ items: people.filter(p => p.full_name.includes(q)).slice((page - 1) * 25, page * 25), pages: 5 }))
   mock.create.mockResolvedValue({ id: 99 })
@@ -72,6 +74,19 @@ it('uses server pages for 120 employees', async () => {
   await w.findAll('.pagination button')[1]!.trigger('click'); await flushPromises()
   expect(mock.employees).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
   expect(w.text()).toContain('Сотрудник 26')
+})
+
+it('lets a viewer save through the wizard without showing draft export', async () => {
+  mock.canEdit = false
+  mock.columns.mockResolvedValueOnce([])
+  const w = await setup()
+  await w.findAll('nav button')[3]!.trigger('click'); await flushPromises()
+  await w.findAll('button').find(b => b.text().includes('Открыть план'))!.trigger('click')
+  await w.get('[aria-label="Действия с планом"]').trigger('click')
+  expect(w.text()).not.toContain('Выгрузить план')
+  await w.findAll('button').find(b => b.text() === 'Завершить')!.trigger('click'); await flushPromises()
+  expect(mock.create).toHaveBeenCalledWith({ employment_id: 1, mentor_id: 2, cells: [] })
+  expect(mock.replace).toHaveBeenCalledWith({ name: 'onboarding', query: { plan: 99 } })
 })
 
 it('shows responsible departments and keeps exemptions through search, preview, export and save', async () => {

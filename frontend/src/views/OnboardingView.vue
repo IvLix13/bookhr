@@ -13,6 +13,7 @@ import type { OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 const router = useRouter()
 const route = useRoute()
 const auth = useAuthStore()
+const departmentMissing = computed(() => auth.user?.role === 'viewer' && auth.user.calendar_access?.available === false)
 const today = ref(moscowToday())
 const selectedPlanId = ref<number | null>(null)
 const columns = ref<OnboardingColumn[]>([])
@@ -67,9 +68,9 @@ onUnmounted(() => clearInterval(dayTimer))
     <header><h2>План работы ввода в должность</h2><p>Ввод сотрудников в должность</p></header>
     <div class="toolbar">
       <form @submit.prevent="search"><input v-model="query" aria-label="Поиск планов по ФИО" placeholder="ФИО (от 2 символов)" /><button class="btn" :disabled="loading">Найти</button></form>
-      <button v-if="auth.canEdit()" class="btn secondary" @click="router.push({ name: 'onboarding-create' })">Создать план</button>
+      <button class="btn secondary" :disabled="departmentMissing" @click="router.push({ name: 'onboarding-create' })">Создать план</button>
       <button v-if="auth.canEdit()" class="btn secondary" @click="showColumns = !showColumns">Настроить этапы</button>
-      <button class="btn secondary" :disabled="exporting" @click="downloadExcel">{{ exporting ? 'Скачивание…' : 'Скачать Excel' }}</button>
+      <button v-if="auth.canEdit()" class="btn secondary" :disabled="exporting" @click="downloadExcel">{{ exporting ? 'Скачивание…' : 'Скачать Excel' }}</button>
       <button class="btn secondary" :disabled="loading" @click="load">Обновить</button>
     </div>
     <p v-if="exportError" role="alert" class="error">{{ exportError }}</p>
@@ -77,7 +78,7 @@ onUnmounted(() => clearInterval(dayTimer))
     <p v-if="error" role="alert" class="error">{{ error }} <button class="btn secondary" @click="load">Повторить</button></p>
     <p v-if="loading" role="status">Загрузка…</p>
     <template v-if="!error || plans.length">
-      <p v-if="!plans.length && !loading">Планы не найдены. HR/admin может добавить сотрудника.</p>
+      <p v-if="!plans.length && !loading">{{ departmentMissing ? 'Не удалось определить ваш отдел. Обратитесь к администратору.' : 'Планы не найдены.' }}</p>
       <div v-if="plans.length" class="plan-list" aria-label="Планы обучения сотрудников" :aria-busy="loading">
         <OnboardingPlanCard v-for="plan in plans" :key="plan.id" :plan="plan" :columns="visibleColumns" :today="today" @open="selectedPlanId = plan.id" />
       </div>
