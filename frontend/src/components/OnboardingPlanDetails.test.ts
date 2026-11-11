@@ -27,6 +27,17 @@ describe('Plan table search and states', () => {
     expect(w.findAll('tbody tr')).toHaveLength(1)
     expect(w.get('input').element.value).toBe('нет совпадения')
   })
+  it('shows overdue for past unfinished stage and recalculates at the deadline', async () => {
+    const unfinished = { ...plan, cells: { ...plan.cells, '1': { ...plan.cells['1']!, is_completed: false, completed_date: null } } }
+    const w = mount(Details, { props: { plan: unfinished, columns, today: '2026-10-28', editable: true } })
+    expect(w.get('.status.overdue').text()).toBe('Просрочено')
+    expect(w.get('.cell-button').attributes('aria-label')).toContain('Просрочено')
+    await w.get('input').setValue('просрочено')
+    expect(w.findAll('tbody tr')).toHaveLength(1)
+    await w.get('input').setValue('')
+    await w.setProps({ today: '2026-10-15' })
+    expect(w.get('.status.in_progress').text()).toBe('В работе')
+  })
   it('highlights the completed row and gives exemption priority', async () => {
     const w = mount(Details, { props: { plan, columns, today: '2026-10-28', editable: false } })
     expect(w.findAll('tr.row-completed')).toHaveLength(1)

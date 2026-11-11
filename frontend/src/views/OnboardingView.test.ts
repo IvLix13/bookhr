@@ -60,6 +60,14 @@ beforeEach(() => {
 })
 
 describe('Onboarding cards', () => {
+  it('shows overdue stage count and red progress segment on the employee card', async () => {
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
+    await flushPromises()
+    expect(wrapper.get('.count-overdue').text()).toBe('Просрочено: 1')
+    expect(wrapper.get('.count-working').text()).toBe('В работе: 0')
+    expect(wrapper.get('.progress-segment.overdue').attributes('style')).toContain('width: 100%')
+    expect(wrapper.get('.progress-track').attributes('aria-valuenow')).toBe('0')
+  })
   it('returns to the last valid page after deleting its final plan and preserves search', async () => {
     const first = { id: 1, full_name: 'Иванов', cells: {} }
     const second = { id: 2, full_name: 'Иванов Второй', cells: {} }
@@ -127,7 +135,7 @@ describe('Onboarding cards', () => {
     await wrapper.findAll('.expand-button')[0]!.trigger('click')
     await flushPromises()
     expect(wrapper.text()).not.toContain('Изменить наставника')
-    expect(wrapper.findAll('.cell-button').map(button => button.attributes('aria-label'))).toEqual(['NDA, Иванов: В работе · 1 октября 2026 г.'])
+    expect(wrapper.findAll('.cell-button').map(button => button.attributes('aria-label'))).toEqual(['NDA, Иванов: Просрочено · 1 октября 2026 г.'])
     expect(wrapper.text()).toContain('Петров')
     await wrapper.get('.cell-button').trigger('click')
     expect(wrapper.getComponent(OnboardingCellEditor).props('planId')).toBe(10)

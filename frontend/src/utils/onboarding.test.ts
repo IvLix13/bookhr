@@ -5,7 +5,7 @@ const empty: OnboardingCell = { version: 1, text_value: null, date_value: null, 
 const stage: OnboardingColumn = { id: 1, title: 'NDA', field_type: 'stage', sort_order: 1, is_archived: false, version: 1 }
 const plan: OnboardingPlan = { id: 1, employment_id: 1, full_name: 'Иванов', grade: 'Junior', employment_status: 'active', hire_date: '2026-10-01', curator_name: null, version: 1, cells: {} }
 describe('Onboarding summary', () => {
-  it('counts only active required stages and groups all unfinished work in one category', () => {
+  it('counts completed, in-progress and overdue required stages separately', () => {
     const columns = [stage, { ...stage, id: 2 }, { ...stage, id: 3 }, { ...stage, id: 4 }, { ...stage, id: 5, field_type: 'checkbox' as const }, { ...stage, id: 6, field_type: 'text' as const }, { ...stage, id: 7, is_archived: true }]
     const summary = planSummary({ ...plan, cells: {
       1: { ...empty, is_completed: true }, 2: { ...empty, is_in_progress: true, planned_date: '2026-10-09' },
@@ -14,10 +14,15 @@ describe('Onboarding summary', () => {
     } }, columns, '2026-10-10')
     expect(summary.total).toBe(4)
     expect(summary.percent).toBe(25)
-    expect(summary.counts).toEqual({ completed: 1, in_progress: 3 })
+    expect(summary.counts).toEqual({ completed: 1, in_progress: 2, overdue: 1 })
     expect(summary.next?.id).toBe(2)
   })
   it('does not count completed or exempt stages as overdue and handles no stages', () => {
+    expect(stageState(stage, { ...empty, planned_date: '2000-01-01' }, '2026-10-10')).toBe('overdue')
+    expect(stageState(stage, { ...empty, planned_date: '2026-10-10' }, '2026-10-10')).toBe('in_progress')
+    expect(stageState(stage, { ...empty, planned_date: '2026-10-11' }, '2026-10-10')).toBe('in_progress')
+    expect(stageState(stage, { ...empty }, '2026-10-10')).toBe('in_progress')
+    expect(stageState({ ...stage, field_type: 'checkbox' }, { ...empty, planned_date: '2000-01-01' }, '2026-10-10')).toBe('in_progress')
     expect(stageState(stage, { ...empty, planned_date: '2000-01-01', is_completed: true }, '2026-10-10')).toBe('completed')
     expect(stageState(stage, { ...empty, planned_date: '2000-01-01', is_not_required: true }, '2026-10-10')).toBeNull()
     expect(planSummary(plan, [], '2026-10-10')).toMatchObject({ total: 0, percent: 0, next: null })
