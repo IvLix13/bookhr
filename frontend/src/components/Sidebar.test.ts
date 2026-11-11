@@ -11,6 +11,7 @@ const routes = [
   { path: '/events', name: 'events', component: { template: '<div />' } },
   { path: '/employees', name: 'employees', component: { template: '<div />' } },
   { path: '/onboarding', name: 'onboarding', component: { template: '<div />' } },
+  { path: '/personal-document-errors', name: 'personal-document-errors', component: { template: '<div />' } },
   { path: '/attestations', name: 'attestations', component: { template: '<div />' } },
   { path: '/contracts', name: 'contracts', component: { template: '<div />' } },
   { path: '/grades', name: 'grades', component: { template: '<div />' } },
@@ -58,6 +59,7 @@ describe('Sidebar navigation order', () => {
       MODULE_LABELS.events,
       MODULE_LABELS.employees,
       MODULE_LABELS.onboarding,
+      MODULE_LABELS.personalDocumentErrors,
       MODULE_LABELS.contracts,
       MODULE_LABELS.grades,
       MODULE_LABELS.attestation,
@@ -85,6 +87,7 @@ describe('Sidebar navigation order', () => {
     expect(labels).not.toContain(MODULE_LABELS.import)
     expect(labels).not.toContain(MODULE_LABELS.statistics)
     expect(labels).not.toContain(MODULE_LABELS.events)
+    expect(labels).not.toContain(MODULE_LABELS.personalDocumentErrors)
     expect(labels).toContain(MODULE_LABELS.employees)
   })
 
@@ -96,6 +99,7 @@ describe('Sidebar navigation order', () => {
       MODULE_LABELS.events,
       MODULE_LABELS.employees,
       MODULE_LABELS.onboarding,
+      MODULE_LABELS.personalDocumentErrors,
       MODULE_LABELS.contracts,
       MODULE_LABELS.grades,
       MODULE_LABELS.attestation,

@@ -16,6 +16,12 @@ const router = createRouter({
         { path: 'onboarding/create', name: 'onboarding-create', component: () => import('@/views/OnboardingCreateView.vue') },
         { path: 'onboarding', name: 'onboarding', component: () => import('@/views/OnboardingView.vue') },
         {
+          path: 'personal-document-errors',
+          name: 'personal-document-errors',
+          component: () => import('@/views/PersonalDocumentErrorsView.vue'),
+          meta: { requiresEdit: true },
+        },
+        {
           path: '',
           name: 'calendar',
           component: () => import('@/views/CalendarView.vue'),

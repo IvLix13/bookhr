@@ -73,6 +73,13 @@ export const sidebarNavItems: SidebarNavItemConfig[] = [
     background: employeesBg,
   },
   {
+    name: 'personal-document-errors',
+    labelKey: 'personalDocumentErrors',
+    icon: IconPassport,
+    background: passportsBg,
+    isVisible: (auth) => auth.canEdit(),
+  },
+  {
     name: 'contracts',
     labelKey: 'contracts',
     icon: IconContract,
