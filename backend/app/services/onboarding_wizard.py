@@ -2,7 +2,6 @@
 from types import SimpleNamespace
 from marshmallow import Schema, fields, validate
 from werkzeug.exceptions import Conflict, NotFound
-from app.models import Employment
 from app.models.onboarding import OnboardingColumn, OnboardingPlan
 from app.services.employees import get_current_name
 from app.services.onboarding import CellSchema, check_version
@@ -20,10 +19,10 @@ class WizardSchema(Schema):
     cells = fields.List(fields.Nested(WizardCellSchema), required=True, validate=validate.Length(max=1000))
 
 
-def validate_wizard(payload, company_id):
+def validate_wizard(payload, company_id, employments):
     body = WizardSchema().load(payload)
-    employee = Employment.query.filter_by(id=body['employment_id'], company_id=company_id).first()
-    mentor = Employment.query.filter_by(id=body['mentor_id'], company_id=company_id, status='active').first()
+    employee = employments.filter_by(id=body['employment_id']).first()
+    mentor = employments.filter_by(id=body['mentor_id'], status='active').first()
     if employee is None or mentor is None:
         raise NotFound('Сотрудник или действующий наставник не найден')
     if employee.person_id == mentor.person_id:

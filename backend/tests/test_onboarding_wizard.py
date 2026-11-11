@@ -4,7 +4,7 @@ from io import BytesIO
 from zipfile import ZipFile
 import pytest
 from app.extensions import db
-from app.models import Person, PersonNameHistory, Employment, Company
+from app.models import Person, PersonNameHistory, Employment, Company, User
 from app.models.onboarding import OnboardingPlan, OnboardingCell
 from app.services.onboarding_docx import document_context
 
@@ -81,9 +81,37 @@ def test_dismissed_and_foreign_mentor_rejected(hr_client, seed_company):
     assert hr_client.post('/api/onboarding/plans/draft-docx', json=body).status_code == 404
 
 
-def test_viewer_cannot_use_wizard(viewer_client):
-    for route in ['from-wizard', 'draft-docx']:
-        assert viewer_client.post('/api/onboarding/plans/' + route, json={}).status_code == 403
+def test_viewer_wizard_uses_current_department_for_employee_and_mentor(viewer_client, hr_client, seed_company):
+    body = prepare(hr_client, seed_company.id)
+    with hr_client.application.app_context():
+        employee = db.session.get(Employment, body['employment_id'])
+        mentor = db.session.get(Employment, body['mentor_id'])
+        employee.formal_department_short_name = '01'
+        mentor.formal_department_short_name = '02'
+        viewer = User.query.filter_by(username='viewer_user').one()
+        viewer.employment_id = mentor.id
+        db.session.commit()
+    assert viewer_client.post('/api/login', json={'username': 'viewer_user', 'password': 'secret123'}).status_code == 200
+    route = '/api/onboarding/plans/from-wizard'
+    assert viewer_client.post(route, json=body).status_code == 404
+    with hr_client.application.app_context():
+        employee = db.session.get(Employment, body['employment_id'])
+        mentor = db.session.get(Employment, body['mentor_id'])
+        employee.formal_department_short_name = '02'
+        mentor.formal_department_short_name = '01'
+        User.query.filter_by(username='viewer_user').one().employment_id = employee.id
+        db.session.commit()
+    assert viewer_client.post(route, json=body).status_code == 404
+    with hr_client.application.app_context():
+        assert OnboardingPlan.query.count() == OnboardingCell.query.count() == 0
+        db.session.get(Employment, body['mentor_id']).formal_department_short_name = '02'
+        db.session.commit()
+    assert viewer_client.post('/api/onboarding/plans/draft-docx', json=body).status_code == 403
+    response = viewer_client.post(route, json=body)
+    assert response.status_code == 201, response.get_json()
+    plan = response.get_json()['data']
+    assert plan['curator_name'] == 'Наставник Елена'
+    assert len(plan['cells']) == len(body['cells'])
 
 
 def test_failure_during_cell_writes_rolls_back_plan(hr_client, seed_company, monkeypatch):

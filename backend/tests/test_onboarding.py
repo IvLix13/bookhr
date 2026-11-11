@@ -321,64 +321,75 @@ def test_tenant_isolation(hr_client, seed_company):
     assert patch_cell(hr_client, {"id": pid}, column, planned_date=None).status_code == 404
 
 
-def test_viewer_and_anonymous_permissions(viewer_client):
-    assert viewer_client.get("/api/onboarding/plans").status_code == 200
+def test_unlinked_viewer_has_no_plans_or_candidates(viewer_client):
+    assert data(viewer_client.get("/api/onboarding/plans"))["items"] == []
+    assert data(viewer_client.get("/api/onboarding/employees"))["items"] == []
     assert viewer_client.get("/api/onboarding/columns").status_code == 200
-    for method, path in [("post", "plans"), ("post", "columns"), ("patch", "columns/1"), ("patch", "columns/order")]:
+    for method, path in [("post", "columns"), ("patch", "columns/1"), ("patch", "columns/order"),
+                         ("get", "document-stages"), ("get", "plans/1/docx"), ("get", "export")]:
         assert getattr(viewer_client, method)(f"/api/onboarding/{path}", json={}).status_code == 403
 
 
-def test_viewer_can_edit_cells_but_not_structure(hr_client, seed_company):
+def test_viewer_reads_and_maintains_only_own_department(viewer_client, hr_client, seed_company):
     plan, column = setup_plan(hr_client, seed_company.id)
     with hr_client.application.app_context():
-        role = Role.query.filter_by(name=RoleName.VIEWER.value).first()
-        if role is None:
-            role = Role(name=RoleName.VIEWER.value)
-            db.session.add(role)
-            db.session.flush()
-        user = User(username="viewer_user", full_name="  иВаНоВ иВаН  ", role_id=role.id, company_id=seed_company.id)
-        user.set_password("secret123")
-        db.session.add(user)
+        viewer_employment_id = employee(seed_company.id, "Сидоров Сидор")
+        outside_id = employee(seed_company.id, "Петров Пётр")
+        company = Company(name="Other")
+        db.session.add(company)
+        db.session.flush()
+        other_company_id = employee(company.id, "Другая Компания")
+        db.session.get(Employment, plan["employment_id"]).formal_department_short_name = "  ОТД  01"
+        viewer_employment = db.session.get(Employment, viewer_employment_id)
+        viewer_employment.formal_department_short_name = "отд 01"
+        db.session.get(Employment, outside_id).formal_department_short_name = "02"
+        db.session.get(Employment, other_company_id).formal_department_short_name = "отд 01"
+        foreign_plan = OnboardingPlan(employment_id=other_company_id)
+        db.session.add(foreign_plan)
+        User.query.filter_by(username="viewer_user").one().employment_id = viewer_employment_id
         db.session.commit()
-    assert hr_client.post("/api/login", json={"username": "viewer_user", "password": "secret123"}).status_code == 200
-    saved = data(patch_cell(hr_client, plan, column, planned_date="2026-10-01"))
-    assert saved["planned_date"] == "2026-10-01"
-    assert hr_client.post("/api/onboarding/plans", json={"employment_id": plan["employment_id"]}).status_code == 403
-    assert hr_client.post("/api/onboarding/columns", json={"title": "Отдел", "field_type": "text"}).status_code == 403
-    assert hr_client.patch(
-        f'/api/onboarding/columns/{column["id"]}',
-        json={"version": column["version"], "title": "Секрет"},
-    ).status_code == 403
-    assert hr_client.patch(
-        "/api/onboarding/columns/order",
-        json={"columns": [{"id": column["id"], "version": column["version"]}]},
-    ).status_code == 403
+        foreign_plan_id = foreign_plan.id
 
-
-def test_viewer_cannot_edit_employee_with_different_name(hr_client, seed_company):
-    plan, column = setup_plan(hr_client, seed_company.id)
-    with hr_client.application.app_context():
-        other_employment = employee(seed_company.id, "Петров Пётр")
-        role = Role.query.filter_by(name=RoleName.VIEWER.value).first()
-        if role is None:
-            role = Role(name=RoleName.VIEWER.value)
-            db.session.add(role)
-            db.session.flush()
-        user = User(username="viewer_user", full_name="Иванов Иван", role_id=role.id, company_id=seed_company.id)
-        user.set_password("secret123")
-        db.session.add(user)
-        db.session.commit()
-    other = data(hr_client.post("/api/onboarding/plans", json={"employment_id": other_employment}), 201)
+    other = data(hr_client.post("/api/onboarding/plans", json={"employment_id": outside_id}), 201)
     data(patch_cell(hr_client, other, column, planned_date="2026-11-01"))
-    assert hr_client.post("/api/login", json={"username": "viewer_user", "password": "secret123"}).status_code == 200
-    response = patch_cell(hr_client, other, column, version=1, planned_date="2026-12-01")
-    assert response.status_code == 403
-    assert response.get_json()["message"] == "Можно изменять только этапы сотрудника с совпадающим ФИО"
+    url = f'/api/onboarding/plans/{plan["id"]}'
+    legacy = data(hr_client.patch(url, json={"version": plan["version"], "curator_name": "Петров Пётр"}))
+    assert legacy["curator_name"] == "Петров Пётр"
+    assert viewer_client.post("/api/login", json={"username": "viewer_user", "password": "secret123"}).status_code == 200
+
+    result = data(viewer_client.get("/api/onboarding/plans?per_page=1"))
+    assert result["total"] == 1 and result["items"][0]["id"] == plan["id"]
+    assert data(viewer_client.get("/api/onboarding/plans?q=Петров"))["total"] == 0
+    candidates = data(viewer_client.get("/api/onboarding/employees?active_only=false"))
+    assert {p["id"] for p in candidates["items"]} == {plan["employment_id"], viewer_employment_id}
+    assert data(viewer_client.get("/api/onboarding/employees?q=Петров"))["total"] == 0
+    assert data(viewer_client.get(url))["curator_name"] is None
+    assert viewer_client.get(f"/api/onboarding/plans/{foreign_plan_id}").status_code == 404
+    other_url = f'/api/onboarding/plans/{other["id"]}'
+    assert viewer_client.get(other_url).status_code == 404
+    assert viewer_client.patch(other_url, json={"version": 1, "curator_name": "Сидоров Сидор"}).status_code == 404
+    assert patch_cell(viewer_client, other, column, version=1, planned_date="2026-12-01").status_code == 404
+    assert viewer_client.post("/api/onboarding/plans", json={"employment_id": outside_id}).status_code == 404
+    assert viewer_client.patch(url, json={"version": legacy["version"], "curator_name": "Петров Пётр"}).status_code == 400
+    updated = data(viewer_client.patch(url, json={"version": legacy["version"], "curator_name": "Сидоров Сидор"}))
+    assert updated["curator_name"] == "Сидоров Сидор"
+    saved = data(patch_cell(viewer_client, plan, column, planned_date="2026-10-01"))
+    assert saved["planned_date"] == "2026-10-01"
+    assert data(viewer_client.post("/api/onboarding/plans", json={"employment_id": viewer_employment_id}), 201)
+
     with hr_client.application.app_context():
         cell = OnboardingCell.query.filter_by(plan_id=other["id"], column_id=column["id"]).one()
         assert cell.planned_date == date(2026, 11, 1)
-    saved = data(patch_cell(hr_client, plan, column, planned_date="2026-10-01"))
-    assert saved["planned_date"] == "2026-10-01"
+        db.session.get(Employment, viewer_employment_id).formal_department_short_name = "02"
+        db.session.commit()
+    assert viewer_client.get(url).status_code == 404
+    assert data(viewer_client.get(other_url))["id"] == other["id"]
+    with hr_client.application.app_context():
+        db.session.get(Employment, viewer_employment_id).formal_department_short_name = "  "
+        db.session.commit()
+    assert data(viewer_client.get("/api/onboarding/plans"))["total"] == 0
+    assert data(viewer_client.get("/api/onboarding/employees"))["total"] == 0
+    assert patch_cell(viewer_client, other, column, version=1, is_in_progress=True).status_code == 404
 
 
 def test_anonymous_cannot_read(client):
@@ -388,8 +399,8 @@ def test_anonymous_cannot_read(client):
     assert client.patch("/api/onboarding/plans/1/cells/1", json={}).status_code == 401
 
 
-def test_viewer_can_export_valid_workbook(viewer_client):
-    response = viewer_client.get("/api/onboarding/export")
+def test_hr_can_export_valid_workbook(hr_client):
+    response = hr_client.get("/api/onboarding/export")
     assert response.status_code == 200
     assert response.mimetype == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     assert "onboarding_plan.xlsx" in response.headers["Content-Disposition"]
@@ -747,7 +758,7 @@ def test_curator_permissions_versions_and_tenant(hr_client, seed_company):
         user.role_id = viewer.id
         user.full_name = "Иванов Иван"
         db.session.commit()
-    assert hr_client.patch(url, json={"version": cleared["version"], "curator_name": "Запрет"}).status_code == 403
+    assert hr_client.patch(url, json={"version": cleared["version"], "curator_name": "Запрет"}).status_code == 404
 
 
 def test_cards_migration_preserves_data_and_guards_downgrade():

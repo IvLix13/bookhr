@@ -1,4 +1,4 @@
-"""Company-scoped onboarding API."""
+"""Onboarding API with department scope for viewers."""
 
 from functools import wraps
 from math import ceil
@@ -7,18 +7,24 @@ from flask import send_file, request
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
-from werkzeug.exceptions import Conflict, Forbidden, NotFound
+from werkzeug.exceptions import Conflict, NotFound
 
-from app.api.helpers import api_response, apply_employment_name_search, get_json, parse_pagination_args, parse_search_q, require_roles
+from app.api.helpers import (
+    api_response, apply_employment_name_search, get_json, paginate_query,
+    parse_pagination_args, parse_search_q, require_roles,
+)
+from app.api.serializers import grade_to_dict
 from app.extensions import db
 from app.models import Company, Employment, RoleName
 from app.models.onboarding import OnboardingColumn, OnboardingPlan
 from app.services.audit import log_audit
+from app.services.departments import viewer_department_employment_ids
+from app.services.employees import get_current_grade, get_current_name
 from app.services.onboarding import (
     DeleteSchema, delete_plan, delete_column, plan_delete_preview, column_delete_preview, newest_plans,
     CellSchema, ColumnSchema, ColumnUpdateSchema, OrderSchema, PlanSchema, PlanUpdateSchema,
-    cell_dict, check_version, column_dict, current_plan_name, find_column, find_plan,
-    lock_company, names_match, onboarding_plan_query, plan_dict, save_cell, save_column, save_plan, validate_document_mapping,
+    cell_dict, check_version, column_dict, find_column, find_plan,
+    lock_company, onboarding_plan_query, plan_dict, save_cell, save_column, save_plan, validate_document_mapping,
 )
 from app.services.onboarding_export import build_onboarding_workbook
 from app.services.onboarding_docx import build_onboarding_document
@@ -43,9 +49,32 @@ def transaction(fn):
     return wrapped
 
 
+def onboarding_employment_scope():
+    if current_user.has_role(RoleName.VIEWER):
+        return set(viewer_department_employment_ids(current_user))
+    return None
+
+
+def onboarding_employments(company_id, employment_ids):
+    query = Employment.query.filter_by(company_id=company_id)
+    return query.filter(Employment.id.in_(employment_ids)) if employment_ids is not None else query
+
+
+def onboarding_candidate(employment):
+    grade = get_current_grade(employment)
+    return {
+        "id": employment.id,
+        "person_uuid": str(employment.person.uuid),
+        "full_name": get_current_name(employment.person),
+        "actual_grade": grade_to_dict(grade.grade) if grade else None,
+        "hire_date": employment.hire_date.isoformat(),
+        "status": employment.status,
+    }
+
+
 def register_routes(bp):
     @bp.get("/onboarding/document-stages")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def onboarding_document_stages():
         from app.services.onboarding_document_catalog import document_variables
         variables = document_variables()
@@ -146,15 +175,27 @@ def register_routes(bp):
     @login_required
     def onboarding_plans():
         page, per_page = parse_pagination_args()
-        query = onboarding_plan_query(get_request_company_id())
+        employment_ids = onboarding_employment_scope()
+        query = onboarding_plan_query(get_request_company_id(), employment_ids=employment_ids)
         query = apply_employment_name_search(query, parse_search_q())
         total = query.count()
         plans = newest_plans(query).offset((page - 1) * per_page).limit(per_page).all()
-        return api_response({"items": [plan_dict(p) for p in plans], "page": page,
+        return api_response({"items": [plan_dict(p, employment_ids=employment_ids) for p in plans], "page": page,
                              "per_page": per_page, "total": total, "pages": ceil(total / per_page)})
 
+    @bp.get("/onboarding/employees")
+    @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
+    def onboarding_candidates():
+        page, per_page = parse_pagination_args()
+        query = onboarding_employments(get_request_company_id(), onboarding_employment_scope())
+        if request.args.get("active_only", "true").lower() == "true":
+            query = query.filter(Employment.status == "active")
+        query = apply_employment_name_search(query, parse_search_q())
+        query = query.order_by(Employment.hire_date.desc(), Employment.id)
+        return api_response(paginate_query(query, onboarding_candidate, page, per_page))
+
     @bp.get("/onboarding/export")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def onboarding_export():
         return send_file(
             build_onboarding_workbook(get_request_company_id()),
@@ -164,7 +205,7 @@ def register_routes(bp):
         )
 
     @bp.get("/onboarding/plans/<int:plan_id>/docx")
-    @login_required
+    @require_roles(RoleName.ADMIN, RoleName.HR)
     def onboarding_plan_docx(plan_id):
         plan = find_plan(plan_id, get_request_company_id())
         return send_file(build_onboarding_document(plan),
@@ -174,24 +215,29 @@ def register_routes(bp):
     @bp.get("/onboarding/plans/<int:plan_id>")
     @login_required
     def onboarding_plan(plan_id):
-        return api_response(plan_dict(find_plan(plan_id, get_request_company_id())))
+        employment_ids = onboarding_employment_scope()
+        plan = find_plan(plan_id, get_request_company_id(), employment_ids=employment_ids)
+        return api_response(plan_dict(plan, employment_ids=employment_ids))
 
     @bp.post("/onboarding/plans/draft-docx")
     @require_roles(RoleName.ADMIN, RoleName.HR)
     @transaction
     def onboarding_draft_docx():
         from app.services.onboarding_wizard import validate_wizard
-        draft, _ = validate_wizard(get_json(), get_request_company_id())
+        company_id = get_request_company_id()
+        draft, _ = validate_wizard(get_json(), company_id, onboarding_employments(company_id, None))
         return send_file(build_onboarding_document(draft),
             mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             as_attachment=True, download_name="onboarding_plan.docx")
 
     @bp.post("/onboarding/plans/from-wizard")
-    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
     @transaction
     def onboarding_from_wizard():
         from app.services.onboarding_wizard import validate_wizard
-        draft, cells = validate_wizard(get_json(), get_request_company_id())
+        company_id = get_request_company_id()
+        employment_ids = onboarding_employment_scope()
+        draft, cells = validate_wizard(get_json(), company_id, onboarding_employments(company_id, employment_ids))
         plan = OnboardingPlan(employment_id=draft.employment.id, curator_name=draft.curator_name,
                               curator_employment_id=draft.curator_employment_id)
         db.session.add(plan)
@@ -202,14 +248,15 @@ def register_routes(bp):
                   {"employment_id": plan.employment_id, "curator_name": plan.curator_name,
                    "curator_employment_id": plan.curator_employment_id})
         db.session.expire(plan, ['cells'])
-        return api_response(plan_dict(plan), status=201)
+        return api_response(plan_dict(plan, employment_ids=employment_ids), status=201)
 
     @bp.post("/onboarding/plans")
-    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
     @transaction
     def onboarding_create_plan():
         payload = PlanSchema().load(get_json())
-        employment = Employment.query.filter_by(id=payload["employment_id"], company_id=get_request_company_id()).first()
+        employment_ids = onboarding_employment_scope()
+        employment = onboarding_employments(get_request_company_id(), employment_ids).filter_by(id=payload["employment_id"]).first()
         if employment is None:
             raise NotFound()
         if OnboardingPlan.query.filter_by(employment_id=employment.id).first():
@@ -221,21 +268,20 @@ def register_routes(bp):
         return api_response(plan_dict(plan), status=201)
 
     @bp.patch("/onboarding/plans/<int:plan_id>")
-    @require_roles(RoleName.ADMIN, RoleName.HR)
+    @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
     @transaction
     def onboarding_update_plan(plan_id):
-        plan = find_plan(plan_id, get_request_company_id())
-        save_plan(plan, PlanUpdateSchema().load(get_json()))
-        return api_response(plan_dict(plan))
+        employment_ids = onboarding_employment_scope()
+        plan = find_plan(plan_id, get_request_company_id(), employment_ids=employment_ids)
+        save_plan(plan, PlanUpdateSchema().load(get_json()), employment_ids=employment_ids)
+        return api_response(plan_dict(plan, employment_ids=employment_ids))
 
     @bp.patch("/onboarding/plans/<int:plan_id>/cells/<int:column_id>")
     @require_roles(RoleName.ADMIN, RoleName.HR, RoleName.VIEWER)
     @transaction
     def onboarding_update_cell(plan_id, column_id):
         company_id = get_request_company_id()
-        plan = find_plan(plan_id, company_id)
-        if current_user.has_role(RoleName.VIEWER) and not names_match(current_user.full_name, current_plan_name(plan)):
-            raise Forbidden("Можно изменять только этапы сотрудника с совпадающим ФИО")
+        plan = find_plan(plan_id, company_id, employment_ids=onboarding_employment_scope())
         cell = save_cell(plan, find_column(column_id, company_id), CellSchema().load(get_json()))
         return api_response(cell_dict(cell))
 

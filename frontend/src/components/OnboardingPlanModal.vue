@@ -13,6 +13,7 @@ import type { OnboardingColumn, OnboardingPlan, OnboardingCell } from '@/types/o
 const props = defineProps<{ planId: number; columns: OnboardingColumn[]; today?: string }>()
 const emit = defineEmits<{ close: []; changed: []; deleted: [] }>()
 const auth = useAuthStore()
+const editable = computed(() => auth.canEdit() || auth.user?.role === 'viewer')
 const plan = ref<OnboardingPlan | null>(null)
 const loading = ref(false)
 const error = ref('')
@@ -24,6 +25,9 @@ const dirty = computed(() => curatorEditing.value && curator.value !== initialCu
 const curatorSaving = ref(false)
 const curatorError = ref('')
 const curatorConflict = ref(false)
+const curatorSaveBlocked = computed(() =>
+  curatorSaving.value || curatorConflict.value || !editable.value || loading.value || !!error.value,
+)
 const state = computed(() => ({ dirty: dirty.value, busy: curatorSaving.value }))
 function editCurator() {
   if (blocked.value) return
@@ -37,7 +41,7 @@ function editCurator() {
   curatorEditing.value = true
 }
 async function saveCurator() {
-  if (curatorSaving.value || curatorConflict.value || !auth.canEdit() || loading.value || !!error.value) return
+  if (curatorSaveBlocked.value || !dirty.value) return
   curatorSaving.value = true
   curatorError.value = ''
   try {
@@ -54,7 +58,6 @@ const deletion = ref<'plan' | 'employee' | null>(null)
 const editing = ref<{ column: OnboardingColumn; cell?: OnboardingCell } | null>(null)
 const today = computed(() => props.today ?? moscowToday())
 const summary = computed(() => plan.value ? planSummary(plan.value, props.columns, today.value) : null)
-const editable = computed(() => auth.canEdit() || (auth.user?.role === 'viewer' && !!auth.user.full_name?.trim() && auth.user.full_name.trim().toLocaleLowerCase('ru') === plan.value?.full_name?.trim().toLocaleLowerCase('ru')))
 const exporting = ref(false)
 const exportError = ref('')
 async function exportPlan() {
@@ -87,7 +90,11 @@ async function load() {
   try {
     const data = await api.onboardingPlan(props.planId)
     if (id === requestId) plan.value = data
-  } catch (err) { if (id === requestId) error.value = normalizeError(err) }
+  } catch (err) {
+    if (id !== requestId) return
+    if (err instanceof ApiError && err.status === 404) plan.value = null
+    error.value = normalizeError(err)
+  }
   finally { if (id === requestId) loading.value = false }
 }
 function close() {
@@ -113,8 +120,8 @@ onMounted(load)
       <div ref="menuAnchor" class="menu-anchor" @keydown.esc="menuEscape">
         <button ref="menuButton" class="btn secondary" :disabled="state.busy || !!editing || !!deletion || discard" aria-label="Действия с планом" :aria-controls="menuId" :aria-expanded="menu" @click="menu = !menu">☰</button>
         <div v-if="menu" :id="menuId" class="action-menu">
-          <button class="btn ghost" :disabled="blocked" @click="exportPlan">{{ exporting ? 'Выгрузка…' : 'Выгрузить план' }}</button>
-          <button v-if="auth.canEdit()" class="btn ghost" :disabled="blocked" @click="editCurator">Изменить наставника</button>
+          <button v-if="auth.canEdit()" class="btn ghost" :disabled="blocked" @click="exportPlan">{{ exporting ? 'Выгрузка…' : 'Выгрузить план' }}</button>
+          <button v-if="editable" class="btn ghost" :disabled="blocked" @click="editCurator">Изменить наставника</button>
           <hr v-if="auth.canEdit()" />
           <button v-if="auth.canEdit()" class="btn ghost danger" :disabled="blocked" @click="remove('plan')">Удалить план</button>
           <button v-if="auth.canEdit()" class="btn ghost danger" :disabled="blocked" @click="remove('employee')">Удалить сотрудника и план</button>
@@ -138,8 +145,9 @@ onMounted(load)
         </section>
       <form v-if="curatorEditing" class="curator-form" @submit.prevent="saveCurator">
         <label :for="`curator-${plan.id}`">ФИО наставника</label>
-        <input ref="mentorInput" :id="`curator-${plan.id}`" v-model="curator" maxlength="256" :disabled="curatorSaving || curatorConflict || (!auth.canEdit() || loading || !!error)" />
-        <div class="form-actions"><button class="btn" :disabled="curatorSaving || curatorConflict || (!auth.canEdit() || loading || !!error)">{{ curatorSaving ? 'Сохранение…' : 'Сохранить наставника' }}</button><button type="button" class="btn secondary" :disabled="curatorSaving" @click="curatorEditing = false">Отмена</button></div>
+        <input ref="mentorInput" :id="`curator-${plan.id}`" v-model="curator" maxlength="256" :disabled="curatorSaveBlocked" />
+        <small v-if="auth.user?.role === 'viewer'">Укажите полное ФИО действующего сотрудника вашего отдела.</small>
+        <div class="form-actions"><button class="btn" :disabled="curatorSaveBlocked || !dirty">{{ curatorSaving ? 'Сохранение…' : 'Сохранить наставника' }}</button><button type="button" class="btn secondary" :disabled="curatorSaving" @click="curatorEditing = false">Отмена</button></div>
         <p v-if="curatorError" role="alert" class="error">{{ curatorError }}</p>
         <p v-if="curatorConflict">Ваш ввод сохранён. Закройте форму и откройте её снова для редактирования актуальной версии.</p>
       </form>

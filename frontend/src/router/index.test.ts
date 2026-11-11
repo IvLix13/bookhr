@@ -54,7 +54,6 @@ describe('router access guards', () => {
     auth.user = viewerUser
 
     const restricted = [
-      '/',
       '/events',
       '/events/create',
       '/grades',
@@ -73,6 +72,16 @@ describe('router access guards', () => {
       expect(router.currentRoute.value.name).toBe('employees')
       expect(router.currentRoute.value.query.denied).toBe('edit')
     }
+  })
+
+  it('opens the onboarding list and creation wizard for a viewer', async () => {
+    const router = await loadRouter()
+    useAuthStore().user = viewerUser
+
+    await router.push('/onboarding')
+    expect(router.currentRoute.value.name).toBe('onboarding')
+    await router.push('/onboarding/create')
+    expect(router.currentRoute.value.name).toBe('onboarding-create')
   })
 
   it('sends viewer to employees after login instead of calendar', async () => {

@@ -118,14 +118,19 @@ describe('Onboarding modal workflows with real Teleport', () => {
     opener.remove()
   })
 
-  it('viewer sees own editable cells and no management actions', async () => {
+  it('viewer can edit cells and mentor with export and deletion unavailable', async () => {
     mocks.edit = false
     mount(OnboardingPlanModal, { props: { planId: 1, columns: [column] } })
     await flushPromises()
     expect(dom().find('.cell-button').exists()).toBe(true)
     await dom().get('[aria-label="Действия с планом"]').trigger('click')
     expect(dom().text()).not.toContain('Удалить план')
-    expect(dom().text()).not.toContain('Изменить наставника')
+    expect(dom().text()).not.toContain('Выгрузить план')
+    await button('Изменить наставника').trigger('click')
+    await dom().get('.curator-form input').setValue('Петров Пётр')
+    await dom().get('.curator-form').trigger('submit')
+    await flushPromises()
+    expect(mocks.savePlan).toHaveBeenCalledWith(1, { version: 1, curator_name: 'Петров Пётр' })
   })
 
   it('restores the opener when a parent and its confirmation unmount together', async () => {
