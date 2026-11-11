@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { planSummary, stageState } from './onboarding'
+import { planSummary, sortOnboardingColumns, stageState } from './onboarding'
 import type { OnboardingCell, OnboardingColumn, OnboardingPlan } from '@/types/onboarding'
 const empty: OnboardingCell = { version: 1, text_value: null, date_value: null, planned_date: null, completed_date: null, is_completed: false, is_not_required: false, is_in_progress: false }
 const stage: OnboardingColumn = { id: 1, title: 'NDA', field_type: 'stage', sort_order: 1, is_archived: false, version: 1 }
 const plan: OnboardingPlan = { id: 1, employment_id: 1, full_name: 'Иванов', grade: 'Junior', employment_status: 'active', hire_date: '2026-10-01', curator_name: null, version: 1, cells: {} }
 describe('Onboarding summary', () => {
+  it('sorts configuration by sort_order and ID without changing incoming array', () => {
+    const unsorted = [{ ...stage, id: 9, sort_order: 3 }, { ...stage, id: 2, sort_order: 1 }, { ...stage, id: 3, sort_order: 1 }, { ...stage, id: 1, sort_order: 0 }]
+    expect(sortOnboardingColumns(unsorted).map(column => column.id)).toEqual([1, 2, 3, 9])
+    expect(unsorted.map(column => column.id)).toEqual([9, 2, 3, 1])
+  })
+
   it('counts completed, in-progress and overdue required stages separately', () => {
     const columns = [stage, { ...stage, id: 2 }, { ...stage, id: 3 }, { ...stage, id: 4 }, { ...stage, id: 5, field_type: 'checkbox' as const }, { ...stage, id: 6, field_type: 'text' as const }, { ...stage, id: 7, is_archived: true }]
     const summary = planSummary({ ...plan, cells: {

@@ -107,6 +107,18 @@ describe('Onboarding cards', () => {
     expect(wrapper.getComponent(OnboardingCellEditor).props('column').id).toBe(2)
     wrapper.unmount()
   })
+  it('sorts stages in employee plan by saved position even with a shuffled response', async () => {
+    mock.columns.mockResolvedValueOnce([
+      { ...column, id: 9, title: 'Третий', sort_order: 9 },
+      { ...column, id: 1, title: 'Первый', sort_order: 1 },
+      { ...column, id: 5, title: 'Второй', sort_order: 5 },
+    ])
+    const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
+    await flushPromises()
+    await wrapper.get('.expand-button').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('tbody th').map(th => th.text())).toEqual(['Первый', 'Второй', 'Третий'])
+  })
   it('renders system columns and opens a cell editor', async () => {
     const wrapper = mount(OnboardingView, { global: { stubs: { teleport: true } } })
     await flushPromises()
@@ -221,6 +233,35 @@ describe('Cell editor', () => {
 })
 
 describe('Column management', () => {
+  it('configures and persists stage display order once for all fields including archived', async () => {
+    const configured = [
+      { ...column, id: 30, title: 'Третий', sort_order: 30, is_archived: true },
+      { ...column, id: 10, title: 'Первый', sort_order: 10 },
+      { ...column, id: 20, title: 'Второй', sort_order: 20 },
+    ]
+    const wrapper = mount(OnboardingColumns, { props: { columns: configured }, global: { stubs: { teleport: true } } })
+    await wrapper.findAll('button').find(button => button.text() === 'Настроить порядок')!.trigger('click')
+    expect(wrapper.findAll('.order-info strong').map(item => item.text())).toEqual(['Первый', 'Второй', 'Третий'])
+    expect(wrapper.find('button[type=submit]').attributes('disabled')).toBeDefined()
+    await wrapper.get('button[aria-label="Выше: Второй"]').trigger('click')
+    expect(wrapper.findAll('.order-info strong').map(item => item.text())).toEqual(['Второй', 'Первый', 'Третий'])
+    await wrapper.get('select[aria-label="Позиция: Третий"]').setValue('1')
+    expect(wrapper.findAll('.order-info strong').map(item => item.text())).toEqual(['Третий', 'Второй', 'Первый'])
+    expect(mock.orderColumns).not.toHaveBeenCalled()
+    await wrapper.get('.order-workspace form').trigger('submit')
+    await flushPromises()
+    expect(mock.orderColumns).toHaveBeenCalledWith([{ id: 30, version: 1 }, { id: 20, version: 1 }, { id: 10, version: 1 }])
+    expect(wrapper.find('.order-workspace').exists()).toBe(false)
+  })
+  it('does not persist an unchanged order', async () => {
+    const wrapper = mount(OnboardingColumns, { props: { columns: [{ ...column }] }, global: { stubs: { teleport: true } } })
+    await wrapper.findAll('button').find(button => button.text() === 'Настроить порядок')!.trigger('click')
+    expect(wrapper.find('button[type=submit]').attributes('disabled')).toBeDefined()
+    await wrapper.findAll('button').find(button => button.text() === 'Назад к настройкам')!.trigger('click')
+    expect(wrapper.find('.order-workspace').exists()).toBe(false)
+    expect(mock.orderColumns).not.toHaveBeenCalled()
+  })
+
   it('creates typed columns and confirms archival', async () => {
     const wrapper = mount(OnboardingColumns, { global: { stubs: { teleport: true } }, props: { columns: [{ ...column }] } })
     await wrapper.findAll('button').find(b => b.text() === 'Добавить этап')!.trigger('click')

@@ -11,6 +11,12 @@ const plan: OnboardingPlan = { id: 1, employment_id: 1, full_name: 'Иванов
   '2': { version: 1, text_value: 'Разработка', date_value: null, planned_date: null, completed_date: null, is_completed: false, is_in_progress: false, is_not_required: false },
 } }
 describe('Plan table search and states', () => {
+  it('shows stages by configured position even if props are delivered out of order', () => {
+    const unsorted = [{ ...columns[0]!, sort_order: 9 }, { ...columns[1]!, sort_order: 1 }]
+    const w = mount(Details, { props: { plan, columns: unsorted, today: '2026-10-28', editable: false } })
+    expect(w.findAll('tbody th').map(item => item.text())).toEqual(['Отдел', 'Пропуск'])
+  })
+
   it('searches visible labels, dates and values without changing row identity', async () => {
     const w = mount(Details, { props: { plan, columns, today: '2026-10-28', editable: true } })
     for (const q of [' охрана ', 'ВЫПОЛНЕНО', '14 октября 2026', 'Пропуск']) {
