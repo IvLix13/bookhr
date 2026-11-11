@@ -14,7 +14,9 @@ def department_key(employment):
 
 
 def viewer_employment(user):
-    employment = user.employment
+    if user.employment_id is None:
+        return None
+    employment = db.session.get(Employment, user.employment_id, populate_existing=True)
     if employment and employment.company_id == user.company_id and employment.status == "active":
         return employment
     return None
