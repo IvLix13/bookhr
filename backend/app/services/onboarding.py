@@ -130,7 +130,7 @@ def plan_dict(plan, *, employment_ids=None):
         "employment_id": employment.id,
         "full_name": current_plan_name(plan),
         "employee_short_name": short_employee_name(employment),
-        "employee_position": employee_position(employment),
+        "employee_position": employee_position(employment, preserve_case=True),
         "department_key": department_key(employment),
         "department_name": employment.formal_department_short_name,
         "department_head_status": head_status,

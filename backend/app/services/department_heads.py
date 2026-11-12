@@ -31,19 +31,21 @@ def head_position(employment):
     return get_current_position(employment).title
 
 
-def employee_position(employment):
-    """Format the plan employee's title and formal department in lowercase."""
+def employee_position(employment, *, preserve_case=False):
+    """Format the full employee title, optionally preserving the directory's case."""
     position = get_current_position(employment)
-    title = " ".join((position.title if position else "").split()).lower()
+    title = " ".join((position.title if position else "").split())
     if not title:
         return None
-    department = " ".join((employment.formal_department_name or "").split()).lower()
+    department = " ".join((employment.formal_department_name or "").split())
     parts = department.split(maxsplit=1)
     if len(parts) == 2:
         suffix = parts[1]
-        if title != suffix and not title.endswith(" " + suffix):
+        title_key = title.casefold()
+        suffix_key = suffix.casefold()
+        if title_key != suffix_key and not title_key.endswith(" " + suffix_key):
             title += " " + suffix
-    return title
+    return title if preserve_case else title.lower()
 
 
 def head_values(employment):
