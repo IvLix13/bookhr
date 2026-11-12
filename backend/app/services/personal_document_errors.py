@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from urllib.parse import urlsplit
+from io import BytesIO
+from urllib.parse import quote, urlsplit
 
 import psycopg
 from flask import current_app
+from openpyxl import Workbook
+from openpyxl.styles import Font
 from psycopg.rows import dict_row
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
@@ -54,6 +57,38 @@ def configured_base_url() -> str | None:
     except ValueError:
         pass
     return None
+
+
+def personal_file_url(base_url: str, ldnumber: str) -> str:
+    return f"{base_url}/personalfile/{quote(ldnumber, safe='')}"
+
+
+def build_personal_document_errors_workbook(items: list[dict], base_url: str) -> BytesIO:
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Ошибки в ЛД"
+    sheet.append(["Грейд", "ФИО", "Ошибки"])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+
+    for row_number, item in enumerate(items, start=2):
+        sheet.append([item["grade"] or "—", item["full_name"] or "—", len(item["errors"])])
+        # Values from the external database are text even when they start with '='.
+        sheet.cell(row_number, 1).data_type = "s"
+        sheet.cell(row_number, 2).data_type = "s"
+        count_cell = sheet.cell(row_number, 3)
+        count_cell.hyperlink = personal_file_url(base_url, item["ldnumber"])
+        count_cell.style = "Hyperlink"
+
+    sheet.freeze_panes = "A2"
+    sheet.auto_filter.ref = sheet.dimensions
+    sheet.column_dimensions["A"].width = 24
+    sheet.column_dimensions["B"].width = 44
+    sheet.column_dimensions["C"].width = 14
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
 
 
 def _read_source() -> list[dict]:

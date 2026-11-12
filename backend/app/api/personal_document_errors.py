@@ -1,16 +1,26 @@
 """Personal-document errors for HR and administrators of the configured company."""
 
 from datetime import UTC
-from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
-from flask import current_app
+from flask import current_app, send_file
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.helpers import api_response, require_roles
-from app.models import RoleName
-from app.services.personal_document_errors import configured_base_url, refresh_snapshot
+from app.extensions import db
+from app.models import PersonalDocumentErrorsSnapshot, RoleName
+from app.services.personal_document_errors import (
+    build_personal_document_errors_workbook,
+    configured_base_url,
+    personal_file_url,
+    refresh_snapshot,
+)
 from app.tenant import get_request_company_id
+
+
+def _company_allowed(company_id: int) -> bool:
+    configured_company_id = current_app.config["PERSONAL_DOCUMENT_ERRORS_COMPANY_ID"]
+    return configured_company_id <= 0 or company_id == configured_company_id
 
 
 def register_routes(bp):
@@ -19,8 +29,7 @@ def register_routes(bp):
     def refresh_personal_document_errors():
         company_id = get_request_company_id()
         config = current_app.config
-        configured_company_id = config["PERSONAL_DOCUMENT_ERRORS_COMPANY_ID"]
-        if configured_company_id > 0 and company_id != configured_company_id:
+        if not _company_allowed(company_id):
             return api_response(message="Forbidden", status=403)
 
         last_success_at = None
@@ -44,7 +53,7 @@ def register_routes(bp):
                         success_at = success_at.replace(tzinfo=UTC)
                     last_success_at = success_at.astimezone(ZoneInfo(config["TIMEZONE"])).isoformat()
                 items = [
-                    {**card, "personal_file_url": f"{base_url}/personalfile/{quote(card['ldnumber'], safe='')}"}
+                    {**card, "personal_file_url": personal_file_url(base_url, card["ldnumber"])}
                     for card in snapshot["items"]
                 ]
 
@@ -56,3 +65,27 @@ def register_routes(bp):
         })
         response.cache_control.no_store = True
         return response, status
+
+    @bp.get("/personal-document-errors/export")
+    @require_roles(RoleName.ADMIN, RoleName.HR)
+    def export_personal_document_errors():
+        company_id = get_request_company_id()
+        if not _company_allowed(company_id):
+            return api_response(message="Forbidden", status=403)
+
+        base_url = configured_base_url()
+        if not base_url:
+            return api_response(message="Источник ошибок в ЛД не настроен.", status=404)
+
+        snapshot = db.session.get(PersonalDocumentErrorsSnapshot, company_id)
+        if snapshot is None or snapshot.last_success_at is None:
+            return api_response(message="Список ошибок в ЛД ещё не загружен.", status=404)
+
+        response = send_file(
+            build_personal_document_errors_workbook(snapshot.items, base_url),
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name="personal_document_errors.xlsx",
+        )
+        response.cache_control.no_store = True
+        return response

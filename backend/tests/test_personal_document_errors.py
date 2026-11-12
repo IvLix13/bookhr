@@ -1,14 +1,17 @@
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import psycopg
 import pytest
+from openpyxl import load_workbook
 
 from app.models import RoleName
 from app.services import personal_document_errors as service
 from conftest import _create_user, _login
 
 URL = "/api/personal-document-errors/refresh"
+EXPORT_URL = "/api/personal-document-errors/export"
 PLAN = Path(__file__).resolve().parents[2] / "docs" / "2026-11-11-personal-document-errors-plan.md"
 
 
@@ -109,18 +112,54 @@ def test_failed_attempts_keep_the_last_complete_snapshot(admin_client, source):
     assert failure == invalid
 
 
+def test_export_downloads_the_last_successful_snapshot_in_name_order(hr_client, source):
+    connect, cursor = source
+    cursor.__iter__.return_value = iter([
+        source_row(grade="=1+1", photo_date_check=False),
+        source_row(id=25, ldnumber="0002", f="Абрамов", grade=None),
+    ])
+    assert hr_client.post(URL).json["data"]["state"] == "ready"
+    connect.side_effect = psycopg.OperationalError("unavailable")
+    assert hr_client.post(URL).json["data"]["state"] == "source_error"
+
+    response = hr_client.get(EXPORT_URL)
+
+    assert response.status_code == 200
+    assert response.cache_control.no_store
+    assert "personal_document_errors.xlsx" in response.headers["Content-Disposition"]
+    assert connect.call_count == 2
+    with BytesIO(response.data) as output:
+        sheet = load_workbook(output).active
+        assert list(sheet.values) == [
+            ("Грейд", "ФИО", "Ошибки"),
+            ("—", "Абрамов Иван", 1),
+            ("=1+1", "Иванов Иван", 2),
+        ]
+        assert sheet["A3"].data_type == "s"
+        assert sheet["C3"].hyperlink.target == "https://files.example.test/prefix/personalfile/0007%2F%D0%B0"
+
+
+def test_export_without_a_successful_snapshot_does_not_contact_source(hr_client, source):
+    connect, _ = source
+    assert hr_client.get(EXPORT_URL).status_code == 404
+    connect.assert_not_called()
+
+
 def test_anonymous_and_other_company_cannot_refresh(client, app, source):
     connect, _ = source
     assert client.post(URL).status_code == 401
+    assert client.get(EXPORT_URL).status_code == 401
     _create_user("other_hr", RoleName.HR, company_id=app.config["PERSONAL_DOCUMENT_ERRORS_COMPANY_ID"] + 1)
     _login(client, "other_hr")
     assert client.post(URL).status_code == 403
+    assert client.get(EXPORT_URL).status_code == 403
     connect.assert_not_called()
 
 
 def test_viewer_cannot_refresh(viewer_client, source):
     connect, _ = source
     assert viewer_client.post(URL).status_code == 403
+    assert viewer_client.get(EXPORT_URL).status_code == 403
     connect.assert_not_called()
 
 
