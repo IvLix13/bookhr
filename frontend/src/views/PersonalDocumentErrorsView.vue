@@ -5,10 +5,21 @@ import { normalizeError } from '@/api/errors'
 import DataTable from '@/components/DataTable.vue'
 import type { ColumnDef } from '@/composables/useDataTable'
 import type {
+  PersonalDocumentErrorCode,
   PersonalDocumentErrorsCard,
   PersonalDocumentErrorsResult,
 } from '@/types/personalDocumentErrors'
 import { MODULE_LABELS } from '@/utils/labels'
+
+const errorLabels: Record<PersonalDocumentErrorCode, string> = {
+  grade: 'Ошибка в грейде',
+  post: 'Ошибка в должности',
+  contract: 'Ошибка в договоре',
+  photo: 'Ошибка в фото',
+  biography: 'Ошибка в биографии',
+  attestation: 'Ошибка в аттестации',
+  passport: 'Ошибка в паспорте',
+}
 
 const columns: ColumnDef<PersonalDocumentErrorsCard>[] = [
   { key: 'grade', label: 'Грейд', filterable: false },
@@ -23,6 +34,8 @@ const columns: ColumnDef<PersonalDocumentErrorsCard>[] = [
 
 const result = ref<PersonalDocumentErrorsResult | null>(null)
 const requestError = ref('')
+const exporting = ref(false)
+const exportError = ref('')
 const lastSuccess = computed(() => {
   if (!result.value?.last_success_at) return null
   return new Intl.DateTimeFormat('ru-RU', {
@@ -39,18 +52,42 @@ onMounted(async () => {
     requestError.value = normalizeError(error)
   }
 })
+
+async function downloadExcel() {
+  if (exporting.value || !result.value?.items.length) return
+  exporting.value = true
+  exportError.value = ''
+  try {
+    await api.downloadPersonalDocumentErrors()
+  } catch (error) {
+    exportError.value = normalizeError(error)
+  } finally {
+    exporting.value = false
+  }
+}
 </script>
 
 <template>
   <section class="card errors-page">
     <header class="page-heading">
-      <h2>{{ MODULE_LABELS.personalDocumentErrors }}</h2>
-      <p v-if="lastSuccess" class="muted">
-        Последнее успешное обновление
-        <time :datetime="result?.last_success_at ?? undefined">{{ lastSuccess }}</time>
-      </p>
+      <div>
+        <h2>{{ MODULE_LABELS.personalDocumentErrors }}</h2>
+        <p v-if="lastSuccess" class="muted">
+          Последнее успешное обновление
+          <time :datetime="result?.last_success_at ?? undefined">{{ lastSuccess }}</time>
+        </p>
+      </div>
+      <button
+        type="button"
+        class="btn secondary"
+        :disabled="exporting || !result?.items.length"
+        @click="downloadExcel"
+      >
+        {{ exporting ? 'Скачивание…' : 'Выгрузка в Excel пофамильно' }}
+      </button>
     </header>
 
+    <p v-if="exportError" class="error-message" role="alert">{{ exportError }}</p>
     <p v-if="requestError" class="error-message" role="alert">{{ requestError }}</p>
     <p v-else-if="!result" role="status">Загружаем список ошибок…</p>
     <p v-else-if="result.state === 'not_configured'" role="status">Источник не настроен.</p>
@@ -73,15 +110,22 @@ onMounted(async () => {
       empty-text="Ошибок не найдено."
     >
       <template #cell-error_count="{ row, display }">
-        <a
-          class="btn secondary error-link"
-          :href="row.personal_file_url"
-          :aria-label="`Ошибок: ${display}. Открыть ЛД ${row.full_name || row.ldnumber} в новой вкладке`"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Ошибок: {{ display }} <span aria-hidden="true">↗</span>
-        </a>
+        <div class="error-cell">
+          <ul v-if="row.errors.length" class="error-list" role="list">
+            <li v-for="code in row.errors" :key="code" class="error-label">
+              {{ errorLabels[code] }}
+            </li>
+          </ul>
+          <a
+            class="btn secondary error-link"
+            :href="row.personal_file_url"
+            :aria-label="`Ошибок: ${display}. Открыть ЛД ${row.full_name || row.ldnumber} в новой вкладке`"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Ошибок: {{ display }} <span aria-hidden="true">↗</span>
+          </a>
+        </div>
       </template>
     </DataTable>
   </section>
@@ -98,7 +142,7 @@ onMounted(async () => {
 .page-heading {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 0.75rem;
   flex-wrap: wrap;
 }
@@ -108,7 +152,8 @@ onMounted(async () => {
   margin: 0;
 }
 
-.muted {
+.page-heading .muted {
+  margin-top: 0.35rem;
   color: var(--muted);
 }
 
@@ -116,8 +161,34 @@ onMounted(async () => {
   color: var(--danger);
 }
 
+.error-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.error-list {
+  display: grid;
+  justify-items: start;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.error-label {
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #f4bcbc;
+  border-radius: var(--radius-sm);
+  background: #fdecec;
+  color: #a12727;
+  font-size: 0.875rem;
+}
+
 .error-link {
   display: inline-block;
+  margin-inline-start: auto;
   white-space: nowrap;
 }
 </style>

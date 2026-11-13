@@ -115,6 +115,18 @@ function triggerDownload(blob: Blob, filename: string) {
 export const api = {
   refreshPersonalDocumentErrors: () =>
     request<PersonalDocumentErrorsResult>('/api/personal-document-errors/refresh', { method: 'POST' }),
+  downloadPersonalDocumentErrors: async () => {
+    const response = await fetch('/api/personal-document-errors/export', { credentials: 'include' })
+    if (response.status === 401) unauthorizedHandler?.()
+    if (!response.ok) {
+      const payload = await parseJsonResponse<unknown>(response).catch(() => null)
+      const message = payload?.message
+        ? localizeApiMessage(payload.message)
+        : 'Не удалось выгрузить список ошибок в Excel.'
+      throw new ApiError(message, response.status)
+    }
+    triggerDownload(await response.blob(), 'personal_document_errors.xlsx')
+  },
   onboardingTemplateInfo: () => request<{ version: number }>('/api/onboarding/docx-template/info'),
   downloadOnboardingTemplate: async () => {
     const response = await fetch('/api/onboarding/docx-template', { credentials: 'include' })
